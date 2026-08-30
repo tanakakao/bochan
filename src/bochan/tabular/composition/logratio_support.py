@@ -1,7 +1,7 @@
 """Acquisition-aware composition support search through raw fraction decisions.
 
 The fitted surrogate may use CLR, ALR, or ILR coordinates, but element support
-must be selected in raw fraction space.  This module adapts the existing generic
+must be selected in raw fraction space. This module adapts the existing generic
 best-subset optimizer by replacing the composition coordinate block with one raw
 fraction per element during candidate optimization and wrapping the acquisition
 function with a differentiable raw-to-model transform.
@@ -16,7 +16,11 @@ from typing import Any
 import torch
 from torch import Tensor, nn
 
-from bochan.api import OptimizeConfig, resolve_optimizer_from_cat_dims, uses_mixed_fixed_features
+from bochan.api import (
+    OptimizeConfig,
+    resolve_optimizer_from_cat_dims,
+    uses_mixed_fixed_features,
+)
 from bochan.tabular.data import resolve_optimize_config_columns
 
 from .raw_bridge import CompositionRawDecisionBridge
@@ -84,8 +88,11 @@ def _map_indices(indices: Any, bridge: CompositionRawDecisionBridge) -> Any:
         return None
     if isinstance(indices, str):
         return _map_index(indices, bridge)
+    if isinstance(indices, int):
+        return [_map_index(indices, bridge)]
     if torch.is_tensor(indices):
-        mapped = [_map_index(int(value), bridge) for value in indices.detach().cpu().tolist()]
+        values = indices.detach().cpu().reshape(-1).tolist()
+        mapped = [_map_index(int(value), bridge) for value in values]
         return torch.as_tensor(mapped, dtype=indices.dtype, device=indices.device)
     return [_map_index(value, bridge) for value in indices]
 
@@ -135,7 +142,10 @@ def _raw_duplicate_tolerances(
         raise ValueError(
             "duplicate_tolerances width must match the fitted model feature dimension."
         )
-    fraction_tolerance = max(float(getattr(config, "duplicate_tolerance", 1e-10)), 1e-12)
+    fraction_tolerance = max(
+        float(getattr(config, "duplicate_tolerance", 1e-10)),
+        1e-12,
+    )
     return (
         values[: bridge.coordinate_start]
         + (fraction_tolerance,) * bridge.fraction_width
@@ -153,7 +163,13 @@ def _remap_optimize_config(
     if config.post_processing_func is not None:
         raise ValueError(
             "Custom model-space post_processing_func is not supported with raw-space "
-            "composition best_subset. Use CandidateRepairConfig/process constraints instead."
+            "composition best_subset. Use CandidateRepairConfig/process constraints "
+            "instead."
+        )
+    if getattr(config, "final_candidate_postprocess", None) is not None:
+        raise ValueError(
+            "final_candidate_postprocess is defined in fitted model coordinates and "
+            "cannot be applied during raw-space composition best_subset."
         )
 
     repair = config.repair_config
@@ -164,24 +180,38 @@ def _remap_optimize_config(
             bounds=raw_bounds,
             numeric_indices=numeric_indices,
             comp_idx=_map_indices(repair.comp_idx, bridge),
-            equality_constraints=_map_constraints(repair.equality_constraints, bridge),
-            inequality_constraints=_map_constraints(repair.inequality_constraints, bridge),
+            equality_constraints=_map_constraints(
+                repair.equality_constraints,
+                bridge,
+            ),
+            inequality_constraints=_map_constraints(
+                repair.inequality_constraints,
+                bridge,
+            ),
             fixed_features=_map_fixed_features(repair.fixed_features, bridge),
         )
 
     replacements: dict[str, Any] = {
         "repair_config": repair,
         "fixed_features": _map_fixed_features(config.fixed_features, bridge),
-        "fixed_features_list": _map_fixed_features_list(config.fixed_features_list, bridge),
-        "equality_constraints": _map_constraints(config.equality_constraints, bridge),
-        "inequality_constraints": _map_constraints(config.inequality_constraints, bridge),
+        "fixed_features_list": _map_fixed_features_list(
+            config.fixed_features_list,
+            bridge,
+        ),
+        "equality_constraints": _map_constraints(
+            config.equality_constraints,
+            bridge,
+        ),
+        "inequality_constraints": _map_constraints(
+            config.inequality_constraints,
+            bridge,
+        ),
     }
     if hasattr(config, "duplicate_tolerances"):
-        replacements["duplicate_tolerances"] = _raw_duplicate_tolerances(config, bridge)
-    if hasattr(config, "final_candidate_postprocess"):
-        # The Web callback operates on fitted model coordinates. Applying it in
-        # raw decision space would destroy exact structural zeros.
-        replacements["final_candidate_postprocess"] = None
+        replacements["duplicate_tolerances"] = _raw_duplicate_tolerances(
+            config,
+            bridge,
+        )
     return replace(config, **replacements)
 
 
@@ -198,7 +228,10 @@ def _raw_fixed_features_list_from_training(
     if unique.numel() == 0:
         return None
     return [
-        {int(index): float(value) for index, value in zip(cat_dims, row, strict=True)}
+        {
+            int(index): float(value)
+            for index, value in zip(cat_dims, row, strict=True)
+        }
         for row in unique.detach().cpu().tolist()
     ]
 
@@ -223,7 +256,9 @@ def prepare_logratio_best_subset_config(
             f"Composition site {site_name!r} is not a CLR/ALR/ILR best_subset site."
         )
     if site_config.get("variable_total"):
-        raise ValueError("Log-ratio composition best_subset currently requires fixed total.")
+        raise ValueError(
+            "Log-ratio composition best_subset currently requires fixed total."
+        )
     if site_config.get("steps"):
         raise ValueError(
             "Log-ratio composition best_subset currently requires continuous fractions."
@@ -240,7 +275,7 @@ def prepare_logratio_best_subset_config(
     )
     raw_named_config = _remap_optimize_config(opt_config, bridge, raw_bounds)
 
-    # Reuse the fraction-space resolver verbatim.  Only its decision feature
+    # Reuse the fraction-space resolver verbatim. Only its decision feature
     # layout is synthetic; the fitted surrogate representation is unchanged.
     raw_site = dict(site_config)
     raw_site["representation"] = "fractions"
@@ -258,16 +293,23 @@ def prepare_logratio_best_subset_config(
     )
 
     raw_cat_dims = [
-        bridge.process_index_map[int(index)]
-        for index in (model_cat_dims or ())
+        bridge.process_index_map[int(index)] for index in (model_cat_dims or ())
     ]
     raw_config = resolve_optimizer_from_cat_dims(
         opt_config=raw_config,
         cat_dims=raw_cat_dims,
     )
-    if uses_mixed_fixed_features(raw_config.optimizer) and raw_config.fixed_features_list is None:
-        raw_train_x = bridge.model_to_decision(train_x) if train_x is not None else None
-        inferred = _raw_fixed_features_list_from_training(raw_train_x, raw_cat_dims)
+    if (
+        uses_mixed_fixed_features(raw_config.optimizer)
+        and raw_config.fixed_features_list is None
+    ):
+        raw_train_x = (
+            bridge.model_to_decision(train_x) if train_x is not None else None
+        )
+        inferred = _raw_fixed_features_list_from_training(
+            raw_train_x,
+            raw_cat_dims,
+        )
         if inferred:
             raw_config = replace(raw_config, fixed_features_list=inferred)
 
@@ -277,7 +319,11 @@ def prepare_logratio_best_subset_config(
 class RawDecisionAcquisition(nn.Module):
     """Evaluate a fitted model-space acquisition on raw decision candidates."""
 
-    def __init__(self, base_acqf: Any, bridge: CompositionRawDecisionBridge) -> None:
+    def __init__(
+        self,
+        base_acqf: Any,
+        bridge: CompositionRawDecisionBridge,
+    ) -> None:
         super().__init__()
         self.base_acqf = base_acqf
         self.bridge = bridge
@@ -301,6 +347,21 @@ class LogRatioBestSubsetResult:
     bridge: CompositionRawDecisionBridge
 
 
+def _reject_one_shot_acquisition(acqf: Any) -> None:
+    """Reject one-shot acquisitions until their augmented variables are bridged."""
+
+    try:
+        from botorch.acquisition.acquisition import OneShotAcquisitionFunction
+    except ImportError:
+        return
+    if isinstance(acqf, OneShotAcquisitionFunction):
+        raise NotImplementedError(
+            "Raw-space composition best_subset does not yet support one-shot "
+            "acquisition functions such as KG. Use EI/NEI/UCB/EHVI/NEHVI or "
+            "another acquisition without augmented one-shot variables."
+        )
+
+
 def optimize_logratio_best_subset(
     base_acqf: Any,
     opt_config: OptimizeConfig,
@@ -318,6 +379,7 @@ def optimize_logratio_best_subset(
 ) -> LogRatioBestSubsetResult:
     """Optimize element support in raw fractions and return model-space candidates."""
 
+    _reject_one_shot_acquisition(base_acqf)
     bridge, raw_config, raw_bounds = prepare_logratio_best_subset_config(
         opt_config,
         site_name=site_name,

@@ -19,7 +19,7 @@ from .deepgp import DeepGaussianGPModel, DeepGaussianMixedGPModel
 from .deepkernel_configurable import DeepKernelGaussianGPModel, DeepKernelGaussianMixedGPModel
 from .deepkerneldeepgp import DeepKernelDeepGaussianGPModel, DeepKernelDeepGaussianMixedGPModel
 from .material import CompositionMaterialInputTransform, MaterialGPFeatureExtractor
-from .roost import RoostGPModel
+from .roost import RoostDKLModel, RoostGPModel
 
 __all__ = [
     "ALIGNNDKLModel",
@@ -46,5 +46,6 @@ __all__ = [
     "DeepKernelGaussianGPModel",
     "DeepKernelGaussianMixedGPModel",
     "MaterialGPFeatureExtractor",
+    "RoostDKLModel",
     "RoostGPModel",
 ]

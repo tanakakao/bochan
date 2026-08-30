@@ -261,7 +261,7 @@ def _validate_grid_contract(
             "applies final_candidate_postprocess. Use optimize_acqf, evo, or torch."
         )
     if hasattr(opt_config, "ensure_unique_candidates") and not bool(
-        getattr(opt_config, "ensure_unique_candidates")
+        opt_config.ensure_unique_candidates
     ):
         raise ValueError(
             "Composition step-grid best_subset requires ensure_unique_candidates=True "

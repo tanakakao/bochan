@@ -92,6 +92,8 @@ def test_forbidden_components_are_normalized_into_zero_bounds_and_repair() -> No
 def test_site_config_rejects_invalid_support_and_required_forbidden_overlap() -> None:
     with pytest.raises(ValueError, match="support_selection"):
         normalize_composition_sites({"alloy": _raw_site(support_selection="unknown")})
+    with pytest.raises(ValueError, match="best_subset_strategy"):
+        normalize_composition_sites({"alloy": _raw_site(best_subset_strategy="unknown")})
     with pytest.raises(ValueError, match="require and forbid"):
         normalize_composition_sites(
             {
@@ -127,6 +129,70 @@ def test_fraction_best_subset_resolves_to_generic_core_support_search() -> None:
     assert resolved.repair_config is not None
     assert resolved.repair_config.comp_idx == [1, 2, 4]
     assert enumerate_best_subset_supports(resolved) == [(1, 2), (1, 4), (2, 4)]
+
+
+def test_site_best_subset_controls_fill_optimizer_kwargs_without_overriding_explicit_values() -> None:
+    site = _site(
+        best_subset_strategy="beam",
+        best_subset_max_combinations=700,
+        best_subset_beam_width=6,
+        best_subset_beam_steps=5,
+        best_subset_max_evaluations=120,
+    )
+    config = _resolve(site)
+    assert config.optimizer_kwargs == {
+        "best_subset_strategy": "beam",
+        "best_subset_max_combinations": 700,
+        "best_subset_beam_width": 6,
+        "best_subset_beam_steps": 5,
+        "best_subset_max_evaluations": 120,
+    }
+
+    explicit = _resolve(
+        site,
+        OptimizeConfig(
+            optimizer_kwargs={
+                "best_subset_strategy": "exact",
+                "best_subset_max_evaluations": 25,
+            }
+        ),
+    )
+    assert explicit.optimizer_kwargs["best_subset_strategy"] == "exact"
+    assert explicit.optimizer_kwargs["best_subset_max_evaluations"] == 25
+    assert explicit.optimizer_kwargs["best_subset_beam_width"] == 6
+
+
+def test_site_best_subset_controls_do_not_leak_when_no_optional_support_is_searched() -> None:
+    site = _site(
+        elements=["Al", "Ti", "V"],
+        required_components=["Al", "Ti", "V"],
+        forbidden_components=[],
+        min_components=3,
+        max_components=3,
+        best_subset_strategy="beam",
+        bounds={
+            "Al": [0.0, 1.0],
+            "Ti": [0.0, 1.0],
+            "V": [0.0, 1.0],
+        },
+    )
+    transformer = SimpleNamespace(
+        fitted_elements=("Al", "Ti", "V"),
+        prefix="alloy",
+    )
+    config = resolve_composition_best_subset(
+        OptimizeConfig(),
+        composition_sites={"alloy": site},
+        composition_transformers={"alloy": transformer},
+        feature_names=[
+            "alloy__fraction__Al",
+            "alloy__fraction__Ti",
+            "alloy__fraction__V",
+        ],
+    )
+    assert config.optimizer_kwargs == {}
+    assert config.repair_config is not None
+    assert config.repair_config.support_selection == "topk"
 
 
 def test_required_components_are_free_valued_not_fixed() -> None:

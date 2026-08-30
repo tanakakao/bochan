@@ -69,7 +69,6 @@ export function CompositionSearchSpaceConstraints() {
   const maximum = settings.maxComponents ?? (settings.elements.length || 1);
   const variableTotal = settings.totalMode === "variable";
   const totalLimit = variableTotal ? settings.totalUpper : settings.total;
-  const variableBestSubset = variableTotal && settings.supportSelection === "best_subset";
 
   return (
     <section className="composition-search-space-constraints-react">
@@ -223,7 +222,7 @@ export function CompositionSearchSpaceConstraints() {
             <h4>{variableTotal ? "元素ごとの絶対量制約" : "元素ごとの量制約"}</h4>
             <p>
               {variableTotal
-                ? `上下限は各元素の絶対量で指定します。元素量の合計は ${settings.totalLower}〜${settings.totalUpper} の範囲です。`
+                ? `上下限と刻みは各元素の絶対量で指定します。元素量の合計は ${settings.totalLower}〜${settings.totalUpper} の範囲です。`
                 : `上下限と刻みは固定合計 ${settings.total} と同じ量基準で指定します。`}
             </p>
           </div>
@@ -301,8 +300,7 @@ export function CompositionSearchSpaceConstraints() {
                           max={totalLimit}
                           step="any"
                           value={step ?? ""}
-                          placeholder={variableBestSubset ? "Best Subsetでは未対応" : "任意"}
-                          disabled={variableBestSubset}
+                          placeholder="任意"
                           onChange={(event) => {
                             const raw = event.target.value.trim();
                             const value = raw ? Math.max(0, Number(raw)) : null;
@@ -332,11 +330,6 @@ export function CompositionSearchSpaceConstraints() {
               </tbody>
             </table>
           </div>
-        )}
-        {variableBestSubset && settings.elements.some((element) => (settings.steps[element] ?? 0) > 0) && (
-          <p className="settings-note warning-text">
-            Variable total × Best Subsetではcomponent step/gridは次フェーズ対応です。保存済みstepを解除してから実行してください。
-          </p>
         )}
       </section>
     </section>

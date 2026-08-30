@@ -22,6 +22,8 @@ _SITE_DEFAULTS: dict[str, Any] = {
     "min_components": 1,
     "max_components": None,
     "required_components": (),
+    "forbidden_components": (),
+    "support_selection": "repair",
     "coordinate_bounds": (-8.0, 8.0),
 }
 
@@ -62,7 +64,29 @@ def normalize_composition_sites(
         resolved["element_properties"] = dict(resolved["element_properties"] or {})
         resolved["bounds"] = dict(resolved["bounds"] or {})
         resolved["steps"] = dict(resolved["steps"] or {})
-        resolved["required_components"] = tuple(resolved["required_components"] or ())
+        resolved["required_components"] = tuple(dict.fromkeys(resolved["required_components"] or ()))
+        resolved["forbidden_components"] = tuple(dict.fromkeys(resolved["forbidden_components"] or ()))
+        resolved["support_selection"] = str(resolved["support_selection"]).lower()
+        if resolved["support_selection"] not in {"repair", "best_subset"}:
+            raise ValueError(
+                f"Composition site {name!r} support_selection must be 'repair' or 'best_subset'."
+            )
+        known_elements = set(resolved["elements"])
+        unknown_required = set(resolved["required_components"]) - known_elements
+        if unknown_required:
+            raise KeyError(
+                f"Unknown required components at site {name!r}: {sorted(unknown_required)!r}."
+            )
+        unknown_forbidden = set(resolved["forbidden_components"]) - known_elements
+        if unknown_forbidden:
+            raise KeyError(
+                f"Unknown forbidden components at site {name!r}: {sorted(unknown_forbidden)!r}."
+            )
+        overlap = set(resolved["required_components"]) & set(resolved["forbidden_components"])
+        if overlap:
+            raise ValueError(
+                f"Composition site {name!r} cannot require and forbid the same components: {sorted(overlap)!r}."
+            )
         resolved["min_components"] = int(resolved["min_components"])
         if resolved["max_components"] is not None:
             resolved["max_components"] = int(resolved["max_components"])

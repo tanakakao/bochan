@@ -161,3 +161,42 @@ def test_logratio_step_grid_rejects_auto_when_support_count_requires_beam() -> N
             dtype=torch.double,
             device=None,
         )
+
+
+def test_step_grid_strategy_honors_explicit_optimizer_kwargs_over_site_defaults() -> None:
+    transformer = _transformer("ilr")
+    _bridge, config, _bounds = prepare_logratio_best_subset_config(
+        OptimizeConfig(
+            optimizer_kwargs={
+                "best_subset_strategy": "exact",
+                "best_subset_max_combinations": 20,
+            }
+        ),
+        site_name="alloy",
+        site_config=_site(
+            "ilr",
+            best_subset_strategy="beam",
+            best_subset_max_combinations=1,
+        ),
+        transformer=transformer,
+        model_feature_names=_model_layout(transformer),
+        model_bounds=_model_bounds(transformer),
+        dtype=torch.double,
+        device=None,
+    )
+    assert config.optimizer_kwargs["best_subset_strategy"] == "exact"
+    assert config.optimizer_kwargs["best_subset_max_combinations"] == 20
+
+    with pytest.raises(ValueError, match="requires exact support search"):
+        prepare_logratio_best_subset_config(
+            OptimizeConfig(
+                optimizer_kwargs={"best_subset_strategy": "beam"}
+            ),
+            site_name="alloy",
+            site_config=_site("ilr", best_subset_strategy="exact"),
+            transformer=transformer,
+            model_feature_names=_model_layout(transformer),
+            model_bounds=_model_bounds(transformer),
+            dtype=torch.double,
+            device=None,
+        )

@@ -223,3 +223,48 @@ def test_dispatch_applies_best_subset_before_base_backend() -> None:
     assert (1, 3) in seen_supports
     assert torch.equal(candidates, torch.tensor([[0.0, 1.0, 0.0, 1.0]]))
     assert float(acq_value.item()) == pytest.approx(12.0)
+
+
+def test_best_subset_re_evaluates_final_candidate_instead_of_trusting_backend_value() -> None:
+    bounds = torch.tensor(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 1.0, 1.0],
+        ]
+    )
+    comp_idx = (0, 1, 2)
+    acqf = _support_table_acq(
+        {
+            (0, 1): 1.0,
+            (0, 2): 10.0,
+            (1, 2): 3.0,
+        },
+        comp_idx,
+    )
+
+    def misleading_optimizer(*, bounds, q, fixed_features=None, **kwargs):
+        candidate = torch.ones(q, bounds.shape[-1], dtype=bounds.dtype, device=bounds.device)
+        for index, value in (fixed_features or {}).items():
+            candidate[:, int(index)] = float(value)
+        active = tuple(
+            index
+            for index in comp_idx
+            if bool((candidate[..., index].abs() > 1e-8).any().item())
+        )
+        misleading = candidate.new_tensor({(0, 1): 100.0, (0, 2): 0.0, (1, 2): 50.0}[active])
+        return candidate, misleading
+
+    config = OptimizeConfig(
+        q=1,
+        optimizer=misleading_optimizer,
+        repair_config=CandidateRepairConfig(
+            comp_idx=comp_idx,
+            k=2,
+            support_selection="best_subset",
+        ),
+    )
+
+    candidates, acq_value = base_optimize_candidates(acqf, bounds, config)
+
+    assert torch.equal(candidates, torch.tensor([[1.0, 0.0, 1.0]]))
+    assert float(acq_value.item()) == pytest.approx(10.0)

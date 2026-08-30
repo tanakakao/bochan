@@ -117,11 +117,11 @@ This choice keeps support, absolute component bounds, `total_bounds`, and amount
 
 Exact, Beam, and Auto support search reuse the same generic Best Subset implementation used by fixed-total compositions. The fitted surrogate and acquisition function are still evaluated in their original model space.
 
-Variable-total component step grids are not yet supported; the continuous amount formulation is used in this phase.
-
 ## Component step grids
 
-Fixed-total Best Subset can return experiment-ready stepped compositions, for example 5 at.% increments:
+Best Subset can return experiment-ready stepped compositions. The inner acquisition optimization stays continuous; for each exact support, the final composition is projected with a small mixed-integer program onto the nearest feasible experiment-space grid point. The acquisition function is then re-evaluated on that projected candidate, so support ranking uses the composition that can actually be executed.
+
+### Fixed-total example
 
 ```python
 composition_sites={
@@ -141,29 +141,72 @@ composition_sites={
 }
 ```
 
-The inner acquisition optimization remains continuous. For each exact support, the final composition is projected with a small mixed-integer program onto the nearest feasible grid point while preserving:
+The fixed-total projection preserves:
 
 - the selected exact-k support;
 - component lower/upper bounds;
 - every configured component step;
 - the fixed composition total.
 
-The acquisition function is re-evaluated on the projected candidate, so support ranking is based on the actual experiment-space composition rather than on a continuous candidate that is rounded only after selection.
+### Variable-total example
 
-All enumerated supports are checked for grid feasibility before candidate optimization. A support that cannot satisfy the configured total on its step grid causes an explicit configuration error.
+For a variable-total composition, `steps` are absolute-amount increments:
+
+```python
+composition_sites={
+    "alloy": {
+        "element_columns": {
+            "Al": "Al",
+            "Ti": "Ti",
+            "V": "V",
+            "Nb": "Nb",
+        },
+        "representation": "ilr",
+        "total_bounds": [40.0, 90.0],
+        "bounds": {
+            "Al": [5.0, 70.0],
+            "Ti": [0.0, 70.0],
+            "V": [0.0, 70.0],
+            "Nb": [0.0, 70.0],
+        },
+        "steps": {
+            "Al": 5.0,
+            "Ti": 5.0,
+            "V": 5.0,
+            "Nb": 5.0,
+        },
+        "required_components": ["Al"],
+        "min_components": 3,
+        "max_components": 3,
+        "support_selection": "best_subset",
+        "best_subset_strategy": "exact",
+    }
+}
+```
+
+The variable-total MILP operates directly in raw absolute amounts and preserves:
+
+- the selected exact-k element support;
+- absolute component lower/upper bounds;
+- every configured absolute-amount step;
+- `total_lower <= sum(amounts) <= total_upper`.
+
+Unlike fixed-total projection, the projected total is allowed to move inside `total_bounds`. This is deliberate: the experiment-space candidate closest to the continuous acquisition optimum is chosen while the total remains a genuine decision variable.
+
+All enumerated supports are checked for grid feasibility before candidate optimization. A support that cannot satisfy the fixed total or variable `total_bounds` on its configured grid causes an explicit configuration error rather than being rounded post hoc.
 
 ### Step-grid strategy scope
 
-Step-grid Best Subset currently uses exhaustive support search:
+Step-grid Best Subset currently uses exhaustive support search for both fixed and variable totals:
 
 - `best_subset_strategy="exact"` is supported;
 - `"auto"` is supported only when the support count is within `best_subset_max_combinations`, so Auto resolves to Exact;
 - `"beam"` with component steps is rejected explicitly.
 
-The current fixed-total step-grid projector also rejects for now:
+The current step-grid projectors also reject for now:
 
-- additional linear constraints involving composition fractions / elements;
-- non-zero fixed composition fraction values;
+- additional linear constraints involving composition fractions / raw amounts / elements;
+- non-zero fixed composition values;
 - optimizer backends that bypass `final_candidate_postprocess`.
 
 Process-only linear constraints and process-variable rounding/fixed values remain compatible because they do not alter the projected composition block.
@@ -177,11 +220,12 @@ The React/FastAPI composition workbench supports the same fixed-total and variab
 - the two fields are mutually exclusive;
 - variable-total formula data derives a separate fitted total feature from the original formula coefficients;
 - Fraction / CLR / ALR / ILR model coordinates remain normalized composition features;
-- variable-total Best Subset uses raw absolute element amounts internally and exposes the optimized total in the candidate result.
+- variable-total Best Subset uses raw absolute element amounts internally and exposes the optimized total in the candidate result;
+- variable-total `steps` are entered as absolute element-amount increments and use the same Exact-only step-grid contract as the Python API.
 
 The Web search-space controls therefore distinguish between fixed-total element amounts and variable-total absolute amounts. For a variable-total Best Subset result, response metadata reports `support_space="raw_amount"`, `total_bounds`, and the generated total-feature name. Structural zeros and the optimized total are restored from the exact raw candidate rather than inferred from pseudocount-smoothed log-ratio coordinates.
 
-Variable-total component steps remain explicitly unsupported in the Web workbench, matching the core optimizer contract. The UI disables the step control for a variable-total Best Subset search and validation rejects stale saved step settings instead of silently changing the optimization problem.
+When a step grid is active, the Web result is restored from the projected raw amount candidate. The displayed total is therefore the sum of the actual stepped amounts, not the pre-projection continuous total.
 
 For fixed-total CLR / ALR / ILR searches, the Web response continues to restore formula and fraction columns from the exact raw-fraction decision candidate.
 
@@ -196,18 +240,17 @@ Supported:
 - required and forbidden elements;
 - fixed-total fractional/amount bounds and variable-total absolute amount bounds;
 - continuous compositions with Exact, Beam, or Auto support search;
-- fixed-total component step grids with Exact support search (or Auto resolving to Exact);
-- variable-total `total_bounds` and raw amount linear constraints;
+- fixed-total and variable-total component step grids with Exact support search (or Auto resolving to Exact);
+- variable-total `total_bounds` and raw amount linear constraints when no step grid is active;
 - shared support for joint q-batches;
 - Web result restoration from exact raw fraction or raw amount decisions.
 
 Still explicit future extensions:
 
-- variable-total component step/grid projection;
 - multiple simultaneous composition Best Subset groups;
 - variable active-component ranges (`min_components != max_components`);
-- Beam search over stepped fixed-total compositions;
-- joint fixed-total step-grid MILP enforcement of additional composition linear constraints;
+- Beam search over stepped compositions;
+- joint step-grid MILP enforcement of additional composition linear constraints;
 - one-shot acquisition functions that introduce augmented optimization variables.
 
 These cases are intentionally rejected instead of falling back to transformed-coordinate sparsity or post-hoc rounding that would change the optimization problem.

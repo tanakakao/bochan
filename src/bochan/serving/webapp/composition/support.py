@@ -145,11 +145,6 @@ def _best_subset_settings(raw: Mapping[str, Any]) -> dict[str, Any]:
 def _validate_best_subset_contract(config: Mapping[str, Any]) -> None:
     if config.get("support_selection") != "best_subset":
         return
-    if config["steps"]:
-        raise ValueError(
-            "Composition best_subset currently requires continuous fractions; "
-            "remove composition component steps."
-        )
     maximum = config.get("max_components")
     if maximum is None or int(config["min_components"]) != int(maximum):
         raise ValueError(

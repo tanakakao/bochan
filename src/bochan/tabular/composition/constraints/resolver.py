@@ -140,6 +140,14 @@ class CompositionElementConstraintResolver:
             == "best_subset"
         )
 
+    @staticmethod
+    def _uses_amount_decision_features(config: Mapping[str, Any]) -> bool:
+        return bool(
+            config.get("variable_total")
+            and str(config.get("support_selection", "repair")).lower()
+            == "best_subset"
+        )
+
     @classmethod
     def named_constraints(
         cls,
@@ -147,12 +155,11 @@ class CompositionElementConstraintResolver:
         composition_sites: Mapping[str, Mapping[str, Any]],
         composition_transformers: Mapping[str, Any],
     ) -> list[tuple[Any, ...]]:
-        """Translate constraints to fraction decision features when available.
+        """Translate constraints to raw composition decision features when available.
 
-        Fraction representations expose these names directly. CLR/ALR/ILR
-        best-subset search exposes the same names in its synthetic raw-fraction
-        decision space, so element constraints can be optimized jointly with the
-        selected support instead of being imposed by a post-hoc repair.
+        Fixed-total fraction and CLR/ALR/ILR Best Subset searches expose synthetic
+        fraction names. Variable-total Best Subset exposes absolute component amount
+        names, so amount-basis constraints remain linear while the total is optimized.
         """
 
         if not constraints:
@@ -164,9 +171,24 @@ class CompositionElementConstraintResolver:
             compatible = True
             for term in constraint["terms"]:
                 config = composition_sites[term["site"]]
-                if config.get("variable_total") or not cls._uses_fraction_decision_features(
-                    config
-                ):
+                transformer = composition_transformers.get(term["site"])
+                if transformer is None:
+                    compatible = False
+                    break
+
+                scale = cls.basis_scale(
+                    config,
+                    term["element"],
+                    constraint["basis"],
+                )
+                if cls._uses_amount_decision_features(config):
+                    names.append(
+                        f"{transformer.prefix}__amount__{term['element']}"
+                    )
+                    coefficients.append(float(term["coefficient"]) * scale)
+                    continue
+
+                if not cls._uses_fraction_decision_features(config):
                     compatible = False
                     break
                 if (
@@ -175,18 +197,12 @@ class CompositionElementConstraintResolver:
                 ):
                     compatible = False
                     break
-                transformer = composition_transformers.get(term["site"])
-                if transformer is None:
-                    compatible = False
-                    break
-                names.append(f"{transformer.prefix}__fraction__{term['element']}")
+                names.append(
+                    f"{transformer.prefix}__fraction__{term['element']}"
+                )
                 coefficients.append(
                     float(term["coefficient"])
-                    * cls.basis_scale(
-                        config,
-                        term["element"],
-                        constraint["basis"],
-                    )
+                    * scale
                     * float(config["total"])
                 )
             if compatible:

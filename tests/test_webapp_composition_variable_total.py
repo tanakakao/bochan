@@ -163,7 +163,7 @@ def test_typed_composition_endpoint_transports_variable_total() -> None:
 
     assert response.status_code == 200, response.text
     composition = response.json()["model_kwargs"]["web_composition"]
-    assert composition["total"] is None
+    assert "total" not in composition
     assert composition["total_bounds"] == [0.8, 1.4]
     assert composition["support_selection"] == "best_subset"
 

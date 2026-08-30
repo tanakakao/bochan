@@ -248,7 +248,7 @@ class CandidateService:
                 opt_config,
                 composition_sites=self.composition.sites,
                 composition_transformers=self.composition.transformers,
-                feature_names=owner.dataset.feature_names,
+                feature_names=getattr(owner.dataset, "feature_names", ()),
             )
         if values:
             raise TypeError(f"Unknown candidate arguments: {sorted(values)!r}.")

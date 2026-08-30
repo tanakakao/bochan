@@ -24,8 +24,42 @@ _SITE_DEFAULTS: dict[str, Any] = {
     "required_components": (),
     "forbidden_components": (),
     "support_selection": "repair",
+    "best_subset_strategy": None,
+    "best_subset_max_combinations": None,
+    "best_subset_beam_width": None,
+    "best_subset_beam_steps": None,
+    "best_subset_max_evaluations": None,
     "coordinate_bounds": (-8.0, 8.0),
 }
+
+_BEST_SUBSET_INT_SETTINGS = {
+    "best_subset_max_combinations": 1,
+    "best_subset_beam_width": 1,
+    "best_subset_beam_steps": 0,
+    "best_subset_max_evaluations": 1,
+}
+
+
+def _normalize_best_subset_settings(name: str, resolved: dict[str, Any]) -> None:
+    strategy = resolved.get("best_subset_strategy")
+    if strategy is not None:
+        strategy = str(strategy).lower()
+        if strategy not in {"exact", "beam", "auto"}:
+            raise ValueError(
+                f"Composition site {name!r} best_subset_strategy must be exact, beam, or auto."
+            )
+        resolved["best_subset_strategy"] = strategy
+
+    for key, minimum in _BEST_SUBSET_INT_SETTINGS.items():
+        value = resolved.get(key)
+        if value is None:
+            continue
+        value = int(value)
+        if value < minimum:
+            raise ValueError(
+                f"Composition site {name!r} {key} must be >= {minimum}."
+            )
+        resolved[key] = value
 
 
 def normalize_composition_sites(
@@ -71,6 +105,7 @@ def normalize_composition_sites(
             raise ValueError(
                 f"Composition site {name!r} support_selection must be 'repair' or 'best_subset'."
             )
+        _normalize_best_subset_settings(name, resolved)
         known_elements = set(resolved["elements"])
         unknown_required = set(resolved["required_components"]) - known_elements
         if unknown_required:

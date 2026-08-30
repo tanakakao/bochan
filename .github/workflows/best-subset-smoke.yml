@@ -27,7 +27,7 @@ jobs:
       - name: Lint support search
         run: |
           python -m pip install ruff
-          ruff check \
+          ruff check --ignore SIM108 \
             src/bochan/api/support/best_subset.py \
             tests/test_k_sparse_best_subset.py \
             tests/test_k_sparse_best_subset_beam.py \

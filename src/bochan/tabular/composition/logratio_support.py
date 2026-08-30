@@ -332,6 +332,33 @@ class RawDecisionAcquisition(nn.Module):
     def model(self) -> Any:
         return getattr(self.base_acqf, "model", None)
 
+    @property
+    def X_pending(self) -> Tensor | None:
+        """Expose pending points in raw decision coordinates for sequential BO."""
+
+        pending = getattr(self.base_acqf, "X_pending", None)
+        if pending is None:
+            return None
+        return self.bridge.model_to_decision(pending)
+
+    def set_X_pending(self, X_pending: Tensor | None = None) -> "RawDecisionAcquisition":
+        """Map sequential raw pending points back to fitted model coordinates."""
+
+        setter = getattr(self.base_acqf, "set_X_pending", None)
+        if not callable(setter):
+            if X_pending is not None:
+                raise AttributeError(
+                    "The wrapped acquisition does not support pending points."
+                )
+            return self
+        model_pending = (
+            None
+            if X_pending is None
+            else self.bridge.decision_to_model(X_pending)
+        )
+        setter(model_pending)
+        return self
+
     def forward(self, values: Tensor) -> Tensor:
         return self.base_acqf(self.bridge.decision_to_model(values))
 

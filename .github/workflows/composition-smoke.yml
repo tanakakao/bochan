@@ -50,6 +50,7 @@ jobs:
             tests/test_roost_encoder.py \
             tests/test_roost_gp.py \
             tests/test_composition_best_subset.py \
+            tests/test_composition_best_subset_steps.py \
             tests/test_composition_raw_bridge.py \
             tests/test_composition_logratio_best_subset.py \
             tests/test_tabular_composition_logratio_best_subset.py \
@@ -94,6 +95,7 @@ jobs:
             src/bochan/tabular/composition/bounds.py \
             src/bochan/tabular/composition/columns.py \
             src/bochan/tabular/composition/config.py \
+            src/bochan/tabular/composition/grid.py \
             src/bochan/tabular/composition/raw_bridge.py \
             src/bochan/tabular/composition/logratio_support.py \
             src/bochan/tabular/composition/support.py \
@@ -151,6 +153,7 @@ jobs:
             tests/test_crabnet_gp.py \
             tests/test_crabnet_integration_closure.py \
             tests/test_composition_best_subset.py \
+            tests/test_composition_best_subset_steps.py \
             tests/test_composition_raw_bridge.py \
             tests/test_composition_logratio_best_subset.py \
             tests/test_tabular_composition_logratio_best_subset.py \

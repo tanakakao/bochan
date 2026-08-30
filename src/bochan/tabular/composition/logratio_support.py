@@ -161,7 +161,7 @@ def _raw_final_candidate_postprocess(
 ) -> Tensor:
     """Apply a model-space final callback only to non-composition features.
 
-    Raw fractions remain authoritative for support selection.  The callback may
+    Raw fractions remain authoritative for support selection. The callback may
     clamp, round, or otherwise repair ordinary process variables in fitted model
     coordinates, but any modifications it makes to CLR/ALR/ILR coordinates are
     deliberately discarded before returning to raw decision space.
@@ -303,10 +303,6 @@ def prepare_logratio_best_subset_config(
     if site_config.get("variable_total"):
         raise ValueError(
             "Log-ratio composition best_subset currently requires fixed total."
-        )
-    if site_config.get("steps"):
-        raise ValueError(
-            "Log-ratio composition best_subset currently requires continuous fractions."
         )
 
     bridge = CompositionRawDecisionBridge.from_transformer(

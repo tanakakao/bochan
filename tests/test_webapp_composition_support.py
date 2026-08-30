@@ -140,8 +140,6 @@ def test_web_best_subset_contract_rejects_semantically_invalid_settings() -> Non
     }
     with pytest.raises(ValueError, match="min_components == max_components"):
         normalize_web_composition_settings({**base, "max_components": 3})
-    with pytest.raises(ValueError, match="continuous fractions"):
-        normalize_web_composition_settings({**base, "steps": {"Ti": 0.05}})
     with pytest.raises(ValueError, match="both required and forbidden"):
         normalize_web_composition_settings(
             {
@@ -150,6 +148,26 @@ def test_web_best_subset_contract_rejects_semantically_invalid_settings() -> Non
                 "forbidden_components": ["Al"],
             }
         )
+
+
+def test_web_best_subset_preserves_component_steps_for_canonical_resolution() -> None:
+    settings = normalize_web_composition_settings(
+        {
+            "column": "formula",
+            "elements": ["Al", "Ti", "V"],
+            "representation": "ilr",
+            "min_components": 2,
+            "max_components": 2,
+            "support_selection": "best_subset",
+            "best_subset_strategy": "exact",
+            "steps": {"Al": 0.05, "Ti": 0.1},
+        }
+    )
+    assert settings["steps"] == {"Al": 0.05, "Ti": 0.1}
+    assert composition_site(settings)["steps"] == {
+        "Al": 0.05,
+        "Ti": 0.1,
+    }
 
 
 @pytest.mark.parametrize("representation", ["clr", "alr", "ilr"])
@@ -308,8 +326,9 @@ def test_typed_composition_regression_endpoint_transports_best_subset(
                 "required_components": ["Al"],
                 "forbidden_components": ["Cr"],
                 "support_selection": "best_subset",
-                "best_subset_strategy": "auto",
+                "best_subset_strategy": "exact",
                 "best_subset_max_combinations": 500,
+                "steps": {"Al": 0.05, "Ti": 0.05, "V": 0.05},
             },
         },
     )
@@ -319,8 +338,9 @@ def test_typed_composition_regression_endpoint_transports_best_subset(
     assert composition["representation"] == representation
     assert composition["support_selection"] == "best_subset"
     assert composition["forbidden_components"] == ["Cr"]
-    assert composition["best_subset_strategy"] == "auto"
+    assert composition["best_subset_strategy"] == "exact"
     assert composition["best_subset_max_combinations"] == 500
+    assert composition["steps"] == {"Al": 0.05, "Ti": 0.05, "V": 0.05}
 
 
 def test_ordinary_constraint_uses_shifted_index_after_ilr_expansion() -> None:
@@ -441,7 +461,9 @@ def test_web_source_exposes_react_owned_composition_controls() -> None:
     assert "Acquisition-aware Best Subset" in best_subset
     assert "禁止元素" in best_subset
     assert "raw fraction空間で探索" in best_subset
+    assert "step付きBest Subsetは現在Exact探索のみ対応" in best_subset
     assert "Auto（小規模Exact / 大規模Beam）" in best_subset
+    assert "steps: Object.fromEntries" not in best_subset
     assert "CompositionBestSubsetSettings" in search_variables
     assert "best_subset_strategy" in extension
     assert "forbidden_components" in extension

@@ -220,10 +220,11 @@ class CompositionGridFinalPostprocess:
             )
 
         result = processed.detach().clone()
-        if result.ndim == 1:
-            work = result.reshape(1, -1)
-        else:
-            work = result.reshape(-1, result.shape[-1])
+        work = (
+            result.reshape(1, -1)
+            if result.ndim == 1
+            else result.reshape(-1, result.shape[-1])
+        )
         indices = list(self.feature_indices)
 
         for row in work:

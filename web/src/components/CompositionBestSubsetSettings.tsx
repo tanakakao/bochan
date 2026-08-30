@@ -107,10 +107,13 @@ export default function CompositionBestSubsetSettings() {
   }
 
   function clearComponentSteps(): void {
-    update((current) => ({
-      ...current,
-      steps: Object.fromEntries(current.elements.map((element) => [element, null]))
-    }));
+    update((current) => {
+      const clearedSteps = { ...current.steps };
+      for (const element of current.elements) {
+        clearedSteps[element] = null;
+      }
+      return { ...current, steps: clearedSteps };
+    });
   }
 
   return (

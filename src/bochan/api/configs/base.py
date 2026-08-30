@@ -38,7 +38,7 @@ OptimizerName = Literal[
 ]
 FinalPriority = Literal["grid", "constraints"]
 SparseScore = Literal["abs", "value"]
-SupportSelection = Literal["topk", "sample"]
+SupportSelection = Literal["topk", "sample", "best_subset"]
 InequalitySense = Literal["le", "ge"]
 ObjectiveMode = Literal["auto", "none", "scalar", "multi_output"]
 Direction = Literal["maximize", "minimize"]

@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
+from math import comb
 from typing import Any
 
 from bochan.api import CandidateRepairConfig, OptimizeConfig
+
+from .grid import CompositionGridFinalPostprocess
 
 _SUPPORTED_REPRESENTATIONS = {"none", "fraction", "fractions"}
 _TOLERANCE = 1e-8
@@ -64,7 +67,9 @@ def _component_bounds(config: Mapping[str, Any], element: str) -> tuple[float, f
     total = float(config["total"])
     pair = tuple(config["bounds"].get(element, (0.0, total)))
     if len(pair) != 2:
-        raise ValueError(f"Bounds for composition component {element!r} must have length 2.")
+        raise ValueError(
+            f"Bounds for composition component {element!r} must have length 2."
+        )
     lower, upper = map(float, pair)
     return lower, upper
 
@@ -74,6 +79,9 @@ def _active_floor(config: Mapping[str, Any], element: str, upper: float) -> floa
     lower, _ = _component_bounds(config, element)
     if lower > _TOLERANCE:
         return lower / total
+    step = (config.get("steps") or {}).get(element)
+    if step is not None:
+        return min(float(step), upper) / total
     return min(10.0 * _TOLERANCE, upper) / total
 
 
@@ -84,18 +92,16 @@ def _validate_all_supports_feasible(
     optional_k: int,
     config: Mapping[str, Any],
 ) -> None:
-    """Reject settings where some enumerated exact-k support cannot sum to one.
-
-    PR4 deliberately guarantees that every support handed to the generic exact / beam
-    search is feasible. Support-specific feasibility filtering can relax this guard in
-    a later extension without risking optimizer failures in the initial integration.
-    """
+    """Reject settings where some enumerated exact-k support cannot sum to one."""
     total = float(config["total"])
     required_lower = 0.0
     required_upper = 0.0
     for element in required:
         lower, upper = _component_bounds(config, element)
-        required_lower += max(lower / total, _active_floor(config, element, upper))
+        required_lower += max(
+            lower / total,
+            _active_floor(config, element, upper),
+        )
         required_upper += upper / total
 
     optional_floors = []
@@ -105,18 +111,20 @@ def _validate_all_supports_feasible(
         optional_floors.append(_active_floor(config, element, upper))
         optional_uppers.append(upper / total)
 
-    largest_floor_sum = sum(sorted(optional_floors, reverse=True)[:optional_k])
+    largest_floor_sum = sum(
+        sorted(optional_floors, reverse=True)[:optional_k]
+    )
     smallest_upper_sum = sum(sorted(optional_uppers)[:optional_k])
     if required_lower + largest_floor_sum > 1.0 + _TOLERANCE:
         raise ValueError(
-            "Composition best_subset has an exact-k support whose active lower bounds "
-            "cannot satisfy the unit composition sum."
+            "Composition best_subset has an exact-k support whose active lower "
+            "bounds cannot satisfy the unit composition sum."
         )
     if required_upper + smallest_upper_sum < 1.0 - _TOLERANCE:
         raise ValueError(
-            "Composition best_subset has an exact-k support whose active upper bounds "
-            "cannot satisfy the unit composition sum. Relax component upper bounds or "
-            "reduce the candidate element set."
+            "Composition best_subset has an exact-k support whose active upper "
+            "bounds cannot satisfy the unit composition sum. Relax component upper "
+            "bounds or reduce the candidate element set."
         )
 
 
@@ -134,14 +142,8 @@ def _validate_site(
         )
     if config.get("variable_total"):
         raise ValueError(
-            f"Composition site {site_name!r} uses variable_total. Composition best_subset "
-            "currently supports fixed-total sites only."
-        )
-    if config.get("steps"):
-        raise ValueError(
-            f"Composition site {site_name!r} configures component steps. Composition "
-            "best_subset currently requires continuous fractions so acquisition scores "
-            "are evaluated on the same values returned by composition repair."
+            f"Composition site {site_name!r} uses variable_total. Composition "
+            "best_subset currently supports fixed-total sites only."
         )
     minimum = int(config["min_components"])
     maximum = config["max_components"]
@@ -166,6 +168,57 @@ def _optimizer_kwargs_for_site(
     return optimizer_kwargs
 
 
+def _validate_grid_strategy(
+    *,
+    config: Mapping[str, Any],
+    optional_count: int,
+    optional_k: int,
+) -> None:
+    """Keep step-grid search on exhaustive supports in the initial implementation."""
+    if not config.get("steps") or optional_k == 0:
+        return
+    strategy = str(config.get("best_subset_strategy") or "exact").lower()
+    combinations = comb(optional_count, optional_k)
+    maximum = int(config.get("best_subset_max_combinations") or 2000)
+    if strategy == "auto":
+        strategy = "exact" if combinations <= maximum else "beam"
+    if strategy != "exact":
+        raise ValueError(
+            "Composition best_subset with component steps currently requires exact "
+            "support search. Use best_subset_strategy='exact', or 'auto' only when "
+            "the support count is within best_subset_max_combinations."
+        )
+
+
+def _grid_postprocess(
+    *,
+    opt_config: OptimizeConfig,
+    config: Mapping[str, Any],
+    elements: Sequence[str],
+    fraction_names: Sequence[str],
+    feature_names: Sequence[Any],
+    exact_k: int,
+) -> Any:
+    if not config.get("steps"):
+        return getattr(opt_config, "final_candidate_postprocess", None)
+    if hasattr(opt_config, "ensure_unique_candidates") and not bool(
+        getattr(opt_config, "ensure_unique_candidates")
+    ):
+        raise ValueError(
+            "Composition step-grid best_subset requires ensure_unique_candidates=True "
+            "so the final grid-projected candidates are re-evaluated."
+        )
+    positions = {name: index for index, name in enumerate(feature_names)}
+    indices = tuple(int(positions[name]) for name in fraction_names)
+    return CompositionGridFinalPostprocess.from_config(
+        feature_indices=indices,
+        elements=elements,
+        config=config,
+        exact_k=exact_k,
+        previous=getattr(opt_config, "final_candidate_postprocess", None),
+    )
+
+
 def resolve_composition_best_subset(
     opt_config: OptimizeConfig,
     *,
@@ -180,6 +233,11 @@ def resolve_composition_best_subset(
     k-sparse best-subset optimizer without confusing log-ratio coordinates for element
     presence. Required elements remain free-valued variables; forbidden elements are
     fixed to zero.
+
+    When component steps are configured, inner optimization remains continuous and
+    the final candidate for each support is projected to the nearest feasible fixed-
+    support grid point before acquisition re-evaluation. This keeps support ranking
+    consistent with the actual experiment-space candidate.
     """
     selected_sites = [
         name
@@ -204,7 +262,9 @@ def resolve_composition_best_subset(
         )
 
     elements = tuple(transformer.fitted_elements)
-    fraction_names = tuple(f"{transformer.prefix}__fraction__{element}" for element in elements)
+    fraction_names = tuple(
+        f"{transformer.prefix}__fraction__{element}" for element in elements
+    )
     missing = [name for name in fraction_names if name not in feature_names]
     if missing:
         raise KeyError(
@@ -260,10 +320,15 @@ def resolve_composition_best_subset(
         lower, _ = _component_bounds(config, element)
         if lower > _TOLERANCE:
             raise ValueError(
-                f"Forbidden component {element!r} has a positive lower bound at site {site_name!r}."
+                f"Forbidden component {element!r} has a positive lower bound at site "
+                f"{site_name!r}."
             )
 
-    optional = [element for element in elements if element not in required and element not in forbidden]
+    optional = [
+        element
+        for element in elements
+        if element not in required and element not in forbidden
+    ]
     optional_k = exact_k - len(required)
     if optional_k < 0:
         raise ValueError(
@@ -275,6 +340,11 @@ def resolve_composition_best_subset(
             f"Composition site {site_name!r} cannot choose {optional_k} optional "
             f"components from only {len(optional)} available components."
         )
+    _validate_grid_strategy(
+        config=config,
+        optional_count=len(optional),
+        optional_k=optional_k,
+    )
     _validate_all_supports_feasible(
         required=sorted(required, key=elements.index),
         optional=optional,
@@ -287,24 +357,30 @@ def resolve_composition_best_subset(
     repair_fixed = _merge_fixed_features(repair_fixed, forbidden_fixed)
 
     sum_constraint = (fraction_names, [1.0] * len(fraction_names), 1.0)
-    equality_constraints = [*(opt_config.equality_constraints or ()), sum_constraint]
-    repair_equalities = [*(repair.equality_constraints or ()), sum_constraint]
+    equality_constraints = [
+        *(opt_config.equality_constraints or ()),
+        sum_constraint,
+    ]
+    repair_equalities = [
+        *(repair.equality_constraints or ()),
+        sum_constraint,
+    ]
 
     optimizer_inequalities = list(opt_config.inequality_constraints or ())
     repair_inequalities = _to_ge_constraints(
         repair.inequality_constraints,
         str(repair.inequality_sense),
     )
-    active_elements = [element for element in elements if element not in forbidden]
+    active_elements = [
+        element for element in elements if element not in forbidden
+    ]
     for element in active_elements:
         feature_name = by_element[element]
         _, upper = _component_bounds(config, element)
-        floor = _active_floor(config, element, upper)
-        # Repair constraints are conditional on the sparse support mask: inactive
-        # optional dimensions remain zero, while selected optionals are pushed positive.
-        repair_inequalities.append(([feature_name], [1.0], floor))
+        floor_value = _active_floor(config, element, upper)
+        repair_inequalities.append(([feature_name], [1.0], floor_value))
         if element in required and feature_name not in optimizer_fixed:
-            optimizer_inequalities.append(([feature_name], [1.0], floor))
+            optimizer_inequalities.append(([feature_name], [1.0], floor_value))
 
     optional_names = [by_element[element] for element in optional]
     if optional_k == 0:
@@ -334,6 +410,15 @@ def resolve_composition_best_subset(
         )
         optimizer_kwargs = _optimizer_kwargs_for_site(opt_config, config)
 
+    final_candidate_postprocess = _grid_postprocess(
+        opt_config=opt_config,
+        config=config,
+        elements=elements,
+        fraction_names=fraction_names,
+        feature_names=feature_names,
+        exact_k=exact_k,
+    )
+
     return replace(
         opt_config,
         repair_config=repair,
@@ -341,6 +426,7 @@ def resolve_composition_best_subset(
         equality_constraints=equality_constraints,
         inequality_constraints=optimizer_inequalities,
         optimizer_kwargs=optimizer_kwargs,
+        final_candidate_postprocess=final_candidate_postprocess,
     )
 
 

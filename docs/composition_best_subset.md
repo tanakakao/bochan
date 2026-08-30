@@ -170,31 +170,39 @@ Process-only linear constraints and process-variable rounding/fixed values remai
 
 ## Web / API
 
-The current React/FastAPI composition workbench remains **fixed-total**. It transports fixed-total Best Subset settings, log-ratio raw-space search, and component steps, but it does not yet expose `total_bounds` controls.
+The React/FastAPI composition workbench supports the same fixed-total and variable-total contracts as the tabular API:
 
-The Python/tabular API supports the variable-total Best Subset path described above. A future Web phase can add `total_bounds` transport and UI without changing the raw absolute-amount optimization semantics.
+- choose **fixed total** to send `total`;
+- choose **variable total** to send `total_bounds`;
+- the two fields are mutually exclusive;
+- variable-total formula data derives a separate fitted total feature from the original formula coefficients;
+- Fraction / CLR / ALR / ILR model coordinates remain normalized composition features;
+- variable-total Best Subset uses raw absolute element amounts internally and exposes the optimized total in the candidate result.
 
-For fixed-total CLR / ALR / ILR searches, the Web response restores formula and fraction columns from the exact raw decision candidate rather than inferring support from finite pseudocount log-ratio coordinates.
+The Web search-space controls therefore distinguish between fixed-total element amounts and variable-total absolute amounts. For a variable-total Best Subset result, response metadata reports `support_space="raw_amount"`, `total_bounds`, and the generated total-feature name. Structural zeros and the optimized total are restored from the exact raw candidate rather than inferred from pseudocount-smoothed log-ratio coordinates.
+
+Variable-total component steps remain explicitly unsupported in the Web workbench, matching the core optimizer contract. The UI disables the step control for a variable-total Best Subset search and validation rejects stale saved step settings instead of silently changing the optimization problem.
+
+For fixed-total CLR / ALR / ILR searches, the Web response continues to restore formula and fraction columns from the exact raw-fraction decision candidate.
 
 ## Current scope
 
 Supported:
 
 - one Best Subset composition site per candidate optimization;
-- fixed-total and variable-total compositions in the Python/tabular API;
+- fixed-total and variable-total compositions in Python/tabular and React/FastAPI Web workflows;
 - Fraction / CLR / ALR / ILR surrogate representations;
 - exact cardinality (`min_components == max_components`);
 - required and forbidden elements;
-- fixed-total fractional bounds and variable-total absolute amount bounds;
+- fixed-total fractional/amount bounds and variable-total absolute amount bounds;
 - continuous compositions with Exact, Beam, or Auto support search;
 - fixed-total component step grids with Exact support search (or Auto resolving to Exact);
 - variable-total `total_bounds` and raw amount linear constraints;
 - shared support for joint q-batches;
-- fixed-total Web/API transport for raw-space and stepped Best Subset settings.
+- Web result restoration from exact raw fraction or raw amount decisions.
 
 Still explicit future extensions:
 
-- Web/React `total_bounds` controls for variable-total Best Subset;
 - variable-total component step/grid projection;
 - multiple simultaneous composition Best Subset groups;
 - variable active-component ranges (`min_components != max_components`);

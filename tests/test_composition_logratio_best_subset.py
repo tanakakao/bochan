@@ -9,6 +9,7 @@ from torch import nn
 
 from bochan.api import CandidateRepairConfig, OptimizeConfig
 from bochan.composition import CompositionTransformer
+from bochan.tabular.composition.constraints import CompositionElementConstraintResolver
 from bochan.tabular.composition.logratio_support import (
     RawDecisionAcquisition,
     optimize_logratio_best_subset,
@@ -160,6 +161,42 @@ def test_process_fixed_features_and_constraints_shift_after_ilr_expansion() -> N
         if tuple(int(index) for index in item[0]) == (raw_pressure,)
     ]
     assert len(found) == 1
+
+
+@pytest.mark.parametrize("representation", ["clr", "alr", "ilr"])
+def test_element_constraints_resolve_to_raw_fraction_decision_features(
+    representation: str,
+) -> None:
+    transformer = _transformer(representation)
+    site = _site(representation)
+    constraints = CompositionElementConstraintResolver.normalize(
+        [
+            {
+                "terms": [
+                    {"site": "alloy", "element": "Ti", "coefficient": 1.0},
+                    {"site": "alloy", "element": "V", "coefficient": -1.0},
+                ],
+                "operator": "=",
+                "rhs": 0.0,
+                "basis": "atomic_amount",
+            }
+        ]
+    )
+
+    resolved = CompositionElementConstraintResolver.named_constraints(
+        constraints,
+        {"alloy": site},
+        {"alloy": transformer},
+    )
+
+    assert resolved == [
+        (
+            ["alloy__fraction__Ti", "alloy__fraction__V"],
+            [1.0, -1.0],
+            "=",
+            0.0,
+        )
+    ]
 
 
 def test_mixed_categorical_process_feature_is_remapped_and_inferred() -> None:
@@ -343,18 +380,43 @@ def test_explicit_optimizer_kwargs_override_site_defaults() -> None:
     assert config.optimizer_kwargs["best_subset_beam_width"] == 99
 
 
-def test_model_space_final_postprocess_is_rejected() -> None:
+def test_model_space_final_postprocess_preserves_raw_support_and_updates_process() -> None:
     transformer = _transformer("ilr")
-    config = OptimizeConfig(final_candidate_postprocess=lambda value: value)
+    names = _model_layout(transformer)
+    pressure_index = names.index("pressure")
 
-    with pytest.raises(ValueError, match="final_candidate_postprocess"):
-        prepare_logratio_best_subset_config(
-            config,
-            site_name="alloy",
-            site_config=_site("ilr"),
-            transformer=transformer,
-            model_feature_names=_model_layout(transformer),
-            model_bounds=_model_bounds(transformer),
-            dtype=torch.double,
-            device=None,
-        )
+    def final_postprocess(model_values: torch.Tensor) -> torch.Tensor:
+        processed = model_values.clone()
+        coordinate_indices = [
+            names.index(name)
+            for name in transformer.representation_feature_names_
+        ]
+        processed[..., coordinate_indices] = 0.0
+        processed[..., pressure_index] = 4.0
+        return processed
+
+    bridge, config, _bounds = prepare_logratio_best_subset_config(
+        OptimizeConfig(final_candidate_postprocess=final_postprocess),
+        site_name="alloy",
+        site_config=_site("ilr"),
+        transformer=transformer,
+        model_feature_names=names,
+        model_bounds=_model_bounds(transformer),
+        dtype=torch.double,
+        device=None,
+    )
+    assert config.final_candidate_postprocess is not None
+    raw = torch.tensor(
+        [[900.0, 0.5, 0.3, 0.0, 0.0, 0.2, 2.4, 1.0]],
+        dtype=torch.double,
+    )
+
+    processed = config.final_candidate_postprocess(raw)
+
+    torch.testing.assert_close(
+        processed[..., bridge.fraction_slice],
+        raw[..., bridge.fraction_slice],
+    )
+    raw_pressure = bridge.process_index_map[pressure_index]
+    assert processed[0, raw_pressure].item() == pytest.approx(4.0)
+    assert processed[0, bridge.fraction_indices[3]].item() == 0.0

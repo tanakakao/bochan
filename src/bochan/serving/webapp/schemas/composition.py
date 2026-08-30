@@ -40,6 +40,13 @@ class CompositionSettingsSchema(WebSchema):
     min_components: int = Field(default=1, ge=1)
     max_components: int | None = Field(default=None, ge=1)
     required_components: list[str] = Field(default_factory=list)
+    forbidden_components: list[str] = Field(default_factory=list)
+    support_selection: Literal["repair", "best_subset"] = "repair"
+    best_subset_strategy: Literal["exact", "beam", "auto"] = "auto"
+    best_subset_max_combinations: int = Field(default=2000, ge=1)
+    best_subset_beam_width: int = Field(default=8, ge=1)
+    best_subset_beam_steps: int = Field(default=4, ge=0)
+    best_subset_max_evaluations: int = Field(default=200, ge=1)
     bounds: dict[str, tuple[float, float]] = Field(default_factory=dict)
     steps: dict[str, float] = Field(default_factory=dict)
     element_constraints: list[CompositionElementConstraintSchema] = Field(default_factory=list)

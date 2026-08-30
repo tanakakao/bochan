@@ -341,7 +341,7 @@ class RawDecisionAcquisition(nn.Module):
             return None
         return self.bridge.model_to_decision(pending)
 
-    def set_X_pending(self, X_pending: Tensor | None = None) -> "RawDecisionAcquisition":
+    def set_X_pending(self, X_pending: Tensor | None = None) -> RawDecisionAcquisition:
         """Map sequential raw pending points back to fitted model coordinates."""
 
         setter = getattr(self.base_acqf, "set_X_pending", None)

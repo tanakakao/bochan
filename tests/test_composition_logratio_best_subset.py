@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any
 
@@ -169,9 +168,9 @@ def test_mixed_categorical_process_feature_is_remapped_and_inferred() -> None:
     phase_index = names.index("phase")
     train_x = torch.tensor(
         [
-            [900.0, 0.1, -0.2, 0.3, 2.0, 0.0],
-            [950.0, 0.2, -0.1, 0.1, 3.0, 1.0],
-            [980.0, 0.0, 0.1, -0.2, 2.5, 1.0],
+            [900.0, 0.1, -0.2, 0.3, 0.0, 2.0, 0.0],
+            [950.0, 0.2, -0.1, 0.1, -0.3, 3.0, 1.0],
+            [980.0, 0.0, 0.1, -0.2, 0.2, 2.5, 1.0],
         ],
         dtype=torch.double,
     )
@@ -342,3 +341,20 @@ def test_explicit_optimizer_kwargs_override_site_defaults() -> None:
 
     assert config.optimizer_kwargs["best_subset_strategy"] == "exact"
     assert config.optimizer_kwargs["best_subset_beam_width"] == 99
+
+
+def test_model_space_final_postprocess_is_rejected() -> None:
+    transformer = _transformer("ilr")
+    config = OptimizeConfig(final_candidate_postprocess=lambda value: value)
+
+    with pytest.raises(ValueError, match="final_candidate_postprocess"):
+        prepare_logratio_best_subset_config(
+            config,
+            site_name="alloy",
+            site_config=_site("ilr"),
+            transformer=transformer,
+            model_feature_names=_model_layout(transformer),
+            model_bounds=_model_bounds(transformer),
+            dtype=torch.double,
+            device=None,
+        )

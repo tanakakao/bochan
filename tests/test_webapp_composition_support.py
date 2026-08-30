@@ -12,7 +12,6 @@ from fastapi.testclient import TestClient
 
 from bochan.serving.webapp import app
 from bochan.serving.webapp.composition.support import (
-    apply_composition_best_subset_optimizer_kwargs,
     composition_model_feature_columns,
     composition_site,
     normalize_web_composition_settings,
@@ -99,17 +98,11 @@ def test_normalize_web_composition_settings_supports_best_subset() -> None:
     site = composition_site(settings)
     assert site["support_selection"] == "best_subset"
     assert site["forbidden_components"] == ["Cr"]
-
-    optimizer_kwargs: dict[str, Any] = {"batch_limit": 4}
-    apply_composition_best_subset_optimizer_kwargs(optimizer_kwargs, settings)
-    assert optimizer_kwargs == {
-        "batch_limit": 4,
-        "best_subset_strategy": "beam",
-        "best_subset_max_combinations": 1000,
-        "best_subset_beam_width": 6,
-        "best_subset_beam_steps": 5,
-        "best_subset_max_evaluations": 120,
-    }
+    assert site["best_subset_strategy"] == "beam"
+    assert site["best_subset_max_combinations"] == 1000
+    assert site["best_subset_beam_width"] == 6
+    assert site["best_subset_beam_steps"] == 5
+    assert site["best_subset_max_evaluations"] == 120
 
 
 def test_web_best_subset_contract_rejects_semantically_invalid_settings() -> None:

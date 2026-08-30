@@ -15,6 +15,7 @@ from ..composition.constraints import (
     CompositionElementConstraintProjector,
     CompositionElementConstraintResolver,
 )
+from ..composition.support import resolve_composition_best_subset
 from ..composition.totals import CompositionTotalConstraintResolver
 from ..config import make_acquisition_config, make_optimize_config
 from ..data import resolve_column_indices, resolve_dtype, resolve_optimize_config_columns
@@ -242,6 +243,13 @@ class CandidateService:
         )
         if isinstance(opt_config, Mapping):
             opt_config = make_optimize_config(opt_config)
+        if owner.dataset is not None:
+            opt_config = resolve_composition_best_subset(
+                opt_config,
+                composition_sites=self.composition.sites,
+                composition_transformers=self.composition.transformers,
+                feature_names=getattr(owner.dataset, "feature_names", ()),
+            )
         if values:
             raise TypeError(f"Unknown candidate arguments: {sorted(values)!r}.")
         return acq_config, opt_config

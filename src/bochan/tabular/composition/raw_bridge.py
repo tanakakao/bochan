@@ -129,7 +129,7 @@ class CompositionRawDecisionBridge:
         cls,
         transformer: Any,
         model_feature_names: Sequence[Any],
-    ) -> "CompositionRawDecisionBridge":
+    ) -> CompositionRawDecisionBridge:
         """Build a bridge from one fitted ``CompositionTransformer``."""
 
         elements = tuple(str(value) for value in transformer.fitted_elements)

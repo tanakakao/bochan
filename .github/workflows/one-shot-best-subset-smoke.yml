@@ -1,0 +1,43 @@
+name: One-shot Best Subset smoke
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install
+        run: python -m pip install -e ".[test,tabular]"
+      - name: Test one-shot Best Subset
+        run: |
+          pytest -q --maxfail=1 \
+            tests/test_k_sparse_best_subset_one_shot.py \
+            tests/test_composition_one_shot_best_subset.py \
+            tests/test_k_sparse_best_subset.py \
+            tests/test_k_sparse_best_subset_groups.py \
+            tests/test_composition_logratio_best_subset.py \
+            tests/test_composition_variable_total_best_subset.py \
+            tests/test_composition_multi_raw_best_subset.py
+      - name: Lint one-shot Best Subset
+        run: |
+          python -m pip install ruff
+          ruff check --ignore SIM108 \
+            src/bochan/api/support/one_shot.py \
+            src/bochan/api/support/best_subset.py \
+            src/bochan/api/support/multi_group_best_subset.py \
+            src/bochan/api/factory.py \
+            src/bochan/tabular/composition/logratio_support.py \
+            src/bochan/tabular/composition/variable_total_support.py \
+            src/bochan/tabular/composition/multi_raw_support.py \
+            tests/test_k_sparse_best_subset_one_shot.py \
+            tests/test_composition_one_shot_best_subset.py

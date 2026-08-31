@@ -129,7 +129,7 @@ def test_web_best_subset_accepts_logratio_representations(
     assert settings["forbidden_components"] == ["Cr"]
 
 
-def test_web_best_subset_contract_rejects_semantically_invalid_settings() -> None:
+def test_web_best_subset_contract_accepts_range_and_rejects_conflicts() -> None:
     base = {
         "column": "formula",
         "elements": ["Al", "Ti", "V"],
@@ -138,8 +138,10 @@ def test_web_best_subset_contract_rejects_semantically_invalid_settings() -> Non
         "max_components": 2,
         "support_selection": "best_subset",
     }
-    with pytest.raises(ValueError, match="min_components == max_components"):
-        normalize_web_composition_settings({**base, "max_components": 3})
+    ranged = normalize_web_composition_settings({**base, "max_components": 3})
+    assert ranged["min_components"] == 2
+    assert ranged["max_components"] == 3
+
     with pytest.raises(ValueError, match="both required and forbidden"):
         normalize_web_composition_settings(
             {

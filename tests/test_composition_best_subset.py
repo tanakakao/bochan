@@ -289,8 +289,11 @@ def test_log_ratio_coordinates_are_not_mistaken_for_element_support(
 
 
 def test_scope_guards_are_explicit() -> None:
-    with pytest.raises(ValueError, match="min_components == max_components"):
-        _resolve(_site(min_components=2, max_components=3))
+    ranged = _resolve(_site(min_components=2, max_components=3))
+    assert ranged.repair_config is not None
+    assert ranged.repair_config.k == 2
+    assert ranged.optimizer_kwargs["best_subset_min_k"] == 1
+    assert ranged.optimizer_kwargs["best_subset_max_k"] == 2
 
     variable = _site()
     variable["variable_total"] = True

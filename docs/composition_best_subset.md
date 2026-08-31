@@ -108,7 +108,7 @@ opt_config = OptimizeConfig(
 
 ## Multiple composition Best Subset groups
 
-Multiple fixed-total sites using `representation="fractions"` can participate in one candidate optimization. Each site's optional elements form an independent sparse group with its own `min_components` / `max_components` range. Required and forbidden elements remain site-local.
+Multiple composition sites can participate in one candidate optimization. Each site's optional elements form an independent sparse group with its own `min_components` / `max_components` range. Required and forbidden elements remain site-local.
 
 For Exact search, the total number of grouped supports is the Cartesian-product size:
 
@@ -118,9 +118,17 @@ N_supports = product(N_supports_for_each_site)
 
 `best_subset_max_combinations` is applied to this product, not to each site independently. Auto uses the same product when choosing Exact versus Beam. Grouped Beam seeds every allowed cardinality combination and changes one composition group at a time with swap/add/drop moves. One complete grouped support is shared by the whole joint q-batch.
 
-Independent step grids are chained through the existing final-candidate MILP projectors. A linear constraint may still couple one stepped composition site to ordinary process variables. A constraint that directly couples **two stepped composition sites** is rejected because sequential projection would make feasibility depend on projector order.
+When every site already uses fixed-total `representation="fractions"`, the grouped optimizer operates directly on the fitted fraction columns. If one or more sites use CLR / ALR / ILR or variable total, bochan builds one **composite raw-decision bridge** for the complete candidate. The bridge expands each relevant composition site in sequence, while acquisition evaluation applies those transformations in reverse to reconstruct exactly the original fitted model layout.
 
-This phase covers simultaneous fixed-total Fraction sites. CLR / ALR / ILR and variable-total Best Subset sites still use a single raw-decision bridge and therefore remain single-site until the grouped raw-bridge extension.
+The raw decision block is site-specific:
+
+- fixed-total Fraction / CLR / ALR / ILR sites use one raw `__fraction__<Element>` decision per element;
+- variable-total sites use one raw `__amount__<Element>` decision per element and remove that site's fitted total feature from decision space;
+- ordinary process and categorical features remain ordinary decision dimensions and are index-remapped through each bridge stage.
+
+This supports mixed grouped problems such as CLR + ILR, ILR + Fraction, CLR + variable-total, and multiple variable-total sites. Multiple variable-total sites must have distinct fitted total features; each total is reconstructed independently from the sum of that site's raw amounts.
+
+Independent step grids are chained through the existing final-candidate MILP projectors. A linear constraint may still couple one stepped composition site to ordinary process variables. A constraint that directly couples **two stepped composition sites** is rejected because sequential projection would make feasibility depend on projector order.
 
 ## Variable-total compositions
 
@@ -320,8 +328,10 @@ For fixed-total CLR / ALR / ILR searches, the Web response continues to restore 
 
 Supported:
 
-- multiple simultaneous fixed-total Fraction Best Subset composition sites in Python/tabular candidate optimization;
-- single-site raw-decision Best Subset bridges for CLR / ALR / ILR and variable-total compositions;
+- multiple simultaneous Best Subset composition sites in Python/tabular candidate optimization;
+- composite raw-decision bridges across fixed-total CLR / ALR / ILR and variable-total groups;
+- mixed grouped searches combining raw-bridge sites with ordinary fixed-total Fraction sites;
+- multiple variable-total groups with distinct fitted total features and independent raw-amount totals;
 - fixed-total and variable-total compositions in Python/tabular and React/FastAPI Web workflows;
 - Fraction / CLR / ALR / ILR surrogate representations;
 - continuous variable cardinality (`min_components <= max_components`);
@@ -334,12 +344,11 @@ Supported:
 - on-grid non-zero fixed raw amounts for variable-total step grids;
 - fixed-total raw-fraction and variable-total raw-amount linear constraints with step-grid Best Subset projection, including process-coupled constraints;
 - variable-total `total_bounds` and raw amount linear constraints;
-- shared support/cardinality for joint q-batches;
+- shared grouped support/cardinality for joint q-batches;
 - Web result restoration from exact raw fraction or raw amount decisions.
 
 Still explicit future extensions:
 
-- multiple simultaneous raw-decision Best Subset bridges (CLR / ALR / ILR and variable-total groups);
 - linear step-grid constraints that directly couple two stepped composition sites;
 - one-shot acquisition functions that introduce augmented optimization variables.
 

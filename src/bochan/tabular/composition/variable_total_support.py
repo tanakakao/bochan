@@ -660,22 +660,79 @@ def _grid_linear_constraints(
     )
 
 
-def _fixed_amount_values(
+def _composition_fixed_amounts(
     values: Mapping[Any, Any],
     *,
     bridge: CompositionVariableTotalDecisionBridge,
-) -> list[Any]:
-    names = set(bridge.amount_names)
-    positions = set(bridge.amount_indices)
-    return [
-        key
-        for key, value in values.items()
-        if (
-            key in names
-            or (isinstance(key, int) and int(key) in positions)
-        )
-        and abs(float(value)) > _TOLERANCE
-    ]
+) -> dict[str, float]:
+    """Resolve non-zero fixed values for raw composition amount features."""
+
+    resolved: dict[str, float] = {}
+    for name, position in zip(bridge.amount_names, bridge.amount_indices, strict=True):
+        candidates: list[float] = []
+        if name in values:
+            candidates.append(float(values[name]))
+        if position in values:
+            candidates.append(float(values[position]))
+        if not candidates:
+            continue
+        first = candidates[0]
+        if any(abs(item - first) > 1e-12 for item in candidates[1:]):
+            raise ValueError(
+                f"Conflicting fixed values were provided for composition amount {name!r}."
+            )
+        resolved[name] = first
+    return resolved
+
+
+def _grid_config_with_fixed_amounts(
+    config: Mapping[str, Any],
+    *,
+    bridge: CompositionVariableTotalDecisionBridge,
+    fixed_values: Mapping[str, float],
+) -> Mapping[str, Any]:
+    """Overlay fixed raw amounts as exact bounds for final step-grid projection."""
+
+    if not config.get("steps") or not fixed_values:
+        return config
+
+    bounds = dict(config.get("bounds") or {})
+    steps = config.get("steps") or {}
+    for element, amount_name in zip(bridge.elements, bridge.amount_names, strict=True):
+        if amount_name not in fixed_values:
+            continue
+        amount = float(fixed_values[amount_name])
+        if amount < -_TOLERANCE:
+            raise ValueError(
+                f"Fixed composition amount for {element!r} must be non-negative."
+            )
+        if abs(amount) <= _TOLERANCE:
+            continue
+
+        lower, upper = _component_bounds(config, element)
+        if amount < lower - _TOLERANCE or amount > upper + _TOLERANCE:
+            raise ValueError(
+                f"Fixed composition amount for {element!r} ({amount}) is outside "
+                f"the configured bounds {(lower, upper)!r}."
+            )
+
+        step = steps.get(element)
+        if step is not None:
+            step_value = float(step)
+            if step_value <= 0.0:
+                raise ValueError(f"Composition step for {element!r} must be positive.")
+            grid_index = (amount - lower) / step_value
+            if abs(grid_index - round(grid_index)) > 1e-7:
+                raise ValueError(
+                    f"Fixed composition amount for {element!r} ({amount}) is not on "
+                    "the configured step grid."
+                )
+
+        bounds[element] = (amount, amount)
+
+    result = dict(config)
+    result["bounds"] = bounds
+    return result
 
 
 def _validate_grid_contract(
@@ -702,14 +759,6 @@ def _validate_grid_contract(
         raise ValueError(
             "Variable-total composition step-grid best_subset requires "
             "ensure_unique_candidates=True so grid-projected candidates are re-evaluated."
-        )
-
-    nonzero_fixed = _fixed_amount_values(all_fixed, bridge=bridge)
-    if nonzero_fixed:
-        raise ValueError(
-            "Variable-total composition step-grid best_subset does not yet support "
-            f"non-zero fixed composition amounts: {nonzero_fixed!r}. Use component "
-            "bounds/required elements instead."
         )
 
     _grid_linear_constraints(
@@ -884,14 +933,20 @@ def prepare_variable_total_best_subset_config(
     optimizer_fixed = dict(raw_config.fixed_features or {})
     repair_fixed = dict(repair.fixed_features or {})
     all_fixed = {**optimizer_fixed, **repair_fixed}
+    composition_fixed = _composition_fixed_amounts(all_fixed, bridge=bridge)
+    grid_site_config = _grid_config_with_fixed_amounts(
+        site_config,
+        bridge=bridge,
+        fixed_values=composition_fixed,
+    )
     for element, amount_name in by_element.items():
         lower, upper = _component_bounds(site_config, element)
         if lower > _TOLERANCE:
             required.add(element)
         if upper <= _TOLERANCE:
             forbidden.add(element)
-        if amount_name in all_fixed:
-            if abs(float(all_fixed[amount_name])) <= _TOLERANCE:
+        if amount_name in composition_fixed:
+            if abs(float(composition_fixed[amount_name])) <= _TOLERANCE:
                 forbidden.add(element)
             else:
                 required.add(element)
@@ -915,7 +970,7 @@ def prepare_variable_total_best_subset_config(
         context=f"Variable-total composition site {site_name!r} best_subset",
     )
     require_exact_cardinality_for_steps(
-        site_config,
+        grid_site_config,
         cardinality,
         context=f"Variable-total composition site {site_name!r} best_subset",
     )
@@ -926,9 +981,9 @@ def prepare_variable_total_best_subset_config(
         cardinality,
         context=f"Variable-total composition site {site_name!r} best_subset",
     )
-    if site_config.get("steps"):
+    if grid_site_config.get("steps"):
         _validate_grid_strategy(
-            config=site_config,
+            config=grid_site_config,
             optimizer_kwargs=search_optimizer_kwargs,
             optional_count=len(optional),
             optional_k=cardinality.optional_maximum,
@@ -936,13 +991,13 @@ def prepare_variable_total_best_subset_config(
     _validate_grid_contract(
         raw_config=raw_config,
         repair=repair,
-        site_config=site_config,
+        site_config=grid_site_config,
         bridge=bridge,
         all_fixed=all_fixed,
     )
     for optional_k in cardinality.optional_cardinalities:
         _validate_support_feasibility(
-            config=site_config,
+            config=grid_site_config if grid_site_config.get("steps") else site_config,
             required=ordered_required,
             optional=optional,
             optional_k=optional_k,
@@ -951,14 +1006,14 @@ def prepare_variable_total_best_subset_config(
     final_candidate_postprocess = _grid_postprocess(
         raw_config=raw_config,
         repair=repair,
-        site_config=site_config,
+        site_config=grid_site_config,
         bridge=bridge,
         exact_k=cardinality.maximum,
     )
-    if site_config.get("steps"):
+    if grid_site_config.get("steps"):
         _validate_grid_supports(
             projector=final_candidate_postprocess,
-            site_config=site_config,
+            site_config=grid_site_config,
             optimizer_kwargs=search_optimizer_kwargs,
             required=ordered_required,
             optional=optional,

@@ -30,6 +30,14 @@ function combinationCount(n: number, k: number): number {
   return Math.round(result);
 }
 
+function combinationRangeCount(n: number, minimum: number, maximum: number): number {
+  let result = 0;
+  for (let k = minimum; k <= maximum; k += 1) {
+    result += combinationCount(n, k);
+  }
+  return result;
+}
+
 function classKey(value: TargetClassValue): string {
   return String(value);
 }
@@ -151,28 +159,44 @@ function validateCompositionCandidateSetting(settings: CompositionSettings): boo
     return false;
   }
   if (settings.supportSelection === "best_subset") {
-    if (settings.maxComponents === null || settings.minComponents !== settings.maxComponents) {
-      return false;
+    if (settings.maxComponents === null) return false;
+
+    const requiredSet = new Set(settings.requiredComponents);
+    const forbiddenSet = new Set(settings.forbiddenComponents);
+    for (const element of settings.elements) {
+      const pair = settings.bounds[element];
+      if (pair?.[0] > 0) requiredSet.add(element);
+      if (pair?.[1] <= 0) forbiddenSet.add(element);
     }
+    if ([...requiredSet].some((element) => forbiddenSet.has(element))) return false;
+
+    const requiredCount = [...requiredSet].filter(
+      (element) => !forbiddenSet.has(element)
+    ).length;
+    const optionalCount = settings.elements.filter(
+      (element) => !requiredSet.has(element) && !forbiddenSet.has(element)
+    ).length;
+    if (requiredCount > settings.maxComponents) return false;
+    const effectiveMin = Math.max(settings.minComponents, requiredCount);
+    const effectiveMax = Math.min(settings.maxComponents, requiredCount + optionalCount);
+    if (effectiveMin > effectiveMax) return false;
+
+    const optionalMin = effectiveMin - requiredCount;
+    const optionalMax = effectiveMax - requiredCount;
     const hasSteps = settings.elements.some((element) => (settings.steps[element] ?? 0) > 0);
-    if (hasSteps) {
-      const required = settings.requiredComponents.filter(
-        (element) => !settings.forbiddenComponents.includes(element)
-      );
-      const optionalCount = settings.elements.filter(
-        (element) => !required.includes(element) && !settings.forbiddenComponents.includes(element)
-      ).length;
-      const optionalK = settings.maxComponents - required.length;
-      if (optionalK < 0 || optionalK > optionalCount) return false;
-      if (optionalK > 0) {
-        if (settings.bestSubsetStrategy === "beam") return false;
-        if (
-          settings.bestSubsetStrategy === "auto" &&
-          combinationCount(optionalCount, optionalK) > settings.bestSubsetMaxCombinations
-        ) {
-          return false;
-        }
-      }
+    if (hasSteps && effectiveMin !== effectiveMax) return false;
+
+    const supportCount = combinationRangeCount(optionalCount, optionalMin, optionalMax);
+    const usesBeam = settings.bestSubsetStrategy === "beam" || (
+      settings.bestSubsetStrategy === "auto" &&
+      supportCount > settings.bestSubsetMaxCombinations
+    );
+    if (hasSteps && usesBeam && optionalMax > 0) return false;
+    if (
+      usesBeam &&
+      settings.bestSubsetMaxEvaluations < optionalMax - optionalMin + 1
+    ) {
+      return false;
     }
   }
   if (settings.requiredComponents.some((element) => settings.forbiddenComponents.includes(element))) {

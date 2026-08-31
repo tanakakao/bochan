@@ -6,6 +6,7 @@ import pytest
 import torch
 
 from bochan.api import CandidateRepairConfig, OptimizeConfig
+from bochan.api.support.best_subset import InfeasibleBestSubsetSupportError
 from bochan.composition import CompositionTransformer
 from bochan.tabular.composition.grid import (
     CompositionVariableTotalGridFinalPostprocess,
@@ -186,3 +187,56 @@ def test_repair_amount_constraint_is_copied_to_variable_total_grid_milp() -> Non
     )
     amounts = projected[..., list(bridge.amount_indices)]
     assert amounts[0, 0].item() == pytest.approx(amounts[0, 1].item(), abs=1e-8)
+
+
+def test_variable_total_prevalidation_allows_partially_infeasible_supports() -> None:
+    transformer = _transformer("ilr")
+    site = _site("ilr")
+    site["bounds"] = {
+        "Al": (5.0, 70.0),
+        "Ti": (0.0, 70.0),
+        "V": (0.0, 70.0),
+        "Nb": (0.0, 70.0),
+    }
+    site["required_components"] = ("Al",)
+
+    _bridge, resolved, _raw_bounds = prepare_variable_total_best_subset_config(
+        OptimizeConfig(
+            equality_constraints=[
+                (["alloy__amount__Ti", "alloy__amount__V"], [1.0, -1.0], 0.0)
+            ]
+        ),
+        site_name="alloy",
+        site_config=site,
+        transformer=transformer,
+        model_feature_names=_layout(transformer),
+        model_bounds=_bounds(transformer),
+        dtype=torch.double,
+        device=None,
+    )
+
+    assert isinstance(
+        resolved.final_candidate_postprocess,
+        CompositionVariableTotalGridFinalPostprocess,
+    )
+
+
+def test_variable_total_prevalidation_rejects_when_all_supports_are_infeasible() -> None:
+    transformer = _transformer("ilr")
+
+    with pytest.raises(
+        InfeasibleBestSubsetSupportError,
+        match="no feasible point|cannot satisfy",
+    ):
+        prepare_variable_total_best_subset_config(
+            OptimizeConfig(
+                equality_constraints=[(["alloy__amount__Al"], [1.0], 0.0)]
+            ),
+            site_name="alloy",
+            site_config=_site("ilr"),
+            transformer=transformer,
+            model_feature_names=_layout(transformer),
+            model_bounds=_bounds(transformer),
+            dtype=torch.double,
+            device=None,
+        )

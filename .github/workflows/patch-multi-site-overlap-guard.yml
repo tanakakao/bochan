@@ -1,0 +1,101 @@
+name: Patch multi-site overlap guard
+
+on:
+  push:
+    branches:
+      - codex/composition-multi-best-subset-groups
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message != 'Validate disjoint composition feature groups'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/composition-multi-best-subset-groups
+      - name: Patch overlap validation and stale regression
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          source = Path("src/bochan/tabular/composition/multi_support.py")
+          text = source.read_text()
+          old = '''    site_metadata: list[dict[str, Any]] = []
+    stepped_fraction_names: dict[str, set[str]] = {}
+    for site_name, config in zip(site_names, configs, strict=True):
+'''
+          new = '''    site_metadata: list[dict[str, Any]] = []
+    stepped_fraction_names: dict[str, set[str]] = {}
+    fraction_feature_owners: dict[str, str] = {}
+    for site_name, config in zip(site_names, configs, strict=True):
+'''
+          if old not in text:
+              raise SystemExit("multi_support metadata anchor not found")
+          text = text.replace(old, new, 1)
+
+          old = '''        if missing:
+            raise KeyError(
+                f"Composition fraction features for site {site_name!r} are missing from "
+                f"the optimization dataset: {missing!r}."
+            )
+        if config.get("steps"):
+'''
+          new = '''        if missing:
+            raise KeyError(
+                f"Composition fraction features for site {site_name!r} are missing from "
+                f"the optimization dataset: {missing!r}."
+            )
+        overlapping = sorted(
+            name for name in fraction_names if name in fraction_feature_owners
+        )
+        if overlapping:
+            owners = sorted({fraction_feature_owners[name] for name in overlapping})
+            raise ValueError(
+                "Multiple composition Best Subset sites must use disjoint fraction "
+                f"feature blocks. Site {site_name!r} overlaps sites {owners!r}: "
+                f"{overlapping!r}."
+            )
+        fraction_feature_owners.update(
+            {name: site_name for name in fraction_names}
+        )
+        if config.get("steps"):
+'''
+          if old not in text:
+              raise SystemExit("multi_support missing-feature anchor not found")
+          source.write_text(text.replace(old, new, 1))
+
+          test = Path("tests/test_composition_best_subset.py")
+          text = test.read_text()
+          old = '''    site = _site()
+    with pytest.raises(ValueError, match="one composition site"):
+        resolve_composition_best_subset(
+            OptimizeConfig(),
+            composition_sites={"a": site, "b": dict(site)},
+            composition_transformers={"a": _transformer(), "b": _transformer()},
+            feature_names=_features(),
+        )
+'''
+          new = '''    site = _site()
+    with pytest.raises(ValueError, match="disjoint fraction feature blocks"):
+        resolve_composition_best_subset(
+            OptimizeConfig(),
+            composition_sites={"a": site, "b": dict(site)},
+            composition_transformers={"a": _transformer(), "b": _transformer()},
+            feature_names=_features(),
+        )
+'''
+          if old not in text:
+              raise SystemExit("stale multi-site regression anchor not found")
+          test.write_text(text.replace(old, new, 1))
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/bochan/tabular/composition/multi_support.py tests/test_composition_best_subset.py
+          git diff --cached --check
+          git commit -m "Validate disjoint composition feature groups"
+          git push origin HEAD:codex/composition-multi-best-subset-groups

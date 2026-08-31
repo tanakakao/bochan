@@ -24,6 +24,7 @@ from bochan.api import (
     uses_mixed_fixed_features,
 )
 from bochan.api.support.best_subset import InfeasibleBestSubsetSupportError
+from bochan.api.support.one_shot import is_one_shot_acquisition
 from bochan.tabular.data import resolve_optimize_config_columns
 
 from .cardinality import (
@@ -39,7 +40,7 @@ from .grid import (
     composition_grid_linear_constraints,
     merge_composition_grid_linear_constraints,
 )
-from .logratio_support import RawDecisionAcquisition
+from .logratio_support import wrap_raw_decision_acquisition
 from .raw_bridge import CompositionRawDecisionBridge
 
 _TOLERANCE = 1e-8
@@ -1121,18 +1122,6 @@ class VariableTotalBestSubsetResult:
     bridge: CompositionVariableTotalDecisionBridge
 
 
-def _reject_one_shot_acquisition(acqf: Any) -> None:
-    try:
-        from botorch.acquisition.acquisition import OneShotAcquisitionFunction
-    except ImportError:
-        return
-    if isinstance(acqf, OneShotAcquisitionFunction):
-        raise NotImplementedError(
-            "Variable-total raw-space composition best_subset does not yet support "
-            "one-shot acquisition functions such as KG."
-        )
-
-
 def optimize_variable_total_best_subset(
     base_acqf: Any,
     opt_config: OptimizeConfig,
@@ -1150,7 +1139,6 @@ def optimize_variable_total_best_subset(
 ) -> VariableTotalBestSubsetResult:
     """Optimize support cardinality, support, and total jointly in raw amounts."""
 
-    _reject_one_shot_acquisition(base_acqf)
     bridge, raw_config, raw_bounds = prepare_variable_total_best_subset_config(
         opt_config,
         site_name=site_name,
@@ -1163,17 +1151,20 @@ def optimize_variable_total_best_subset(
         model_cat_dims=model_cat_dims,
         train_x=train_x,
     )
-    wrapped = RawDecisionAcquisition(base_acqf, bridge)  # type: ignore[arg-type]
+    wrapped = wrap_raw_decision_acquisition(base_acqf, bridge)
     if optimize_fn is None:
         from bochan.api.optimizer.service import optimize_candidates as optimize_fn
 
-    raw_candidates, _raw_value = optimize_fn(
+    raw_candidates, raw_value = optimize_fn(
         acqf=wrapped,
         bounds=raw_bounds,
         config=raw_config,
     )
     model_candidates = bridge.decision_to_model(raw_candidates)
-    final_value = base_acqf(model_candidates)
+    if is_one_shot_acquisition(base_acqf):
+        final_value = raw_value
+    else:
+        final_value = base_acqf(model_candidates)
     if hasattr(final_value, "detach"):
         final_value = final_value.detach()
     return VariableTotalBestSubsetResult(

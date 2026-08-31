@@ -21,6 +21,7 @@ from bochan.api import (
     resolve_optimizer_from_cat_dims,
     uses_mixed_fixed_features,
 )
+from bochan.api.support.one_shot import is_one_shot_acquisition
 from bochan.tabular.data import resolve_optimize_config_columns
 
 from .raw_bridge import CompositionRawDecisionBridge
@@ -415,6 +416,51 @@ class RawDecisionAcquisition(nn.Module):
         return self.base_acqf(self.bridge.decision_to_model(values))
 
 
+class RawDecisionOneShotAcquisition(
+    __import__("botorch.acquisition.acquisition", fromlist=["OneShotAcquisitionFunction"]).OneShotAcquisitionFunction
+):
+    """Preserve BoTorch one-shot semantics while evaluating through a raw bridge."""
+
+    def __init__(self, base_acqf: Any, bridge: Any) -> None:
+        super().__init__(model=base_acqf.model)
+        self.base_acqf = base_acqf
+        self.bridge = bridge
+        self._bochan_one_shot_base = base_acqf
+
+    @property
+    def X_pending(self) -> Tensor | None:
+        pending = getattr(self.base_acqf, "X_pending", None)
+        return None if pending is None else self.bridge.model_to_decision(pending)
+
+    def set_X_pending(self, X_pending: Tensor | None = None) -> RawDecisionOneShotAcquisition:
+        setter = getattr(self.base_acqf, "set_X_pending", None)
+        if callable(setter):
+            setter(None if X_pending is None else self.bridge.decision_to_model(X_pending))
+        elif X_pending is not None:
+            raise AttributeError("The wrapped acquisition does not support pending points.")
+        return self
+
+    def forward(self, values: Tensor) -> Tensor:
+        return self.base_acqf(self.bridge.decision_to_model(values))
+
+    def get_augmented_q_batch_size(self, q: int) -> int:
+        return int(self.base_acqf.get_augmented_q_batch_size(int(q)))
+
+    def extract_candidates(self, X_full: Tensor) -> Tensor:
+        model_full = self.bridge.decision_to_model(X_full)
+        model_candidates = self.base_acqf.extract_candidates(model_full)
+        q = int(model_candidates.shape[-2])
+        return X_full[..., :q, :]
+
+
+def wrap_raw_decision_acquisition(base_acqf: Any, bridge: Any) -> Any:
+    """Wrap a normal or one-shot acquisition without hiding its optimizer contract."""
+
+    if is_one_shot_acquisition(base_acqf):
+        return RawDecisionOneShotAcquisition(base_acqf, bridge)
+    return RawDecisionAcquisition(base_acqf, bridge)
+
+
 @dataclass(frozen=True)
 class LogRatioBestSubsetResult:
     """Raw and fitted-space results from one best-subset optimization."""
@@ -424,21 +470,6 @@ class LogRatioBestSubsetResult:
     acq_value: Any
     raw_opt_config: OptimizeConfig
     bridge: CompositionRawDecisionBridge
-
-
-def _reject_one_shot_acquisition(acqf: Any) -> None:
-    """Reject one-shot acquisitions until their augmented variables are bridged."""
-
-    try:
-        from botorch.acquisition.acquisition import OneShotAcquisitionFunction
-    except ImportError:
-        return
-    if isinstance(acqf, OneShotAcquisitionFunction):
-        raise NotImplementedError(
-            "Raw-space composition best_subset does not yet support one-shot "
-            "acquisition functions such as KG. Use EI/NEI/UCB/EHVI/NEHVI or "
-            "another acquisition without augmented one-shot variables."
-        )
 
 
 def optimize_logratio_best_subset(
@@ -476,7 +507,6 @@ def optimize_logratio_best_subset(
             optimize_fn=optimize_fn,
         )
 
-    _reject_one_shot_acquisition(base_acqf)
     bridge, raw_config, raw_bounds = prepare_logratio_best_subset_config(
         opt_config,
         site_name=site_name,
@@ -489,17 +519,20 @@ def optimize_logratio_best_subset(
         model_cat_dims=model_cat_dims,
         train_x=train_x,
     )
-    wrapped = RawDecisionAcquisition(base_acqf, bridge)
+    wrapped = wrap_raw_decision_acquisition(base_acqf, bridge)
     if optimize_fn is None:
         from bochan.api.optimizer.service import optimize_candidates as optimize_fn
 
-    raw_candidates, _raw_value = optimize_fn(
+    raw_candidates, raw_value = optimize_fn(
         acqf=wrapped,
         bounds=raw_bounds,
         config=raw_config,
     )
     model_candidates = bridge.decision_to_model(raw_candidates)
-    final_value = base_acqf(model_candidates)
+    if is_one_shot_acquisition(base_acqf):
+        final_value = raw_value
+    else:
+        final_value = base_acqf(model_candidates)
     if hasattr(final_value, "detach"):
         final_value = final_value.detach()
     return LogRatioBestSubsetResult(
@@ -514,6 +547,8 @@ def optimize_logratio_best_subset(
 __all__ = [
     "LogRatioBestSubsetResult",
     "RawDecisionAcquisition",
+    "RawDecisionOneShotAcquisition",
+    "wrap_raw_decision_acquisition",
     "is_logratio_best_subset_site",
     "optimize_logratio_best_subset",
     "prepare_logratio_best_subset_config",

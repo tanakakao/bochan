@@ -9,6 +9,11 @@ from math import comb
 from typing import Any, Literal
 
 from ..configs import OptimizeConfig
+from .one_shot import (
+    is_one_shot_acquisition,
+    one_shot_support_config,
+    validate_one_shot_best_subset,
+)
 
 BEST_SUBSET_MAX_COMBINATIONS_KWARG = "best_subset_max_combinations"
 BEST_SUBSET_STRATEGY_KWARG = "best_subset_strategy"
@@ -254,7 +259,13 @@ def _inner_optimizer_kwargs(config: OptimizeConfig) -> dict[str, Any]:
     return optimizer_kwargs
 
 
-def _config_for_support(config: OptimizeConfig, support: Sequence[int]) -> OptimizeConfig:
+def _config_for_support(
+    config: OptimizeConfig,
+    support: Sequence[int],
+    *,
+    acqf: Any,
+    bounds: Any,
+) -> OptimizeConfig:
     """Build an inner optimization config with one shared support fixed."""
     repair = config.repair_config
     if repair is None:
@@ -262,9 +273,19 @@ def _config_for_support(config: OptimizeConfig, support: Sequence[int]) -> Optim
 
     comp_idx = tuple(int(index) for index in (repair.comp_idx or ()))
     support_tuple = tuple(int(index) for index in support)
+    optimizer_kwargs = _inner_optimizer_kwargs(config)
+    if is_one_shot_acquisition(acqf):
+        validate_one_shot_best_subset(acqf, config)
+        return one_shot_support_config(
+            config,
+            sparse_indices=comp_idx,
+            support=support_tuple,
+            bounds=bounds,
+            optimizer_kwargs=optimizer_kwargs,
+        )
+
     support_set = set(support_tuple)
     inactive = [index for index in comp_idx if index not in support_set]
-
     fixed = _merged_fixed_features(config)
     for index in inactive:
         fixed[index] = 0.0
@@ -280,7 +301,7 @@ def _config_for_support(config: OptimizeConfig, support: Sequence[int]) -> Optim
         config,
         repair_config=inner_repair,
         fixed_features=fixed,
-        optimizer_kwargs=_inner_optimizer_kwargs(config),
+        optimizer_kwargs=optimizer_kwargs,
     )
 
 
@@ -318,13 +339,24 @@ def _evaluate_support(
     config: OptimizeConfig,
     optimize_one: OptimizeOne,
 ) -> tuple[Any, Any, float]:
-    inner_config = _config_for_support(config, support)
-    candidates, _ = optimize_one(
+    inner_config = _config_for_support(
+        config,
+        support,
+        acqf=acqf,
+        bounds=bounds,
+    )
+    candidates, optimized_value = optimize_one(
         acqf=acqf,
         bounds=bounds,
         config=inner_config,
     )
-    acq_value = _evaluate_acquisition(acqf, candidates)
+    acq_value = (
+        optimized_value
+        if is_one_shot_acquisition(acqf)
+        else _evaluate_acquisition(acqf, candidates)
+    )
+    if hasattr(acq_value, "detach"):
+        acq_value = acq_value.detach()
     return candidates, acq_value, _scalar_acquisition_value(acq_value)
 
 

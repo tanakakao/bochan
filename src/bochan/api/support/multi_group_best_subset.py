@@ -110,7 +110,7 @@ def _group_specs(config: OptimizeConfig) -> list[Mapping[str, Any]]:
     raw = (config.optimizer_kwargs or {}).get(BEST_SUBSET_GROUPS_KWARG)
     if raw is None:
         return []
-    if isinstance(raw, Mapping) or isinstance(raw, (str, bytes)):
+    if isinstance(raw, (Mapping, str, bytes)):
         raise TypeError(
             f"optimizer_kwargs['{BEST_SUBSET_GROUPS_KWARG}'] must be a sequence of group mappings."
         )

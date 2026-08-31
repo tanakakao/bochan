@@ -68,6 +68,95 @@ def _merge_fixed_features(
     return merged
 
 
+def _composition_fixed_values(
+    values: Mapping[Any, float],
+    *,
+    composition_feature_names: Sequence[str],
+    feature_names: Sequence[Any],
+) -> dict[str, float]:
+    """Resolve named and numeric fixed-feature keys for the composition block."""
+
+    positions = {str(name): index for index, name in enumerate(feature_names)}
+    resolved: dict[str, float] = {}
+    for name in composition_feature_names:
+        candidates: list[float] = []
+        if name in values:
+            candidates.append(float(values[name]))
+        position = positions.get(str(name))
+        if position is not None and position in values:
+            candidates.append(float(values[position]))
+        if not candidates:
+            continue
+        first = candidates[0]
+        if any(abs(item - first) > 1e-12 for item in candidates[1:]):
+            raise ValueError(
+                f"Conflicting fixed values were provided for composition feature {name!r}."
+            )
+        resolved[name] = first
+    return resolved
+
+
+def _grid_config_with_fixed_fractions(
+    config: Mapping[str, Any],
+    *,
+    elements: Sequence[str],
+    fraction_names: Sequence[str],
+    fixed_values: Mapping[str, float],
+) -> Mapping[str, Any]:
+    """Overlay positive fixed fractions as exact projector bounds.
+
+    Continuous optimization keeps using ``fixed_features``. The overlay exists only
+    for the final experiment-space MILP so the projector cannot move a fixed value.
+    Fixed values must already lie on the configured component grid.
+    """
+
+    if not config.get("steps") or not fixed_values:
+        return config
+
+    total = float(config["total"])
+    if total <= 0.0:
+        raise ValueError("Composition total must be positive.")
+
+    bounds = dict(config.get("bounds") or {})
+    steps = config.get("steps") or {}
+    for element, feature_name in zip(elements, fraction_names, strict=True):
+        if feature_name not in fixed_values:
+            continue
+        fraction = float(fixed_values[feature_name])
+        if fraction < -_TOLERANCE:
+            raise ValueError(
+                f"Fixed composition fraction for {element!r} must be non-negative."
+            )
+        if abs(fraction) <= _TOLERANCE:
+            continue
+
+        amount = fraction * total
+        lower, upper = _component_bounds(config, element)
+        if amount < lower - _TOLERANCE or amount > upper + _TOLERANCE:
+            raise ValueError(
+                f"Fixed composition value for {element!r} ({fraction}) is outside "
+                f"the configured bounds {(lower / total, upper / total)!r}."
+            )
+
+        step = steps.get(element)
+        if step is not None:
+            step_value = float(step)
+            if step_value <= 0.0:
+                raise ValueError(f"Composition step for {element!r} must be positive.")
+            grid_index = (amount - lower) / step_value
+            if abs(grid_index - round(grid_index)) > 1e-7:
+                raise ValueError(
+                    f"Fixed composition value for {element!r} ({fraction}) is not on "
+                    "the configured step grid."
+                )
+
+        bounds[element] = (amount, amount)
+
+    result = dict(config)
+    result["bounds"] = bounds
+    return result
+
+
 def _to_ge_constraints(
     constraints: Sequence[tuple[Any, Any, Any]] | None,
     sense: str,
@@ -298,18 +387,6 @@ def _validate_grid_contract(
             "so grid-projected candidates are re-evaluated."
         )
 
-    nonzero_fixed = [
-        name
-        for name in fraction_names
-        if name in all_fixed and abs(float(all_fixed[name])) > _TOLERANCE
-    ]
-    if nonzero_fixed:
-        raise ValueError(
-            "Composition step-grid best_subset does not yet support non-zero fixed "
-            f"composition values: {nonzero_fixed!r}. Use component bounds/required "
-            "elements instead."
-        )
-
     _grid_linear_constraints(
         opt_config=opt_config,
         repair=repair,
@@ -402,8 +479,8 @@ def resolve_composition_best_subset(
 
     ``min_components`` / ``max_components`` count all active elements. Required
     elements are removed from the generic sparse group and the residual optional-k
-    range is passed to the core Best Subset engine. With component steps the current
-    MILP projector remains exact-cardinality only.
+    range is passed to the core Best Subset engine. Component step grids preserve the
+    support/cardinality selected by Best Subset, including non-zero fixed components.
     """
     selected_sites = [
         name
@@ -457,10 +534,21 @@ def resolve_composition_best_subset(
     optimizer_fixed = _as_mapping(opt_config.fixed_features)
     repair_fixed = _as_mapping(repair.fixed_features)
     all_fixed = _merge_fixed_features(optimizer_fixed, repair_fixed)
+    composition_fixed = _composition_fixed_values(
+        all_fixed,
+        composition_feature_names=fraction_names,
+        feature_names=feature_names,
+    )
+    grid_config = _grid_config_with_fixed_fractions(
+        config,
+        elements=elements,
+        fraction_names=fraction_names,
+        fixed_values=composition_fixed,
+    )
     _validate_grid_contract(
         opt_config=opt_config,
         repair=repair,
-        config=config,
+        config=grid_config,
         fraction_names=fraction_names,
         feature_names=feature_names,
         all_fixed=all_fixed,
@@ -478,8 +566,8 @@ def resolve_composition_best_subset(
             required.add(element)
         if upper <= _TOLERANCE:
             forbidden.add(element)
-        if feature_name in all_fixed:
-            if abs(all_fixed[feature_name]) <= _TOLERANCE:
+        if feature_name in composition_fixed:
+            if abs(composition_fixed[feature_name]) <= _TOLERANCE:
                 forbidden.add(element)
             else:
                 required.add(element)
@@ -511,7 +599,7 @@ def resolve_composition_best_subset(
         context=f"Composition site {site_name!r} best_subset",
     )
     require_exact_cardinality_for_steps(
-        config,
+        grid_config,
         cardinality,
         context=f"Composition site {site_name!r} best_subset",
     )
@@ -523,9 +611,9 @@ def resolve_composition_best_subset(
         context=f"Composition site {site_name!r} best_subset",
     )
 
-    if config.get("steps"):
+    if grid_config.get("steps"):
         _validate_grid_strategy(
-            config=config,
+            config=grid_config,
             optimizer_kwargs=search_optimizer_kwargs,
             optional_count=len(optional),
             optional_k=cardinality.optional_maximum,
@@ -535,22 +623,22 @@ def resolve_composition_best_subset(
             required=ordered_required,
             optional=optional,
             optional_k=optional_k,
-            config=config,
+            config=grid_config if grid_config.get("steps") else config,
         )
 
     final_candidate_postprocess = _grid_postprocess(
         opt_config=opt_config,
         repair=repair,
-        config=config,
+        config=grid_config,
         elements=elements,
         fraction_names=fraction_names,
         feature_names=feature_names,
         exact_k=cardinality.maximum,
     )
-    if config.get("steps"):
+    if grid_config.get("steps"):
         _validate_grid_supports(
             projector=final_candidate_postprocess,
-            config=config,
+            config=grid_config,
             optimizer_kwargs=search_optimizer_kwargs,
             required=ordered_required,
             optional=optional,

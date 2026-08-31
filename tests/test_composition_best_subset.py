@@ -441,20 +441,33 @@ def test_step_grid_best_subset_enforces_composition_linear_constraints() -> None
         assert value / 0.1 == pytest.approx(round(value / 0.1), abs=1e-8)
 
 
-def test_step_grid_best_subset_rejects_process_coupled_composition_constraint() -> None:
-    with pytest.raises(ValueError, match="mixes composition and non-composition"):
-        _resolve(
-            _grid_site(),
-            OptimizeConfig(
-                equality_constraints=[
-                    (
-                        ["alloy__fraction__Al", "temperature"],
-                        [1.0, -0.001],
-                        -0.5,
-                    )
-                ]
-            ),
+def test_step_grid_best_subset_enforces_process_coupled_composition_constraint() -> None:
+    config = _resolve(
+        _grid_site(),
+        OptimizeConfig(
+            equality_constraints=[
+                (
+                    ["alloy__fraction__Al", "temperature"],
+                    [1.0, -0.001],
+                    -0.5,
+                )
+            ]
+        ),
+    )
+    callback = config.final_candidate_postprocess
+    assert isinstance(callback, CompositionGridFinalPostprocess)
+
+    projected = callback(
+        torch.tensor(
+            [[0.44, 0.31, 0.25, 0.0, 0.0, 900.0]],
+            dtype=torch.double,
         )
+    )
+    fractions = projected[0, :5]
+
+    assert projected[0, 5].item() == pytest.approx(900.0)
+    assert fractions[0].item() == pytest.approx(0.4, abs=1e-10)
+    assert fractions.sum().item() == pytest.approx(1.0, abs=1e-10)
 
     process_only = _resolve(
         _grid_site(),

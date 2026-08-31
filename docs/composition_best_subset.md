@@ -182,7 +182,14 @@ The fixed-total projection preserves:
 - the selected exact-k support;
 - component lower/upper bounds;
 - every configured component step;
-- the fixed composition total.
+- the fixed composition total;
+- supported composition-only linear equalities and inequalities.
+
+For fixed-total sites, the continuous optimizer expresses composition constraints on fractions while the grid MILP works internally in total-scaled component amounts. bochan therefore maps `c @ fraction >= rhs` to the equivalent `c @ amount >= rhs * total` before MILP projection. The same conversion is applied to equalities and to repair constraints.
+
+A composition-only constraint is enforced twice deliberately: once during continuous acquisition optimization and again during final grid projection. The final acquisition value is then recomputed on the projected candidate. This prevents support ranking from using a continuous candidate whose nearest step-grid point violates the intended composition constraint.
+
+Process-only constraints remain compatible because the composition projector does not modify process dimensions. A single stepped constraint that mixes composition and process terms is still rejected explicitly: projecting only the composition block could otherwise invalidate the coupled relation after process postprocessing.
 
 ### Variable-total example
 
@@ -240,11 +247,12 @@ Step-grid Best Subset currently uses exhaustive support search for both fixed an
 - `"beam"` with component steps is rejected explicitly;
 - `min_components != max_components` with component steps is rejected explicitly.
 
-The current step-grid projectors also reject for now:
+For stepped fixed-total compositions, composition-only linear constraints are supported by the MILP projector. The remaining step-grid restrictions are:
 
-- additional linear constraints involving composition fractions / raw amounts / elements;
-- non-zero fixed composition values;
-- optimizer backends that bypass `final_candidate_postprocess`.
+- variable-total step grids still reject additional raw-amount composition linear constraints in the current phase;
+- a constraint that mixes composition and process variables is rejected;
+- non-zero fixed composition values are rejected;
+- optimizer backends that bypass `final_candidate_postprocess` are rejected.
 
 Process-only linear constraints and process-variable rounding/fixed values remain compatible because they do not alter the projected composition block.
 
@@ -282,6 +290,7 @@ Supported:
 - fixed-total fractional/amount bounds and variable-total absolute amount bounds;
 - continuous compositions with Exact, Beam, or Auto support/cardinality search;
 - fixed-total and variable-total component step grids with exact cardinality and Exact support search (or Auto resolving to Exact);
+- fixed-total composition-only linear constraints with step-grid Best Subset projection;
 - variable-total `total_bounds` and raw amount linear constraints when no step grid is active;
 - shared support/cardinality for joint q-batches;
 - Web result restoration from exact raw fraction or raw amount decisions.
@@ -291,7 +300,8 @@ Still explicit future extensions:
 - variable-cardinality step-grid MILP projection;
 - multiple simultaneous composition Best Subset groups;
 - Beam search over stepped compositions;
-- joint step-grid MILP enforcement of additional composition linear constraints;
+- variable-total step-grid MILP enforcement of additional raw-amount composition constraints;
+- stepped constraints that couple composition and process variables;
 - one-shot acquisition functions that introduce augmented optimization variables.
 
 These cases are intentionally rejected instead of falling back to transformed-coordinate sparsity or post-hoc rounding that would change the optimization problem.

@@ -88,8 +88,7 @@ export default function CompositionBestSubsetSettings() {
   const supportCount = combinationRangeCount(optionalCount, optionalMin, optionalMax);
   const cardinalityCount = Math.max(0, optionalMax - optionalMin + 1);
   const variableCardinality = minCount !== maxCount;
-  const stepGridVariableCardinality = hasSteps && variableCardinality;
-  const stepGridUsesBeam = hasSteps && !variableCardinality && optionalMax > 0 && (
+  const stepGridUsesBeam = hasSteps && optionalMax > 0 && (
     settings.bestSubsetStrategy === "beam" ||
     (
       settings.bestSubsetStrategy === "auto" &&
@@ -325,25 +324,21 @@ export default function CompositionBestSubsetSettings() {
           元素supportはraw fraction空間で探索し、{settings.representation.toUpperCase()}座標は学習済みモデルと獲得関数の評価だけに使います。非選択元素はraw空間で厳密に0のまま保持されます。
         </p>
       )}
-      {enabled && variableCardinality && !hasSteps && (
+      {enabled && variableCardinality && (
         <p className="settings-note">
           使用元素数は{minCount}〜{maxCount}の各cardinalityを同じ獲得関数で比較します。必須元素は全supportに含まれ、その残りのoptional元素数をBest Subsetが選択します。
+          {hasSteps ? " step指定時も、各supportのcardinalityを保持したまま実験格子へMILP投影します。" : ""}
         </p>
       )}
-      {enabled && stepGridVariableCardinality && (
-        <p className="settings-note warning-text">
-          step付きBest SubsetのMILP投影は現在exact-cardinalityのみ対応です。stepを解除するか、使用元素数の最小・最大を同じ値にしてください。
-        </p>
-      )}
-      {enabled && hasSteps && !stepGridVariableCardinality && !variableTotal && (
+      {enabled && hasSteps && !variableTotal && (
         <p className="settings-note">
-          元素ごとの刻みはExact / Beamの両方で有効です。各supportの連続最適化後に、support・bounds・合計を保ったstep格子へMILP投影し、その実験可能候補で獲得関数を再評価します。
+          元素ごとの刻みはExact / Beamの両方で有効です。各supportの連続最適化後に、support・cardinality・bounds・合計を保ったstep格子へMILP投影し、その実験可能候補で獲得関数を再評価します。
           {stepGridUsesBeam ? " Beamでは評価予算内のsupportだけを調べ、格子・線形制約を満たせないsupportは探索中にskipします。" : ""}
         </p>
       )}
-      {enabled && hasSteps && !stepGridVariableCardinality && variableTotal && (
+      {enabled && hasSteps && variableTotal && (
         <p className="settings-note">
-          Variable totalの元素量stepもExact / Beamで利用できます。各supportをraw amount格子へ投影し、support・元素bounds・total_boundsを保った候補で獲得関数を再評価します。
+          Variable totalの元素量stepもExact / Beamで利用できます。各supportをraw amount格子へ投影し、support・cardinality・元素bounds・total_boundsを保った候補で獲得関数を再評価します。
           {stepGridUsesBeam ? " Beamでは不可能supportをskipしながら評価予算内で探索します。" : ""}
         </p>
       )}

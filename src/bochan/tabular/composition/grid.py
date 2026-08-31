@@ -9,6 +9,8 @@ from typing import Any
 
 import numpy as np
 
+from bochan.api.support.best_subset import InfeasibleBestSubsetSupportError
+
 GridLinearConstraint = tuple[tuple[float, ...], float, float]
 
 
@@ -166,7 +168,7 @@ def _project_grid_row(
 
     active_indices = np.flatnonzero(active).tolist()
     if len(active_indices) != int(exact_k):
-        raise ValueError(
+        raise InfeasibleBestSubsetSupportError(
             "Composition grid projection requires the inner optimizer to preserve "
             f"exactly {exact_k} active components; got {len(active_indices)}."
         )
@@ -198,7 +200,7 @@ def _project_grid_row(
                 (component_upper - component_lower) / step + tolerance
             )
             if minimum_integer > maximum_integer:
-                raise ValueError(
+                raise InfeasibleBestSubsetSupportError(
                     "An active composition component has no positive grid point "
                     f"within its bounds: {elements[component_index]!r}."
                 )
@@ -255,7 +257,7 @@ def _project_grid_row(
         if np.all(np.abs(row[:n_active]) <= tolerance):
             if adjusted_lower > tolerance or adjusted_upper < -tolerance:
                 support = [elements[index] for index in active_indices]
-                raise ValueError(
+                raise InfeasibleBestSubsetSupportError(
                     "The selected composition support cannot satisfy the configured "
                     f"linear constraints on the step grid: {support!r}."
                 )
@@ -277,7 +279,7 @@ def _project_grid_row(
     )
     if not result.success or result.x is None:
         support = [elements[index] for index in active_indices]
-        raise ValueError(
+        raise InfeasibleBestSubsetSupportError(
             "The selected composition support has no feasible point on the "
             f"configured step grid and linear constraints: {support!r}."
         )

@@ -50,6 +50,7 @@ The composition resolver maps raw element rules into the generic sparse Best Sub
 - required components are present in every candidate;
 - positive component lower bounds also imply required support;
 - forbidden components and zero upper bounds are fixed to zero;
+- non-zero fixed composition values imply required support while retaining their exact configured value;
 - only optional element variables are placed in the combinatorial `comp_idx` group;
 - `min_components` / `max_components` count **all** active elements;
 - required elements are subtracted before the residual optional-cardinality range is passed to generic Best Subset;
@@ -182,12 +183,15 @@ The fixed-total projection preserves:
 - the selected support and its cardinality;
 - component lower/upper bounds;
 - every configured component step;
+- non-zero fixed raw-fraction values;
 - the fixed composition total;
 - supported composition-only linear equalities and inequalities.
 
 For fixed-total sites, the continuous optimizer expresses composition constraints on fractions while the grid MILP works internally in total-scaled component amounts. bochan therefore maps `c @ fraction >= rhs` to the equivalent `c @ amount >= rhs * total` before MILP projection. The same conversion is applied to equalities and to repair constraints.
 
 A composition-only constraint is enforced twice deliberately: once during continuous acquisition optimization and again during final grid projection. The final acquisition value is then recomputed on the projected candidate. This prevents support ranking from using a continuous candidate whose nearest step-grid point violates the intended composition constraint.
+
+A non-zero fixed fraction is likewise enforced in both spaces. Continuous acquisition optimization keeps the normal `fixed_features` constraint. For final MILP projection, bochan converts that fraction to its fixed-total amount, validates it against the original component bounds and original step lattice, then fixes the projector's component bound to that exact amount. The projector therefore cannot silently round or move a fixed value. A fixed value that is not on the configured grid is rejected before candidate optimization.
 
 Process-only constraints remain compatible because the composition projector does not modify process dimensions. A single stepped constraint that mixes composition and process terms is still rejected explicitly: projecting only the composition block could otherwise invalidate the coupled relation after process postprocessing.
 
@@ -232,10 +236,13 @@ The variable-total MILP operates directly in raw absolute amounts and preserves:
 - the selected element support and its cardinality;
 - absolute component lower/upper bounds;
 - every configured absolute-amount step;
+- non-zero fixed raw component amounts;
 - `total_lower <= sum(amounts) <= total_upper`;
 - composition-only linear equalities and inequalities on raw amounts.
 
 A fitted total-feature constraint is first expanded to the equivalent sum of raw element amounts, so it is enforced consistently by both the continuous optimizer and the final step-grid MILP. Raw-amount element constraints are copied to the same projector without scale conversion.
+
+For non-zero fixed amounts, the variable-total path uses the same contract as fixed total: the continuous optimizer retains `fixed_features`, while the final MILP receives an exact projector-only component bound after validating the fixed amount against the original absolute bounds and step lattice. Off-grid fixed amounts are rejected rather than rounded.
 
 Unlike fixed-total projection, the projected total is allowed to move inside `total_bounds`. This is deliberate: the experiment-space candidate closest to the continuous acquisition optimum is chosen while the total remains a genuine decision variable.
 
@@ -254,10 +261,9 @@ Step-grid Best Subset supports both exhaustive and approximate support search fo
 
 Exact mode prevalidates the complete support set because it will enumerate it anyway. Beam deliberately avoids that combinatorial pre-scan: feasibility is checked lazily when a support is evaluated. If the heuristic top-k seed is infeasible, Beam walks neighboring supports within `best_subset_max_evaluations` until it finds a feasible starting point or exhausts the budget.
 
-For both fixed-total and variable-total stepped compositions, composition-only linear equalities and inequalities are enforced inside the MILP projector. The remaining step-grid restrictions are:
+For both fixed-total and variable-total stepped compositions, composition-only linear equalities and inequalities are enforced inside the MILP projector. Non-zero fixed composition values are supported when they lie on the configured grid. The remaining step-grid restrictions are:
 
 - a constraint that mixes composition and process variables is rejected;
-- non-zero fixed composition values are rejected;
 - optimizer backends that bypass `final_candidate_postprocess` are rejected.
 
 Process-only linear constraints and process-variable rounding/fixed values remain compatible because they do not alter the projected composition block.
@@ -296,6 +302,8 @@ Supported:
 - fixed-total fractional/amount bounds and variable-total absolute amount bounds;
 - continuous compositions with Exact, Beam, or Auto support/cardinality search;
 - fixed-total and variable-total component step grids with exact or variable cardinality and Exact, Beam, or Auto support search;
+- on-grid non-zero fixed fractions for fixed-total step grids, including CLR/ALR/ILR raw-fraction bridges;
+- on-grid non-zero fixed raw amounts for variable-total step grids;
 - fixed-total raw-fraction and variable-total raw-amount composition-only linear constraints with step-grid Best Subset projection;
 - variable-total `total_bounds` and raw amount linear constraints;
 - shared support/cardinality for joint q-batches;

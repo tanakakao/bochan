@@ -183,9 +183,6 @@ function validateCompositionCandidateSetting(settings: CompositionSettings): boo
 
     const optionalMin = effectiveMin - requiredCount;
     const optionalMax = effectiveMax - requiredCount;
-    const hasSteps = settings.elements.some((element) => (settings.steps[element] ?? 0) > 0);
-    if (hasSteps && effectiveMin !== effectiveMax) return false;
-
     const supportCount = combinationRangeCount(optionalCount, optionalMin, optionalMax);
     const usesBeam = settings.bestSubsetStrategy === "beam" || (
       settings.bestSubsetStrategy === "auto" &&

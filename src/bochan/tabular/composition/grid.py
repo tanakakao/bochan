@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from itertools import combinations
 from math import floor
 from typing import Any
 
@@ -337,6 +338,60 @@ def _validate_support(
     )
 
 
+def _has_feasible_support(
+    *,
+    elements: Sequence[str],
+    required_elements: Sequence[str],
+    forbidden_elements: Sequence[str],
+    bounds: Sequence[tuple[float, float]],
+    steps: Sequence[float | None],
+    exact_k: int,
+    total_bounds: tuple[float, float],
+    tolerance: float,
+    linear_constraints: Sequence[GridLinearConstraint],
+) -> bool:
+    """Return whether at least one configured exact-k support is grid feasible."""
+
+    element_tuple = tuple(str(element) for element in elements)
+    required = set(str(element) for element in required_elements)
+    forbidden = set(str(element) for element in forbidden_elements)
+    for index, element in enumerate(element_tuple):
+        lower, upper = bounds[index]
+        if lower > tolerance:
+            required.add(element)
+        if upper <= tolerance:
+            forbidden.add(element)
+    if required & forbidden:
+        return False
+
+    optional = [
+        element
+        for element in element_tuple
+        if element not in required and element not in forbidden
+    ]
+    choose = int(exact_k) - len(required)
+    if choose < 0 or choose > len(optional):
+        return False
+
+    ordered_required = [element for element in element_tuple if element in required]
+    for selected in combinations(optional, choose):
+        try:
+            _validate_support(
+                [*ordered_required, *selected],
+                elements=element_tuple,
+                bounds=bounds,
+                steps=steps,
+                exact_k=exact_k,
+                total_bounds=total_bounds,
+                tolerance=tolerance,
+                linear_constraints=linear_constraints,
+            )
+        except InfeasibleBestSubsetSupportError:
+            continue
+        return True
+    return False
+
+
 @dataclass(frozen=True)
 class CompositionGridFinalPostprocess:
     """Project one fixed-total composition block onto its configured step grid.
@@ -483,6 +538,8 @@ class CompositionVariableTotalGridFinalPostprocess:
     bounds: tuple[tuple[float, float], ...]
     steps: tuple[float | None, ...]
     exact_k: int
+    required_elements: tuple[str, ...] = ()
+    forbidden_elements: tuple[str, ...] = ()
     linear_constraints: tuple[GridLinearConstraint, ...] = ()
     previous: Callable[[Any], Any] | None = None
     tolerance: float = 1e-8
@@ -527,6 +584,12 @@ class CompositionVariableTotalGridFinalPostprocess:
             bounds=bounds,
             steps=steps,
             exact_k=int(exact_k),
+            required_elements=tuple(
+                str(element) for element in config.get("required_components") or ()
+            ),
+            forbidden_elements=tuple(
+                str(element) for element in config.get("forbidden_components") or ()
+            ),
             linear_constraints=tuple(linear_constraints or ()),
             previous=previous,
         )
@@ -549,18 +612,33 @@ class CompositionVariableTotalGridFinalPostprocess:
         )
 
     def validate_support(self, active_elements: Sequence[str]) -> None:
-        """Raise when one exact support has no feasible grid-constrained point."""
+        """Raise only when no configured exact-k support is grid feasible."""
 
-        _validate_support(
-            active_elements,
-            elements=self.elements,
-            bounds=self.bounds,
-            steps=self.steps,
-            exact_k=self.exact_k,
-            total_bounds=self.total_bounds,
-            tolerance=self.tolerance,
-            linear_constraints=self.linear_constraints,
-        )
+        try:
+            _validate_support(
+                active_elements,
+                elements=self.elements,
+                bounds=self.bounds,
+                steps=self.steps,
+                exact_k=self.exact_k,
+                total_bounds=self.total_bounds,
+                tolerance=self.tolerance,
+                linear_constraints=self.linear_constraints,
+            )
+        except InfeasibleBestSubsetSupportError:
+            if _has_feasible_support(
+                elements=self.elements,
+                required_elements=self.required_elements,
+                forbidden_elements=self.forbidden_elements,
+                bounds=self.bounds,
+                steps=self.steps,
+                exact_k=self.exact_k,
+                total_bounds=self.total_bounds,
+                tolerance=self.tolerance,
+                linear_constraints=self.linear_constraints,
+            ):
+                return
+            raise
 
     def __call__(self, candidates: Any) -> Any:
         import torch

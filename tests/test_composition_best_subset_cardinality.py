@@ -213,6 +213,7 @@ def test_fraction_variable_cardinality_compares_different_total_component_counts
         named,
         feature_names,
         dtype=torch.double,
+        device=None,
     )
     bounds = torch.tensor([[0.0] * 5, [1.0] * 5], dtype=torch.double)
 

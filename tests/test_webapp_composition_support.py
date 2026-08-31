@@ -463,7 +463,9 @@ def test_web_source_exposes_react_owned_composition_controls() -> None:
     assert "Acquisition-aware Best Subset" in best_subset
     assert "禁止元素" in best_subset
     assert "raw fraction空間で探索" in best_subset
-    assert "step付きBest Subsetは現在Exact探索のみ対応" in best_subset
+    assert "元素ごとの刻みはExact / Beamの両方で有効" in best_subset
+    assert "Beamでは評価予算内のsupportだけを調べ" in best_subset
+    assert "Variable totalの元素量stepもExact / Beamで利用できます" in best_subset
     assert "Auto（小規模Exact / 大規模Beam）" in best_subset
     assert "steps: Object.fromEntries" not in best_subset
     assert "CompositionBestSubsetSettings" in search_variables

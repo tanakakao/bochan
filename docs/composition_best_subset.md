@@ -22,8 +22,8 @@ bo = TabularBayesianOptimizer(
             },
             "required_components": ["Al"],
             "forbidden_components": ["Cr"],
-            "min_components": 3,
-            "max_components": 3,
+            "min_components": 2,
+            "max_components": 4,
             "support_selection": "best_subset",
             "best_subset_strategy": "auto",
         }
@@ -43,19 +43,53 @@ For fixed-total compositions, raw decisions are element fractions. For `represen
 
 The fitted surrogate is reused as-is. Best Subset does not refit one model per support.
 
-## Support semantics
+## Support and cardinality semantics
 
-The composition resolver maps raw element rules into the generic k-sparse Best Subset optimizer:
+The composition resolver maps raw element rules into the generic sparse Best Subset optimizer:
 
 - required components are present in every candidate;
 - positive component lower bounds also imply required support;
 - forbidden components and zero upper bounds are fixed to zero;
 - only optional element variables are placed in the combinatorial `comp_idx` group;
-- `k` is derived from `max_components - required_component_count`;
-- active dimensions receive support-conditional positive floors, so an exact-k support cannot silently collapse to fewer active elements;
-- one support is shared by the whole joint q-batch.
+- `min_components` / `max_components` count **all** active elements;
+- required elements are subtracted before the residual optional-cardinality range is passed to generic Best Subset;
+- active dimensions receive support-conditional positive floors, so a selected support cannot silently collapse to fewer active elements;
+- one support and one cardinality are shared by the whole joint q-batch.
 
-Search strategy can be configured on the composition site or through `OptimizeConfig.optimizer_kwargs`. Explicit `OptimizeConfig` values take precedence.
+For example, with one required element and:
+
+```python
+"min_components": 2,
+"max_components": 4,
+```
+
+the generic optional group searches `k = 1, 2, 3`. The selected total element count is still 2, 3, or 4 because the required element is included in every support.
+
+Conceptually, continuous variable-cardinality Best Subset selects both the support and its size by the same acquisition value:
+
+```text
+(k*, S*) = arg max_k max_{|S|=k} max_{x: supp(x)=S} acquisition(x)
+```
+
+No cardinality penalty is added implicitly. If a user wants to prefer simpler supports, that preference should be expressed deliberately in the objective/acquisition rather than hidden inside support enumeration.
+
+### Exact, Beam, and Auto across cardinalities
+
+Search strategy can be configured on the composition site or through `OptimizeConfig.optimizer_kwargs`. Explicit `OptimizeConfig` values still take precedence for the normal search-strategy controls.
+
+For a variable-cardinality search:
+
+- **Exact** enumerates every feasible support at every allowed cardinality;
+- **Auto** compares the **sum** of support counts over the whole cardinality range against `best_subset_max_combinations`;
+- **Beam** seeds every allowed cardinality and explores `swap`, `add`, and `drop` neighborhoods, allowing the search to move both within one k and between adjacent k values.
+
+The exact support-count guard therefore uses:
+
+```text
+sum(comb(n_optional, k) for k in allowed_optional_cardinalities)
+```
+
+The composition site owns the cardinality range. Directly supplying conflicting generic `best_subset_min_k` / `best_subset_max_k` values is rejected rather than creating two independent sources of truth.
 
 ```python
 from bochan.api import OptimizeConfig
@@ -95,8 +129,8 @@ composition_sites={
             "Nb": [0.0, 70.0],
         },
         "required_components": ["Al"],
-        "min_components": 3,
-        "max_components": 3,
+        "min_components": 2,
+        "max_components": 4,
         "support_selection": "best_subset",
         "best_subset_strategy": "auto",
     }
@@ -111,15 +145,17 @@ If the raw amount vector is `a`, bochan derives the model inputs as follows:
 - the derived total is inserted into the fitted model's total feature;
 - process variables keep their normal decision coordinates.
 
-This choice keeps support, absolute component bounds, `total_bounds`, and amount-basis element constraints in one decision space. It also avoids introducing bilinear constraints of the form `fraction * total`.
+This choice keeps support, cardinality, absolute component bounds, `total_bounds`, and amount-basis element constraints in one decision space. It also avoids introducing bilinear constraints of the form `fraction * total`.
 
 `total_bounds` are enforced as linear inequalities on the sum of raw amounts. A linear constraint involving the fitted total feature is expanded to the same sum of amount variables. Element linear constraints for a variable-total Best Subset site are resolved directly to synthetic `__amount__<Element>` variables.
 
-Exact, Beam, and Auto support search reuse the same generic Best Subset implementation used by fixed-total compositions. The fitted surrogate and acquisition function are still evaluated in their original model space.
+Exact, Beam, and Auto support/cardinality search reuse the same generic Best Subset implementation used by fixed-total compositions. The fitted surrogate and acquisition function are still evaluated in their original model space.
 
 ## Component step grids
 
 Best Subset can return experiment-ready stepped compositions. The inner acquisition optimization stays continuous; for each exact support, the final composition is projected with a small mixed-integer program onto the nearest feasible experiment-space grid point. The acquisition function is then re-evaluated on that projected candidate, so support ranking uses the composition that can actually be executed.
+
+The current MILP step projectors are intentionally **exact-cardinality only**. Therefore, when any component `steps` are configured, `min_components` must equal `max_components`. Continuous compositions can use variable cardinality; stepped compositions cannot yet combine multiple cardinalities in one search.
 
 ### Fixed-total example
 
@@ -200,8 +236,9 @@ All enumerated supports are checked for grid feasibility before candidate optimi
 Step-grid Best Subset currently uses exhaustive support search for both fixed and variable totals:
 
 - `best_subset_strategy="exact"` is supported;
-- `"auto"` is supported only when the support count is within `best_subset_max_combinations`, so Auto resolves to Exact;
-- `"beam"` with component steps is rejected explicitly.
+- `"auto"` is supported only when the exact-cardinality support count is within `best_subset_max_combinations`, so Auto resolves to Exact;
+- `"beam"` with component steps is rejected explicitly;
+- `min_components != max_components` with component steps is rejected explicitly.
 
 The current step-grid projectors also reject for now:
 
@@ -218,10 +255,13 @@ The React/FastAPI composition workbench supports the same fixed-total and variab
 - choose **fixed total** to send `total`;
 - choose **variable total** to send `total_bounds`;
 - the two fields are mutually exclusive;
+- Best Subset exposes separate minimum and maximum active-element counts;
+- Auto computes its Exact/Beam decision from the support count over the complete allowed cardinality range;
+- Beam requires enough evaluation budget to seed each allowed cardinality at least once;
 - variable-total formula data derives a separate fitted total feature from the original formula coefficients;
 - Fraction / CLR / ALR / ILR model coordinates remain normalized composition features;
 - variable-total Best Subset uses raw absolute element amounts internally and exposes the optimized total in the candidate result;
-- variable-total `steps` are entered as absolute element-amount increments and use the same Exact-only step-grid contract as the Python API.
+- component steps use the same exact-cardinality-only MILP contract as the Python API.
 
 The Web search-space controls therefore distinguish between fixed-total element amounts and variable-total absolute amounts. For a variable-total Best Subset result, response metadata reports `support_space="raw_amount"`, `total_bounds`, and the generated total-feature name. Structural zeros and the optimized total are restored from the exact raw candidate rather than inferred from pseudocount-smoothed log-ratio coordinates.
 
@@ -236,19 +276,20 @@ Supported:
 - one Best Subset composition site per candidate optimization;
 - fixed-total and variable-total compositions in Python/tabular and React/FastAPI Web workflows;
 - Fraction / CLR / ALR / ILR surrogate representations;
-- exact cardinality (`min_components == max_components`);
+- continuous variable cardinality (`min_components <= max_components`);
+- exact cardinality as the special case `min_components == max_components`;
 - required and forbidden elements;
 - fixed-total fractional/amount bounds and variable-total absolute amount bounds;
-- continuous compositions with Exact, Beam, or Auto support search;
-- fixed-total and variable-total component step grids with Exact support search (or Auto resolving to Exact);
+- continuous compositions with Exact, Beam, or Auto support/cardinality search;
+- fixed-total and variable-total component step grids with exact cardinality and Exact support search (or Auto resolving to Exact);
 - variable-total `total_bounds` and raw amount linear constraints when no step grid is active;
-- shared support for joint q-batches;
+- shared support/cardinality for joint q-batches;
 - Web result restoration from exact raw fraction or raw amount decisions.
 
 Still explicit future extensions:
 
+- variable-cardinality step-grid MILP projection;
 - multiple simultaneous composition Best Subset groups;
-- variable active-component ranges (`min_components != max_components`);
 - Beam search over stepped compositions;
 - joint step-grid MILP enforcement of additional composition linear constraints;
 - one-shot acquisition functions that introduce augmented optimization variables.

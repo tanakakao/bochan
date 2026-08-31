@@ -32,7 +32,12 @@ from .cardinality import (
     require_exact_cardinality_for_steps,
     resolve_composition_cardinality_range,
 )
-from .grid import CompositionVariableTotalGridFinalPostprocess
+from .grid import (
+    CompositionVariableTotalGridFinalPostprocess,
+    GridLinearConstraint,
+    composition_grid_linear_constraints,
+    merge_composition_grid_linear_constraints,
+)
 from .logratio_support import RawDecisionAcquisition
 from .raw_bridge import CompositionRawDecisionBridge
 
@@ -623,28 +628,36 @@ def _validate_grid_strategy(
         )
 
 
-def _constraint_items(indices: Any) -> list[Any]:
-    if isinstance(indices, (str, int)):
-        return [indices]
-    if hasattr(indices, "detach"):
-        return indices.detach().cpu().reshape(-1).tolist()
-    return list(indices)
-
-
-def _constraints_touch_amounts(
-    constraints: Sequence[tuple[Any, Any, Any]] | None,
+def _grid_linear_constraints(
     *,
+    raw_config: OptimizeConfig,
+    repair: CandidateRepairConfig,
     bridge: CompositionVariableTotalDecisionBridge,
-) -> bool:
-    names = set(bridge.amount_names)
-    positions = set(bridge.amount_indices)
-    for indices, _coefficients, _rhs in constraints or ():
-        for item in _constraint_items(indices):
-            if item in names:
-                return True
-            if isinstance(item, int) and int(item) in positions:
-                return True
-    return False
+) -> tuple[GridLinearConstraint, ...]:
+    """Collect raw-amount-only constraints for the variable-total grid MILP."""
+
+    optimizer_constraints = composition_grid_linear_constraints(
+        equality_constraints=raw_config.equality_constraints,
+        inequality_constraints=raw_config.inequality_constraints,
+        feature_names=bridge.decision_feature_names,
+        composition_feature_names=bridge.amount_names,
+        inequality_sense="ge",
+        rhs_scale=1.0,
+        context="Variable-total composition step-grid best_subset",
+    )
+    repair_constraints = composition_grid_linear_constraints(
+        equality_constraints=repair.equality_constraints,
+        inequality_constraints=repair.inequality_constraints,
+        feature_names=bridge.decision_feature_names,
+        composition_feature_names=bridge.amount_names,
+        inequality_sense=str(repair.inequality_sense),
+        rhs_scale=1.0,
+        context="Variable-total composition step-grid best_subset",
+    )
+    return merge_composition_grid_linear_constraints(
+        optimizer_constraints,
+        repair_constraints,
+    )
 
 
 def _fixed_amount_values(
@@ -699,23 +712,17 @@ def _validate_grid_contract(
             "bounds/required elements instead."
         )
 
-    for constraints in (
-        raw_config.equality_constraints,
-        raw_config.inequality_constraints,
-        repair.equality_constraints,
-        repair.inequality_constraints,
-    ):
-        if _constraints_touch_amounts(constraints, bridge=bridge):
-            raise ValueError(
-                "Variable-total composition step-grid best_subset does not yet combine "
-                "with additional linear constraints on composition amounts. Remove the "
-                "element/composition linear constraint for this phase."
-            )
+    _grid_linear_constraints(
+        raw_config=raw_config,
+        repair=repair,
+        bridge=bridge,
+    )
 
 
 def _grid_postprocess(
     *,
     raw_config: OptimizeConfig,
+    repair: CandidateRepairConfig,
     site_config: Mapping[str, Any],
     bridge: CompositionVariableTotalDecisionBridge,
     exact_k: int,
@@ -727,6 +734,11 @@ def _grid_postprocess(
         elements=bridge.elements,
         config=site_config,
         exact_k=exact_k,
+        linear_constraints=_grid_linear_constraints(
+            raw_config=raw_config,
+            repair=repair,
+            bridge=bridge,
+        ),
         previous=getattr(raw_config, "final_candidate_postprocess", None),
     )
 
@@ -918,6 +930,7 @@ def prepare_variable_total_best_subset_config(
 
     final_candidate_postprocess = _grid_postprocess(
         raw_config=raw_config,
+        repair=repair,
         site_config=site_config,
         bridge=bridge,
         exact_k=cardinality.maximum,

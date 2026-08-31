@@ -38,6 +38,16 @@ _SUPPORT_SEARCH_KWARGS = {
 }
 
 
+class InfeasibleBestSubsetSupportError(ValueError):
+    """Signal that one support is infeasible without invalidating the whole search.
+
+    Support-specific postprocessors may raise this exception when a structurally
+    valid support cannot satisfy additional support-dependent constraints. Exact
+    and beam Best Subset search skip only this explicit exception; all other
+    optimizer and configuration errors remain visible to the caller.
+    """
+
+
 @dataclass(frozen=True)
 class _SupportProblem:
     comp_idx: tuple[int, ...]
@@ -329,22 +339,30 @@ def _optimize_exact_best_subset(
     best_candidates: Any | None = None
     best_value: Any | None = None
     best_score: float | None = None
+    infeasible_count = 0
 
     for support in supports:
-        candidates, acq_value, score = _evaluate_support(
-            support=support,
-            acqf=acqf,
-            bounds=bounds,
-            config=config,
-            optimize_one=optimize_one,
-        )
+        try:
+            candidates, acq_value, score = _evaluate_support(
+                support=support,
+                acqf=acqf,
+                bounds=bounds,
+                config=config,
+                optimize_one=optimize_one,
+            )
+        except InfeasibleBestSubsetSupportError:
+            infeasible_count += 1
+            continue
         if best_score is None or score > best_score:
             best_candidates = candidates
             best_value = acq_value
             best_score = score
 
     if best_candidates is None:
-        raise RuntimeError("best_subset did not produce any feasible support.")
+        raise InfeasibleBestSubsetSupportError(
+            "best_subset did not produce any feasible support; "
+            f"all {infeasible_count or len(supports)} evaluated supports were infeasible."
+        )
     return best_candidates, best_value
 
 
@@ -510,18 +528,27 @@ def _optimize_beam_best_subset(
     seeds = list(dict.fromkeys(seeds))
 
     records: dict[tuple[int, ...], tuple[Any, Any, float]] = {}
+    visited: set[tuple[int, ...]] = set()
     for seed in seeds:
-        records[seed] = _evaluate_support(
-            support=seed,
-            acqf=acqf,
-            bounds=bounds,
-            config=config,
-            optimize_one=optimize_one,
+        visited.add(seed)
+        try:
+            records[seed] = _evaluate_support(
+                support=seed,
+                acqf=acqf,
+                bounds=bounds,
+                config=config,
+                optimize_one=optimize_one,
+            )
+        except InfeasibleBestSubsetSupportError:
+            continue
+
+    if not records:
+        raise InfeasibleBestSubsetSupportError(
+            "best_subset beam search did not produce any feasible seed support."
         )
 
-    visited = set(seeds)
     beam = sorted(
-        seeds,
+        records,
         key=lambda support: (
             -records[support][2],
             _support_order(support, problem),
@@ -529,7 +556,7 @@ def _optimize_beam_best_subset(
     )[:width]
 
     for _ in range(steps):
-        remaining = max_evaluations - len(records)
+        remaining = max_evaluations - len(visited)
         if remaining <= 0:
             break
 
@@ -545,17 +572,22 @@ def _optimize_beam_best_subset(
 
         evaluated: list[tuple[int, ...]] = []
         for support in candidates_to_evaluate[:remaining]:
-            records[support] = _evaluate_support(
-                support=support,
-                acqf=acqf,
-                bounds=bounds,
-                config=config,
-                optimize_one=optimize_one,
-            )
             visited.add(support)
+            try:
+                records[support] = _evaluate_support(
+                    support=support,
+                    acqf=acqf,
+                    bounds=bounds,
+                    config=config,
+                    optimize_one=optimize_one,
+                )
+            except InfeasibleBestSubsetSupportError:
+                continue
             evaluated.append(support)
 
         pool = set(beam) | set(evaluated)
+        if not pool:
+            break
         beam = sorted(
             pool,
             key=lambda support: (
@@ -593,6 +625,8 @@ def optimize_best_subset_candidates(
 
     For q > 1, one support is shared by the entire q-batch. Every support is
     compared by re-evaluating the acquisition on its final repaired candidate.
+    A support-specific ``InfeasibleBestSubsetSupportError`` is skipped without
+    hiding unrelated optimizer or configuration failures.
     """
     if not uses_best_subset(config):
         return optimize_one(acqf=acqf, bounds=bounds, config=config)
@@ -614,3 +648,11 @@ def optimize_best_subset_candidates(
         config=config,
         optimize_one=optimize_one,
     )
+
+
+__all__ = [
+    "InfeasibleBestSubsetSupportError",
+    "enumerate_best_subset_supports",
+    "optimize_best_subset_candidates",
+    "uses_best_subset",
+]

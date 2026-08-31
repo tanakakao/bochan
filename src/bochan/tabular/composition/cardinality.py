@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from math import comb
-from typing import Any, Mapping
+from typing import Any
 
 BEST_SUBSET_MIN_K_KWARG = "best_subset_min_k"
 BEST_SUBSET_MAX_K_KWARG = "best_subset_max_k"

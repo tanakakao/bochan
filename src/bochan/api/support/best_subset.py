@@ -485,10 +485,11 @@ def _topk_seed_support(
     idx_t = torch.as_tensor(problem.comp_idx, device=X.device, dtype=torch.long)
     group = X.index_select(dim=-1, index=idx_t)
     scores = group.abs() if repair.score == "abs" else group
-    if scores.ndim == 1:
-        aggregate = scores
-    else:
-        aggregate = scores.reshape(-1, scores.shape[-1]).mean(dim=0)
+    aggregate = (
+        scores
+        if scores.ndim == 1
+        else scores.reshape(-1, scores.shape[-1]).mean(dim=0)
+    )
 
     position = {index: pos for pos, index in enumerate(problem.comp_idx)}
     ranked_free = sorted(

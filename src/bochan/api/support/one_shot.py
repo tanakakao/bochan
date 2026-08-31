@@ -28,6 +28,46 @@ def base_one_shot_acquisition(acqf: Any) -> Any:
     return getattr(acqf, "_bochan_one_shot_base", acqf)
 
 
+def _sampling_inequality_constraints(
+    constraints: Sequence[Any] | None,
+    *,
+    bounds: Tensor,
+) -> list[Any] | None:
+    """Move tiny lower floors into the numerical interior for IC sampling only.
+
+    SciPy's LP feasibility tolerance may treat very small positive lower floors
+    (for example the 1e-7 composition support floor) as zero. BoTorch's
+    hit-and-run sampler subsequently performs a strict feasibility check and can
+    reject that boundary point. The optimizer itself must keep the original
+    constraints, so only the initializer receives a minimally tightened copy.
+    """
+
+    if constraints is None:
+        return None
+    stabilized: list[Any] = []
+    for indices, coefficients, rhs in constraints:
+        index_tensor = torch.as_tensor(indices)
+        coefficient_tensor = torch.as_tensor(
+            coefficients,
+            dtype=bounds.dtype,
+            device=bounds.device,
+        ).reshape(-1)
+        rhs_value = float(rhs)
+        if coefficient_tensor.numel() == 1 and float(coefficient_tensor[0]) > 0.0:
+            feature_index = int(index_tensor.reshape(-1)[-1])
+            coefficient = float(coefficient_tensor[0])
+            lower = float(bounds[0, feature_index])
+            upper = float(bounds[1, feature_index])
+            span = max(upper - lower, 0.0)
+            if span > 0.0:
+                original_floor = rhs_value / coefficient
+                interior_floor = lower + 1e-6 * span
+                if lower <= original_floor < interior_floor:
+                    rhs_value = coefficient * interior_floor
+        stabilized.append((indices, coefficients, rhs_value))
+    return stabilized
+
+
 def gen_one_shot_best_subset_initial_conditions(
     acq_function: Any,
     bounds: Tensor,
@@ -66,9 +106,10 @@ def gen_one_shot_best_subset_initial_conditions(
         raw_samples=int(raw_samples),
         fixed_features=None if fixed_features is None else dict(fixed_features),
         options=None if options is None else dict(options),
-        inequality_constraints=None
-        if inequality_constraints is None
-        else list(inequality_constraints),
+        inequality_constraints=_sampling_inequality_constraints(
+            inequality_constraints,
+            bounds=bounds,
+        ),
         equality_constraints=None
         if equality_constraints is None
         else list(equality_constraints),

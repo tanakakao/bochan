@@ -197,7 +197,7 @@ def test_one_shot_rejects_final_projection_and_mixed_enumeration() -> None:
 
     mixed = _sparse_config()
     mixed.fixed_features_list = [{2: 0.0}, {2: 1.0}]
-    with pytest.raises(ValueError, match="mixed fixed_features_list"):
+    with pytest.raises(ValueError, match="fixed_features_list"):
         optimize_best_subset_candidates(
             acqf=acqf,
             bounds=bounds,

@@ -1161,10 +1161,11 @@ def optimize_variable_total_best_subset(
         config=raw_config,
     )
     model_candidates = bridge.decision_to_model(raw_candidates)
-    if is_one_shot_acquisition(base_acqf):
-        final_value = raw_value
-    else:
-        final_value = base_acqf(model_candidates)
+    final_value = (
+        raw_value
+        if is_one_shot_acquisition(base_acqf)
+        else base_acqf(model_candidates)
+    )
     if hasattr(final_value, "detach"):
         final_value = final_value.detach()
     return VariableTotalBestSubsetResult(

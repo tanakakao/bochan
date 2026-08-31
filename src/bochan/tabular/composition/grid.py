@@ -4,10 +4,151 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from itertools import combinations
 from math import floor
 from typing import Any
 
 import numpy as np
+
+from bochan.api.support.best_subset import InfeasibleBestSubsetSupportError
+
+GridLinearConstraint = tuple[tuple[float, ...], float, float]
+
+
+def _constraint_items(values: Any) -> list[Any]:
+    if isinstance(values, (str, int, np.integer)):
+        return [values]
+    if hasattr(values, "detach"):
+        return values.detach().cpu().reshape(-1).tolist()
+    return list(values)
+
+
+def _constraint_coefficients(values: Any) -> list[float]:
+    if isinstance(values, (int, float, np.integer, np.floating)):
+        return [float(values)]
+    if hasattr(values, "detach"):
+        return [
+            float(value)
+            for value in values.detach().cpu().reshape(-1).tolist()
+        ]
+    return [float(value) for value in values]
+
+
+def composition_grid_linear_constraints(
+    *,
+    equality_constraints: Sequence[tuple[Any, Any, Any]] | None,
+    inequality_constraints: Sequence[tuple[Any, Any, Any]] | None,
+    feature_names: Sequence[Any],
+    composition_feature_names: Sequence[str],
+    inequality_sense: str = "ge",
+    rhs_scale: float = 1.0,
+    context: str = "Composition step-grid best_subset",
+) -> tuple[GridLinearConstraint, ...]:
+    """Extract composition-only linear constraints for the grid MILP.
+
+    Process-only constraints are ignored because the projector does not modify those
+    dimensions. Constraints that mix composition and non-composition features are
+    rejected explicitly; changing only the composition block could otherwise violate
+    the coupled constraint after projection.
+
+    ``rhs_scale`` maps constraints expressed on normalized fractions to the absolute
+    amount variables used internally by the fixed-total grid MILP. It remains 1.0 for
+    variable-total raw-amount decisions.
+    """
+
+    scale = float(rhs_scale)
+    if scale <= 0.0:
+        raise ValueError("rhs_scale must be positive.")
+    sense = str(inequality_sense).lower()
+    if sense not in {"ge", "le"}:
+        raise ValueError("inequality_sense must be 'ge' or 'le'.")
+
+    composition_names = tuple(str(name) for name in composition_feature_names)
+    component_index = {name: index for index, name in enumerate(composition_names)}
+    feature_values = tuple(feature_names)
+
+    def resolve_item(item: Any) -> int | None:
+        if isinstance(item, str):
+            return component_index.get(item)
+        if isinstance(item, (int, np.integer)):
+            position = int(item)
+            if position < 0 or position >= len(feature_values):
+                raise IndexError(
+                    f"Constraint feature index {position} is outside the candidate "
+                    f"dimension {len(feature_values)}."
+                )
+            return component_index.get(str(feature_values[position]))
+        return None
+
+    def convert(
+        constraints: Sequence[tuple[Any, Any, Any]] | None,
+        *,
+        equality: bool,
+    ) -> list[GridLinearConstraint]:
+        converted: list[GridLinearConstraint] = []
+        for indices, coefficients, rhs in constraints or ():
+            items = _constraint_items(indices)
+            coeffs = _constraint_coefficients(coefficients)
+            if len(items) != len(coeffs):
+                raise ValueError(
+                    "Constraint indices and coefficients must have matching lengths."
+                )
+
+            resolved = [resolve_item(item) for item in items]
+            touches_composition = any(index is not None for index in resolved)
+            if not touches_composition:
+                continue
+            if any(index is None for index in resolved):
+                raise ValueError(
+                    f"{context} cannot project a linear constraint that mixes "
+                    "composition and non-composition features. Keep stepped "
+                    "composition constraints composition-only for this phase."
+                )
+
+            vector = [0.0] * len(composition_names)
+            for index, coefficient in zip(resolved, coeffs, strict=True):
+                assert index is not None
+                vector[index] += float(coefficient)
+
+            scaled_rhs = float(rhs) * scale
+            if equality:
+                lower = scaled_rhs
+                upper = scaled_rhs
+            elif sense == "ge":
+                lower = scaled_rhs
+                upper = np.inf
+            else:
+                lower = -np.inf
+                upper = scaled_rhs
+            converted.append((tuple(vector), float(lower), float(upper)))
+        return converted
+
+    return tuple(
+        [
+            *convert(equality_constraints, equality=True),
+            *convert(inequality_constraints, equality=False),
+        ]
+    )
+
+
+def merge_composition_grid_linear_constraints(
+    *groups: Sequence[GridLinearConstraint],
+) -> tuple[GridLinearConstraint, ...]:
+    """Merge grid constraints while preserving order and removing duplicates."""
+
+    result: list[GridLinearConstraint] = []
+    seen: set[GridLinearConstraint] = set()
+    for group in groups:
+        for constraint in group:
+            normalized = (
+                tuple(float(value) for value in constraint[0]),
+                float(constraint[1]),
+                float(constraint[2]),
+            )
+            if normalized not in seen:
+                result.append(normalized)
+                seen.add(normalized)
+    return tuple(result)
 
 
 def _project_grid_row(
@@ -20,6 +161,7 @@ def _project_grid_row(
     exact_k: int,
     total_bounds: tuple[float, float],
     tolerance: float,
+    linear_constraints: Sequence[GridLinearConstraint] = (),
 ) -> np.ndarray:
     """Project one exact support to its nearest feasible amount-grid point."""
 
@@ -27,7 +169,7 @@ def _project_grid_row(
 
     active_indices = np.flatnonzero(active).tolist()
     if len(active_indices) != int(exact_k):
-        raise ValueError(
+        raise InfeasibleBestSubsetSupportError(
             "Composition grid projection requires the inner optimizer to preserve "
             f"exactly {exact_k} active components; got {len(active_indices)}."
         )
@@ -59,7 +201,7 @@ def _project_grid_row(
                 (component_upper - component_lower) / step + tolerance
             )
             if minimum_integer > maximum_integer:
-                raise ValueError(
+                raise InfeasibleBestSubsetSupportError(
                     "An active composition component has no positive grid point "
                     f"within its bounds: {elements[component_index]!r}."
                 )
@@ -99,6 +241,32 @@ def _project_grid_row(
     lower_constraints.append(total_lower - total_offset)
     upper_constraints.append(total_upper - total_offset)
 
+    for coefficients, constraint_lower, constraint_upper in linear_constraints:
+        if len(coefficients) != len(elements):
+            raise ValueError(
+                "Composition grid linear constraint width must match the element count."
+            )
+        row = np.zeros(2 * n_active, dtype=float)
+        offset = 0.0
+        for local_index, component_index in enumerate(active_indices):
+            coefficient = float(coefficients[component_index])
+            row[local_index] = coefficient * scales[local_index]
+            offset += coefficient * offsets[local_index]
+
+        adjusted_lower = float(constraint_lower) - offset
+        adjusted_upper = float(constraint_upper) - offset
+        if np.all(np.abs(row[:n_active]) <= tolerance):
+            if adjusted_lower > tolerance or adjusted_upper < -tolerance:
+                support = [elements[index] for index in active_indices]
+                raise InfeasibleBestSubsetSupportError(
+                    "The selected composition support cannot satisfy the configured "
+                    f"linear constraints on the step grid: {support!r}."
+                )
+            continue
+        rows.append(row)
+        lower_constraints.append(adjusted_lower)
+        upper_constraints.append(adjusted_upper)
+
     result = milp(
         c=objective,
         integrality=integrality,
@@ -112,9 +280,9 @@ def _project_grid_row(
     )
     if not result.success or result.x is None:
         support = [elements[index] for index in active_indices]
-        raise ValueError(
+        raise InfeasibleBestSubsetSupportError(
             "The selected composition support has no feasible point on the "
-            f"configured step grid: {support!r}."
+            f"configured step grid and linear constraints: {support!r}."
         )
 
     projected = np.zeros(len(elements), dtype=float)
@@ -136,6 +304,7 @@ def _validate_support(
     exact_k: int,
     total_bounds: tuple[float, float],
     tolerance: float,
+    linear_constraints: Sequence[GridLinearConstraint] = (),
 ) -> None:
     active_set = {str(element) for element in active_elements}
     unknown = active_set - set(elements)
@@ -165,7 +334,62 @@ def _validate_support(
         exact_k=exact_k,
         total_bounds=total_bounds,
         tolerance=tolerance,
+        linear_constraints=linear_constraints,
     )
+
+
+def _has_feasible_support(
+    *,
+    elements: Sequence[str],
+    required_elements: Sequence[str],
+    forbidden_elements: Sequence[str],
+    bounds: Sequence[tuple[float, float]],
+    steps: Sequence[float | None],
+    exact_k: int,
+    total_bounds: tuple[float, float],
+    tolerance: float,
+    linear_constraints: Sequence[GridLinearConstraint],
+) -> bool:
+    """Return whether at least one configured exact-k support is grid feasible."""
+
+    element_tuple = tuple(str(element) for element in elements)
+    required = set(str(element) for element in required_elements)
+    forbidden = set(str(element) for element in forbidden_elements)
+    for index, element in enumerate(element_tuple):
+        lower, upper = bounds[index]
+        if lower > tolerance:
+            required.add(element)
+        if upper <= tolerance:
+            forbidden.add(element)
+    if required & forbidden:
+        return False
+
+    optional = [
+        element
+        for element in element_tuple
+        if element not in required and element not in forbidden
+    ]
+    choose = int(exact_k) - len(required)
+    if choose < 0 or choose > len(optional):
+        return False
+
+    ordered_required = [element for element in element_tuple if element in required]
+    for selected in combinations(optional, choose):
+        try:
+            _validate_support(
+                [*ordered_required, *selected],
+                elements=element_tuple,
+                bounds=bounds,
+                steps=steps,
+                exact_k=exact_k,
+                total_bounds=total_bounds,
+                tolerance=tolerance,
+                linear_constraints=linear_constraints,
+            )
+        except InfeasibleBestSubsetSupportError:
+            continue
+        return True
+    return False
 
 
 @dataclass(frozen=True)
@@ -174,12 +398,9 @@ class CompositionGridFinalPostprocess:
 
     Candidate optimization remains continuous. This callable is applied only to
     the final candidate returned for one support, where it solves a tiny MILP that
-    minimizes the L1 displacement from the continuous optimum while preserving:
-
-    - the exact active-element support,
-    - component bounds,
-    - per-element step sizes, and
-    - the fixed composition total.
+    minimizes the L1 displacement from the continuous optimum while preserving the
+    exact support, component bounds, step sizes, fixed total, and supported
+    composition-only linear constraints.
 
     The optional ``previous`` callback is evaluated first so ordinary process
     rounding/fixed-value handling can remain owned by the caller.
@@ -191,6 +412,7 @@ class CompositionGridFinalPostprocess:
     bounds: tuple[tuple[float, float], ...]
     steps: tuple[float | None, ...]
     exact_k: int
+    linear_constraints: tuple[GridLinearConstraint, ...] = ()
     previous: Callable[[Any], Any] | None = None
     tolerance: float = 1e-8
 
@@ -202,6 +424,7 @@ class CompositionGridFinalPostprocess:
         elements: Sequence[str],
         config: Mapping[str, Any],
         exact_k: int,
+        linear_constraints: Sequence[GridLinearConstraint] | None = None,
         previous: Callable[[Any], Any] | None = None,
     ) -> CompositionGridFinalPostprocess:
         total = float(config["total"])
@@ -226,6 +449,7 @@ class CompositionGridFinalPostprocess:
             bounds=bounds,
             steps=steps,
             exact_k=int(exact_k),
+            linear_constraints=tuple(linear_constraints or ()),
             previous=previous,
         )
 
@@ -243,10 +467,11 @@ class CompositionGridFinalPostprocess:
             exact_k=self.exact_k,
             total_bounds=(self.total, self.total),
             tolerance=self.tolerance,
+            linear_constraints=self.linear_constraints,
         )
 
     def validate_support(self, active_elements: Sequence[str]) -> None:
-        """Raise when one exact support has no feasible point on the step grid."""
+        """Raise when one exact support has no feasible grid-constrained point."""
 
         _validate_support(
             active_elements,
@@ -256,6 +481,7 @@ class CompositionGridFinalPostprocess:
             exact_k=self.exact_k,
             total_bounds=(self.total, self.total),
             tolerance=self.tolerance,
+            linear_constraints=self.linear_constraints,
         )
 
     def __call__(self, candidates: Any) -> Any:
@@ -301,11 +527,9 @@ class CompositionGridFinalPostprocess:
 class CompositionVariableTotalGridFinalPostprocess:
     """Project raw absolute composition amounts onto a variable-total step grid.
 
-    Unlike :class:`CompositionGridFinalPostprocess`, the composition total is not
-    fixed.  The MILP keeps the selected support, component bounds and per-element
-    grids while allowing the projected total to move anywhere inside
-    ``total_bounds``.  The nearest feasible raw-amount candidate is therefore what
-    the acquisition function is ultimately re-evaluated on.
+    The MILP keeps the selected support, component bounds, per-element grids,
+    variable total bounds, and supported raw-amount linear constraints. The nearest
+    feasible raw-amount candidate is what the acquisition function is re-evaluated on.
     """
 
     feature_indices: tuple[int, ...]
@@ -314,6 +538,9 @@ class CompositionVariableTotalGridFinalPostprocess:
     bounds: tuple[tuple[float, float], ...]
     steps: tuple[float | None, ...]
     exact_k: int
+    required_elements: tuple[str, ...] = ()
+    forbidden_elements: tuple[str, ...] = ()
+    linear_constraints: tuple[GridLinearConstraint, ...] = ()
     previous: Callable[[Any], Any] | None = None
     tolerance: float = 1e-8
 
@@ -325,6 +552,7 @@ class CompositionVariableTotalGridFinalPostprocess:
         elements: Sequence[str],
         config: Mapping[str, Any],
         exact_k: int,
+        linear_constraints: Sequence[GridLinearConstraint] | None = None,
         previous: Callable[[Any], Any] | None = None,
     ) -> CompositionVariableTotalGridFinalPostprocess:
         total_pair = tuple(config["total_bounds"])
@@ -356,6 +584,13 @@ class CompositionVariableTotalGridFinalPostprocess:
             bounds=bounds,
             steps=steps,
             exact_k=int(exact_k),
+            required_elements=tuple(
+                str(element) for element in config.get("required_components") or ()
+            ),
+            forbidden_elements=tuple(
+                str(element) for element in config.get("forbidden_components") or ()
+            ),
+            linear_constraints=tuple(linear_constraints or ()),
             previous=previous,
         )
 
@@ -373,20 +608,37 @@ class CompositionVariableTotalGridFinalPostprocess:
             exact_k=self.exact_k,
             total_bounds=self.total_bounds,
             tolerance=self.tolerance,
+            linear_constraints=self.linear_constraints,
         )
 
     def validate_support(self, active_elements: Sequence[str]) -> None:
-        """Raise when one exact support has no feasible variable-total grid point."""
+        """Raise only when no configured exact-k support is grid feasible."""
 
-        _validate_support(
-            active_elements,
-            elements=self.elements,
-            bounds=self.bounds,
-            steps=self.steps,
-            exact_k=self.exact_k,
-            total_bounds=self.total_bounds,
-            tolerance=self.tolerance,
-        )
+        try:
+            _validate_support(
+                active_elements,
+                elements=self.elements,
+                bounds=self.bounds,
+                steps=self.steps,
+                exact_k=self.exact_k,
+                total_bounds=self.total_bounds,
+                tolerance=self.tolerance,
+                linear_constraints=self.linear_constraints,
+            )
+        except InfeasibleBestSubsetSupportError:
+            if _has_feasible_support(
+                elements=self.elements,
+                required_elements=self.required_elements,
+                forbidden_elements=self.forbidden_elements,
+                bounds=self.bounds,
+                steps=self.steps,
+                exact_k=self.exact_k,
+                total_bounds=self.total_bounds,
+                tolerance=self.tolerance,
+                linear_constraints=self.linear_constraints,
+            ):
+                return
+            raise
 
     def __call__(self, candidates: Any) -> Any:
         import torch
@@ -400,7 +652,8 @@ class CompositionVariableTotalGridFinalPostprocess:
             candidates.shape
         ):
             raise ValueError(
-                "Variable-total composition grid final postprocess must preserve candidate shape."
+                "Variable-total composition grid final postprocess must preserve "
+                "candidate shape."
             )
 
         result = processed.detach().clone()
@@ -417,9 +670,13 @@ class CompositionVariableTotalGridFinalPostprocess:
             active = np.abs(amounts) > self.tolerance
             projected = self._project_row(amounts, active)
             projected_total = float(projected.sum())
-            if projected_total < total_lower - self.tolerance or projected_total > total_upper + self.tolerance:
+            if (
+                projected_total < total_lower - self.tolerance
+                or projected_total > total_upper + self.tolerance
+            ):
                 raise RuntimeError(
-                    "Variable-total composition grid projection produced a total outside total_bounds."
+                    "Variable-total composition grid projection produced a total "
+                    "outside total_bounds."
                 )
             row[indices] = torch.as_tensor(
                 projected,
@@ -433,4 +690,7 @@ class CompositionVariableTotalGridFinalPostprocess:
 __all__ = [
     "CompositionGridFinalPostprocess",
     "CompositionVariableTotalGridFinalPostprocess",
+    "GridLinearConstraint",
+    "composition_grid_linear_constraints",
+    "merge_composition_grid_linear_constraints",
 ]

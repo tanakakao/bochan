@@ -400,14 +400,55 @@ def test_step_grid_best_subset_rejects_infeasible_support_before_optimization() 
         )
 
 
-def test_step_grid_best_subset_rejects_extra_composition_linear_constraints() -> None:
-    config = OptimizeConfig(
-        equality_constraints=[
-            (["alloy__fraction__Ti"], [1.0], 0.3),
-        ]
+def test_step_grid_best_subset_enforces_composition_linear_constraints() -> None:
+    config = _resolve(
+        _grid_site(),
+        OptimizeConfig(
+            equality_constraints=[
+                (["alloy__fraction__Al"], [1.0], 0.4),
+            ],
+            inequality_constraints=[
+                (
+                    ["alloy__fraction__Ti", "alloy__fraction__V"],
+                    [-1.0, -1.0],
+                    -0.6,
+                )
+            ],
+        ),
     )
-    with pytest.raises(ValueError, match="additional linear constraints"):
-        _resolve(_grid_site(), config)
+    callback = config.final_candidate_postprocess
+    assert isinstance(callback, CompositionGridFinalPostprocess)
+
+    projected = callback(
+        torch.tensor(
+            [[0.44, 0.31, 0.25, 0.0, 0.0, 913.0]],
+            dtype=torch.double,
+        )
+    )
+    fractions = projected[0, :5]
+
+    assert fractions[0].item() == pytest.approx(0.4, abs=1e-10)
+    assert fractions[1].item() + fractions[2].item() <= 0.6 + 1e-10
+    assert fractions.sum().item() == pytest.approx(1.0, abs=1e-10)
+    assert int((fractions > 1e-10).sum().item()) == 3
+    for value in fractions[:3].tolist():
+        assert value / 0.1 == pytest.approx(round(value / 0.1), abs=1e-8)
+
+
+def test_step_grid_best_subset_rejects_process_coupled_composition_constraint() -> None:
+    with pytest.raises(ValueError, match="mixes composition and non-composition"):
+        _resolve(
+            _grid_site(),
+            OptimizeConfig(
+                equality_constraints=[
+                    (
+                        ["alloy__fraction__Al", "temperature"],
+                        [1.0, -0.001],
+                        -0.5,
+                    )
+                ]
+            ),
+        )
 
     process_only = _resolve(
         _grid_site(),

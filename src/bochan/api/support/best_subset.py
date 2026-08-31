@@ -427,15 +427,19 @@ def _topk_seed_support(
         support_selection="topk",
         fixed_features=fixed,
     )
+    seed_replacements: dict[str, Any] = {}
+    if hasattr(config, "final_candidate_postprocess"):
+        # Seed construction is heuristic only. Support-dependent final
+        # postprocessing (for example a composition grid MILP) belongs to the
+        # subsequent fixed-support evaluation. The base API OptimizeConfig does
+        # not expose this tabular/canonical extension, so preserve compatibility.
+        seed_replacements["final_candidate_postprocess"] = None
     seed_config = replace(
         config,
         repair_config=seed_repair,
         fixed_features=fixed,
         optimizer_kwargs=_inner_optimizer_kwargs(config),
-        # Seed construction is heuristic only. Support-dependent final
-        # postprocessing (for example a composition grid MILP) belongs to the
-        # subsequent fixed-support evaluation.
-        final_candidate_postprocess=None,
+        **seed_replacements,
     )
     candidates, _ = optimize_one(
         acqf=acqf,

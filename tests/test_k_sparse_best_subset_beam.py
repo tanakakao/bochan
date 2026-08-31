@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 import torch
 
+from bochan.api import OptimizeConfig as PublicOptimizeConfig
 from bochan.api.configs import CandidateRepairConfig, OptimizeConfig
 from bochan.api.factory import optimize_candidates
 from bochan.api.support.best_subset import InfeasibleBestSubsetSupportError
@@ -263,7 +264,7 @@ def test_best_subset_beam_recovers_from_infeasible_topk_seed() -> None:
             )
         return candidates
 
-    config = OptimizeConfig(
+    config = PublicOptimizeConfig(
         optimizer=_seeded_callable_optimizer(
             seen,
             base_values=(0.9, 0.8, 0.7, 0.6),

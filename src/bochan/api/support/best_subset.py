@@ -1,4 +1,4 @@
-"""Acquisition-aware support search for k-sparse candidate optimization."""
+"""Acquisition-aware support search for sparse candidate optimization."""
 
 from __future__ import annotations
 
@@ -15,6 +15,8 @@ BEST_SUBSET_STRATEGY_KWARG = "best_subset_strategy"
 BEST_SUBSET_BEAM_WIDTH_KWARG = "best_subset_beam_width"
 BEST_SUBSET_BEAM_STEPS_KWARG = "best_subset_beam_steps"
 BEST_SUBSET_MAX_EVALUATIONS_KWARG = "best_subset_max_evaluations"
+BEST_SUBSET_MIN_K_KWARG = "best_subset_min_k"
+BEST_SUBSET_MAX_K_KWARG = "best_subset_max_k"
 
 DEFAULT_BEST_SUBSET_MAX_COMBINATIONS = 2000
 DEFAULT_BEST_SUBSET_STRATEGY = "exact"
@@ -31,21 +33,33 @@ _SUPPORT_SEARCH_KWARGS = {
     BEST_SUBSET_BEAM_WIDTH_KWARG,
     BEST_SUBSET_BEAM_STEPS_KWARG,
     BEST_SUBSET_MAX_EVALUATIONS_KWARG,
+    BEST_SUBSET_MIN_K_KWARG,
+    BEST_SUBSET_MAX_K_KWARG,
 }
 
 
 @dataclass(frozen=True)
 class _SupportProblem:
     comp_idx: tuple[int, ...]
-    k: int
+    min_k: int
+    max_k: int
     required: frozenset[int]
     forbidden: frozenset[int]
     free: tuple[int, ...]
-    choose: int
+    min_choose: int
+    max_choose: int
+
+    @property
+    def cardinalities(self) -> tuple[int, ...]:
+        return tuple(range(self.min_k, self.max_k + 1))
+
+    @property
+    def choose_counts(self) -> tuple[int, ...]:
+        return tuple(range(self.min_choose, self.max_choose + 1))
 
     @property
     def count(self) -> int:
-        return comb(len(self.free), self.choose)
+        return sum(comb(len(self.free), choose) for choose in self.choose_counts)
 
 
 def uses_best_subset(config: OptimizeConfig) -> bool:
@@ -68,7 +82,7 @@ def _validate_fixed_features_list(
     fixed_features_list: Sequence[Mapping[int, float]] | None,
     comp_idx: Sequence[int],
 ) -> None:
-    """Reject mixed assignments that also mutate k-sparse support dimensions."""
+    """Reject mixed assignments that also mutate sparse support dimensions."""
     if fixed_features_list is None:
         return
     sparse_dims = {int(index) for index in comp_idx}
@@ -87,6 +101,19 @@ def _validate_fixed_features_list(
         )
 
 
+def _requested_k_range(config: OptimizeConfig, *, default_k: int) -> tuple[int, int]:
+    optimizer_kwargs = dict(config.optimizer_kwargs or {})
+    minimum = int(optimizer_kwargs.get(BEST_SUBSET_MIN_K_KWARG, default_k))
+    maximum = int(optimizer_kwargs.get(BEST_SUBSET_MAX_K_KWARG, default_k))
+    if minimum < 0:
+        raise ValueError(f"{BEST_SUBSET_MIN_K_KWARG} must be >= 0.")
+    if maximum < minimum:
+        raise ValueError(
+            f"{BEST_SUBSET_MAX_K_KWARG} must be >= {BEST_SUBSET_MIN_K_KWARG}."
+        )
+    return minimum, maximum
+
+
 def _support_problem(config: OptimizeConfig) -> _SupportProblem:
     repair = config.repair_config
     if repair is None or repair.support_selection != "best_subset":
@@ -98,10 +125,17 @@ def _support_problem(config: OptimizeConfig) -> _SupportProblem:
     if len(set(comp_idx)) != len(comp_idx):
         raise ValueError("repair_config.comp_idx must not contain duplicate indices.")
 
-    k = int(repair.k)
-    if k < 0 or k > len(comp_idx):
+    default_k = int(repair.k)
+    if default_k < 0 or default_k > len(comp_idx):
         raise ValueError(
-            f"best_subset requires 0 <= k <= len(comp_idx). Got k={k}, len={len(comp_idx)}."
+            "best_subset requires 0 <= repair_config.k <= len(comp_idx). "
+            f"Got k={default_k}, len={len(comp_idx)}."
+        )
+    min_k, max_k = _requested_k_range(config, default_k=default_k)
+    if max_k > len(comp_idx):
+        raise ValueError(
+            "best_subset cardinality range must not exceed len(comp_idx). "
+            f"Got max_k={max_k}, len={len(comp_idx)}."
         )
 
     _validate_fixed_features_list(config.fixed_features_list, comp_idx)
@@ -109,27 +143,32 @@ def _support_problem(config: OptimizeConfig) -> _SupportProblem:
     required = frozenset(index for index in comp_idx if fixed.get(index, 0.0) != 0.0)
     forbidden = frozenset(index for index in comp_idx if index in fixed and fixed[index] == 0.0)
 
-    if len(required) > k:
+    if len(required) > max_k:
         raise ValueError(
-            "best_subset has more non-zero fixed k-sparse dimensions than k: "
-            f"required={len(required)}, k={k}."
+            "best_subset has more non-zero fixed sparse dimensions than max_k: "
+            f"required={len(required)}, max_k={max_k}."
         )
 
     free = tuple(index for index in comp_idx if index not in required and index not in forbidden)
-    choose = k - len(required)
-    if choose > len(free):
+    effective_min_k = max(min_k, len(required))
+    effective_max_k = min(max_k, len(required) + len(free))
+    if effective_min_k > effective_max_k:
         raise ValueError(
-            "best_subset cannot construct an exact-k support after fixed-feature "
-            f"constraints: required={len(required)}, free={len(free)}, k={k}."
+            "best_subset cannot construct any support in the requested cardinality range "
+            "after fixed-feature constraints: "
+            f"required={len(required)}, free={len(free)}, "
+            f"requested=[{min_k}, {max_k}]."
         )
 
     return _SupportProblem(
         comp_idx=comp_idx,
-        k=k,
+        min_k=effective_min_k,
+        max_k=effective_max_k,
         required=required,
         forbidden=forbidden,
         free=free,
-        choose=choose,
+        min_choose=effective_min_k - len(required),
+        max_choose=effective_max_k - len(required),
     )
 
 
@@ -146,9 +185,17 @@ def _max_combinations(config: OptimizeConfig) -> int:
     return value
 
 
-def _resolve_strategy(config: OptimizeConfig, problem: _SupportProblem | None = None) -> BestSubsetStrategy:
+def _resolve_strategy(
+    config: OptimizeConfig,
+    problem: _SupportProblem | None = None,
+) -> BestSubsetStrategy:
     optimizer_kwargs = dict(config.optimizer_kwargs or {})
-    strategy = str(optimizer_kwargs.get(BEST_SUBSET_STRATEGY_KWARG, DEFAULT_BEST_SUBSET_STRATEGY)).lower()
+    strategy = str(
+        optimizer_kwargs.get(
+            BEST_SUBSET_STRATEGY_KWARG,
+            DEFAULT_BEST_SUBSET_STRATEGY,
+        )
+    ).lower()
     if strategy not in {"exact", "beam", "auto"}:
         raise ValueError(
             f"{BEST_SUBSET_STRATEGY_KWARG} must be one of 'exact', 'beam', or 'auto'. "
@@ -162,12 +209,12 @@ def _resolve_strategy(config: OptimizeConfig, problem: _SupportProblem | None = 
 
 
 def enumerate_best_subset_supports(config: OptimizeConfig) -> list[tuple[int, ...]]:
-    """Enumerate feasible exact-k supports after applying fixed-feature rules.
+    """Enumerate feasible supports across the requested cardinality range.
 
-    Non-zero fixed k-sparse dimensions are required in every support. Zero-fixed
-    dimensions are excluded. Remaining dimensions are enumerated exactly so the
-    acquisition function, rather than local coefficient magnitude, chooses the
-    support.
+    Without ``best_subset_min_k`` / ``best_subset_max_k`` this preserves the
+    historical exact-k behavior and uses ``repair_config.k`` for both bounds.
+    Non-zero fixed sparse dimensions are required in every support and zero-fixed
+    dimensions are excluded.
     """
     problem = _support_problem(config)
     max_combinations = _max_combinations(config)
@@ -177,13 +224,16 @@ def enumerate_best_subset_supports(config: OptimizeConfig) -> list[tuple[int, ..
             f"{problem.count} supports, exceeding the limit {max_combinations}. "
             f"Increase optimizer_kwargs['{BEST_SUBSET_MAX_COMBINATIONS_KWARG}'], "
             f"set optimizer_kwargs['{BEST_SUBSET_STRATEGY_KWARG}']='beam' (or 'auto'), "
-            "or reduce comp_idx / k."
+            "or reduce comp_idx / the cardinality range."
         )
 
     supports: list[tuple[int, ...]] = []
-    for selected in combinations(problem.free, problem.choose):
-        active = set(problem.required) | set(selected)
-        supports.append(tuple(index for index in problem.comp_idx if index in active))
+    for choose in problem.choose_counts:
+        for selected in combinations(problem.free, choose):
+            active = set(problem.required) | set(selected)
+            supports.append(
+                tuple(index for index in problem.comp_idx if index in active)
+            )
     return supports
 
 
@@ -300,8 +350,18 @@ def _optimize_exact_best_subset(
 
 def _beam_settings(config: OptimizeConfig) -> tuple[int, int, int]:
     optimizer_kwargs = dict(config.optimizer_kwargs or {})
-    width = int(optimizer_kwargs.get(BEST_SUBSET_BEAM_WIDTH_KWARG, DEFAULT_BEST_SUBSET_BEAM_WIDTH))
-    steps = int(optimizer_kwargs.get(BEST_SUBSET_BEAM_STEPS_KWARG, DEFAULT_BEST_SUBSET_BEAM_STEPS))
+    width = int(
+        optimizer_kwargs.get(
+            BEST_SUBSET_BEAM_WIDTH_KWARG,
+            DEFAULT_BEST_SUBSET_BEAM_WIDTH,
+        )
+    )
+    steps = int(
+        optimizer_kwargs.get(
+            BEST_SUBSET_BEAM_STEPS_KWARG,
+            DEFAULT_BEST_SUBSET_BEAM_STEPS,
+        )
+    )
     max_evaluations = int(
         optimizer_kwargs.get(
             BEST_SUBSET_MAX_EVALUATIONS_KWARG,
@@ -317,20 +377,25 @@ def _beam_settings(config: OptimizeConfig) -> tuple[int, int, int]:
     return width, steps, max_evaluations
 
 
-def _canonical_support(indices: set[int] | frozenset[int], comp_idx: Sequence[int]) -> tuple[int, ...]:
+def _canonical_support(
+    indices: set[int] | frozenset[int],
+    comp_idx: Sequence[int],
+) -> tuple[int, ...]:
     return tuple(index for index in comp_idx if index in indices)
 
 
 def _topk_seed_support(
     *,
+    support_k: int,
     acqf: Any,
     bounds: Any,
     config: OptimizeConfig,
     problem: _SupportProblem,
     optimize_one: OptimizeOne,
 ) -> tuple[int, ...]:
-    """Build a shared exact-k seed support from the existing top-k heuristic."""
-    if problem.choose == 0:
+    """Build one shared seed support for a requested cardinality."""
+    choose = support_k - len(problem.required)
+    if choose == 0:
         return _canonical_support(problem.required, problem.comp_idx)
 
     repair = config.repair_config
@@ -340,6 +405,7 @@ def _topk_seed_support(
     fixed = _merged_fixed_features(config)
     seed_repair = replace(
         repair,
+        k=support_k,
         support_selection="topk",
         fixed_features=fixed,
     )
@@ -369,30 +435,47 @@ def _topk_seed_support(
     position = {index: pos for pos, index in enumerate(problem.comp_idx)}
     ranked_free = sorted(
         problem.free,
-        key=lambda index: (-float(aggregate[position[index]].item()), position[index]),
+        key=lambda index: (
+            -float(aggregate[position[index]].item()),
+            position[index],
+        ),
     )
-    active = set(problem.required) | set(ranked_free[: problem.choose])
+    active = set(problem.required) | set(ranked_free[:choose])
     return _canonical_support(active, problem.comp_idx)
 
 
-def _swap_neighbors(
+def _support_neighbors(
     support: tuple[int, ...],
     problem: _SupportProblem,
 ) -> list[tuple[int, ...]]:
+    """Return swap, add, and drop neighbors inside the cardinality range."""
     active = set(support)
     removable = [index for index in support if index not in problem.required]
     addable = [index for index in problem.free if index not in active]
-    neighbors: list[tuple[int, ...]] = []
+    neighbors: set[tuple[int, ...]] = set()
+
     for drop in removable:
         for add in addable:
             candidate = (active - {drop}) | {add}
-            neighbors.append(_canonical_support(candidate, problem.comp_idx))
-    return neighbors
+            neighbors.add(_canonical_support(candidate, problem.comp_idx))
+
+    if len(support) < problem.max_k:
+        for add in addable:
+            neighbors.add(_canonical_support(active | {add}, problem.comp_idx))
+
+    if len(support) > problem.min_k:
+        for drop in removable:
+            neighbors.add(_canonical_support(active - {drop}, problem.comp_idx))
+
+    return list(neighbors)
 
 
-def _support_order(support: tuple[int, ...], problem: _SupportProblem) -> tuple[int, ...]:
+def _support_order(
+    support: tuple[int, ...],
+    problem: _SupportProblem,
+) -> tuple[int, ...]:
     position = {index: pos for pos, index in enumerate(problem.comp_idx)}
-    return tuple(position[index] for index in support)
+    return (len(support), *(position[index] for index in support))
 
 
 def _optimize_beam_best_subset(
@@ -402,28 +485,48 @@ def _optimize_beam_best_subset(
     config: OptimizeConfig,
     optimize_one: OptimizeOne,
 ) -> tuple[Any, Any]:
-    """Approximate best-subset search over full exact-k supports using swap beam search."""
+    """Approximate support search with swap/add/drop beam neighborhoods."""
     problem = _support_problem(config)
     width, steps, max_evaluations = _beam_settings(config)
+    if max_evaluations < len(problem.cardinalities):
+        raise ValueError(
+            f"{BEST_SUBSET_MAX_EVALUATIONS_KWARG} must be at least the number of "
+            "allowed cardinalities so beam search can seed each k once. "
+            f"Got max_evaluations={max_evaluations}, "
+            f"cardinalities={len(problem.cardinalities)}."
+        )
 
-    seed = _topk_seed_support(
-        acqf=acqf,
-        bounds=bounds,
-        config=config,
-        problem=problem,
-        optimize_one=optimize_one,
-    )
+    seeds = [
+        _topk_seed_support(
+            support_k=support_k,
+            acqf=acqf,
+            bounds=bounds,
+            config=config,
+            problem=problem,
+            optimize_one=optimize_one,
+        )
+        for support_k in problem.cardinalities
+    ]
+    seeds = list(dict.fromkeys(seeds))
 
     records: dict[tuple[int, ...], tuple[Any, Any, float]] = {}
-    records[seed] = _evaluate_support(
-        support=seed,
-        acqf=acqf,
-        bounds=bounds,
-        config=config,
-        optimize_one=optimize_one,
-    )
-    visited = {seed}
-    beam = [seed]
+    for seed in seeds:
+        records[seed] = _evaluate_support(
+            support=seed,
+            acqf=acqf,
+            bounds=bounds,
+            config=config,
+            optimize_one=optimize_one,
+        )
+
+    visited = set(seeds)
+    beam = sorted(
+        seeds,
+        key=lambda support: (
+            -records[support][2],
+            _support_order(support, problem),
+        ),
+    )[:width]
 
     for _ in range(steps):
         remaining = max_evaluations - len(records)
@@ -432,7 +535,7 @@ def _optimize_beam_best_subset(
 
         neighbor_set: set[tuple[int, ...]] = set()
         for support in beam:
-            neighbor_set.update(_swap_neighbors(support, problem))
+            neighbor_set.update(_support_neighbors(support, problem))
         candidates_to_evaluate = sorted(
             neighbor_set - visited,
             key=lambda support: _support_order(support, problem),
@@ -455,12 +558,18 @@ def _optimize_beam_best_subset(
         pool = set(beam) | set(evaluated)
         beam = sorted(
             pool,
-            key=lambda support: (-records[support][2], _support_order(support, problem)),
+            key=lambda support: (
+                -records[support][2],
+                _support_order(support, problem),
+            ),
         )[:width]
 
     best_support = min(
         records,
-        key=lambda support: (-records[support][2], _support_order(support, problem)),
+        key=lambda support: (
+            -records[support][2],
+            _support_order(support, problem),
+        ),
     )
     best_candidates, best_value, _ = records[best_support]
     return best_candidates, best_value
@@ -473,16 +582,16 @@ def optimize_best_subset_candidates(
     config: OptimizeConfig,
     optimize_one: OptimizeOne,
 ) -> tuple[Any, Any]:
-    """Optimize an acquisition function over exact-k supports.
+    """Optimize an acquisition function over sparse supports.
 
-    ``best_subset_strategy='exact'`` preserves exhaustive PR2 semantics.
-    ``'beam'`` starts from the existing top-k heuristic, then explores full
-    exact-k supports through one-for-one swaps while keeping the best beam.
-    ``'auto'`` uses exact enumeration when the support count is within
-    ``best_subset_max_combinations`` and otherwise switches to beam search.
+    By default the search remains exact-k and uses ``repair_config.k``. Setting
+    ``optimizer_kwargs['best_subset_min_k']`` and ``['best_subset_max_k']``
+    enables variable-cardinality search. Exact mode enumerates every support
+    across the range. Beam mode seeds every allowed cardinality and explores
+    swap/add/drop neighbors. Auto compares the summed support count across the
+    whole range against ``best_subset_max_combinations``.
 
-    For q > 1, one support is shared by the entire q-batch. The inner optimizer
-    still optimizes the joint q acquisition normally, and every support is
+    For q > 1, one support is shared by the entire q-batch. Every support is
     compared by re-evaluating the acquisition on its final repaired candidate.
     """
     if not uses_best_subset(config):

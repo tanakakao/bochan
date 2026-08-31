@@ -23,6 +23,7 @@ from bochan.api import (
     resolve_optimizer_from_cat_dims,
     uses_mixed_fixed_features,
 )
+from bochan.api.support.best_subset import InfeasibleBestSubsetSupportError
 from bochan.tabular.data import resolve_optimize_config_columns
 
 from .cardinality import (
@@ -605,22 +606,21 @@ def _validate_grid_strategy(
     optional_count: int,
     optional_k: int,
 ) -> None:
-    """Keep variable-total step grids on exhaustive support search for now."""
+    """Validate variable-total stepped support search strategy."""
 
     if not config.get("steps") or optional_k == 0:
         return
     strategy = str(optimizer_kwargs.get("best_subset_strategy", "exact")).lower()
+    if strategy not in {"exact", "beam", "auto"}:
+        raise ValueError("best_subset_strategy must be exact, beam, or auto.")
     support_count = comb(optional_count, optional_k)
     maximum = int(optimizer_kwargs.get("best_subset_max_combinations", 2000))
-    if strategy == "auto":
-        strategy = "exact" if support_count <= maximum else "beam"
-    if strategy != "exact":
-        raise ValueError(
-            "Variable-total composition best_subset with component steps currently "
-            "requires exact support search. Use best_subset_strategy='exact', or "
-            "'auto' only when the support count is within best_subset_max_combinations."
-        )
-    if support_count > maximum:
+    resolved = (
+        "exact" if strategy == "auto" and support_count <= maximum
+        else "beam" if strategy == "auto"
+        else strategy
+    )
+    if resolved == "exact" and support_count > maximum:
         raise ValueError(
             "Variable-total composition step-grid best_subset exact enumeration would "
             f"evaluate {support_count} supports, exceeding "
@@ -747,14 +747,34 @@ def _validate_grid_supports(
     *,
     projector: CompositionVariableTotalGridFinalPostprocess | Any,
     site_config: Mapping[str, Any],
+    optimizer_kwargs: Mapping[str, Any],
     required: Sequence[str],
     optional: Sequence[str],
     optional_k: int,
 ) -> None:
     if not site_config.get("steps"):
         return
+
+    strategy = str(optimizer_kwargs.get("best_subset_strategy", "exact")).lower()
+    support_count = comb(len(optional), optional_k)
+    maximum = int(optimizer_kwargs.get("best_subset_max_combinations", 2000))
+    if strategy == "auto":
+        strategy = "exact" if support_count <= maximum else "beam"
+    if strategy == "beam":
+        return
+
+    feasible_count = 0
+    last_error: InfeasibleBestSubsetSupportError | None = None
     for selected in combinations(optional, optional_k):
-        projector.validate_support([*required, *selected])
+        try:
+            projector.validate_support([*required, *selected])
+        except InfeasibleBestSubsetSupportError as exc:
+            last_error = exc
+            continue
+        feasible_count += 1
+
+    if feasible_count == 0 and last_error is not None:
+        raise last_error
 
 
 def _validate_support_feasibility(
@@ -939,6 +959,7 @@ def prepare_variable_total_best_subset_config(
         _validate_grid_supports(
             projector=final_candidate_postprocess,
             site_config=site_config,
+            optimizer_kwargs=search_optimizer_kwargs,
             required=ordered_required,
             optional=optional,
             optional_k=cardinality.optional_maximum,

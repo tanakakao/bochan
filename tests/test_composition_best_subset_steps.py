@@ -179,23 +179,24 @@ def test_logratio_step_grid_rejects_process_coupled_raw_constraint(
         )
 
 
-def test_logratio_step_grid_rejects_auto_when_support_count_requires_beam() -> None:
+def test_logratio_step_grid_auto_can_switch_to_beam() -> None:
     transformer = _transformer("ilr")
-    with pytest.raises(ValueError, match="requires exact support search"):
-        prepare_logratio_best_subset_config(
-            OptimizeConfig(),
-            site_name="alloy",
-            site_config=_site(
-                "ilr",
-                best_subset_strategy="auto",
-                best_subset_max_combinations=2,
-            ),
-            transformer=transformer,
-            model_feature_names=_model_layout(transformer),
-            model_bounds=_model_bounds(transformer),
-            dtype=torch.double,
-            device=None,
-        )
+    _bridge, config, _bounds = prepare_logratio_best_subset_config(
+        OptimizeConfig(),
+        site_name="alloy",
+        site_config=_site(
+            "ilr",
+            best_subset_strategy="auto",
+            best_subset_max_combinations=2,
+        ),
+        transformer=transformer,
+        model_feature_names=_model_layout(transformer),
+        model_bounds=_model_bounds(transformer),
+        dtype=torch.double,
+        device=None,
+    )
+    assert config.optimizer_kwargs["best_subset_strategy"] == "auto"
+    assert config.optimizer_kwargs["best_subset_max_combinations"] == 2
 
 
 def test_step_grid_strategy_honors_explicit_optimizer_kwargs_over_site_defaults() -> None:
@@ -222,16 +223,14 @@ def test_step_grid_strategy_honors_explicit_optimizer_kwargs_over_site_defaults(
     assert config.optimizer_kwargs["best_subset_strategy"] == "exact"
     assert config.optimizer_kwargs["best_subset_max_combinations"] == 20
 
-    with pytest.raises(ValueError, match="requires exact support search"):
-        prepare_logratio_best_subset_config(
-            OptimizeConfig(
-                optimizer_kwargs={"best_subset_strategy": "beam"}
-            ),
-            site_name="alloy",
-            site_config=_site("ilr", best_subset_strategy="exact"),
-            transformer=transformer,
-            model_feature_names=_model_layout(transformer),
-            model_bounds=_model_bounds(transformer),
-            dtype=torch.double,
-            device=None,
-        )
+    _bridge, beam_config, _bounds = prepare_logratio_best_subset_config(
+        OptimizeConfig(optimizer_kwargs={"best_subset_strategy": "beam"}),
+        site_name="alloy",
+        site_config=_site("ilr", best_subset_strategy="exact"),
+        transformer=transformer,
+        model_feature_names=_model_layout(transformer),
+        model_bounds=_model_bounds(transformer),
+        dtype=torch.double,
+        device=None,
+    )
+    assert beam_config.optimizer_kwargs["best_subset_strategy"] == "beam"

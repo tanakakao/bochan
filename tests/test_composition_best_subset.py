@@ -366,24 +366,30 @@ def test_step_grid_best_subset_preserves_previous_process_postprocess() -> None:
     assert projected[0, :5].sum().item() == pytest.approx(1.0, abs=1e-10)
 
 
-def test_step_grid_best_subset_supports_auto_only_when_it_resolves_exact() -> None:
-    accepted = _resolve(
+def test_step_grid_best_subset_supports_auto_and_beam_resolution() -> None:
+    exact_auto = _resolve(
         _grid_site(
             best_subset_strategy="auto",
             best_subset_max_combinations=3,
         )
     )
-    assert accepted.final_candidate_postprocess is not None
+    assert exact_auto.final_candidate_postprocess is not None
+    assert exact_auto.optimizer_kwargs["best_subset_strategy"] == "auto"
+    assert exact_auto.optimizer_kwargs["best_subset_max_combinations"] == 3
 
-    with pytest.raises(ValueError, match="requires exact support search"):
-        _resolve(
-            _grid_site(
-                best_subset_strategy="auto",
-                best_subset_max_combinations=2,
-            )
+    beam_auto = _resolve(
+        _grid_site(
+            best_subset_strategy="auto",
+            best_subset_max_combinations=2,
         )
-    with pytest.raises(ValueError, match="requires exact support search"):
-        _resolve(_grid_site(best_subset_strategy="beam"))
+    )
+    assert beam_auto.final_candidate_postprocess is not None
+    assert beam_auto.optimizer_kwargs["best_subset_strategy"] == "auto"
+    assert beam_auto.optimizer_kwargs["best_subset_max_combinations"] == 2
+
+    explicit_beam = _resolve(_grid_site(best_subset_strategy="beam"))
+    assert explicit_beam.final_candidate_postprocess is not None
+    assert explicit_beam.optimizer_kwargs["best_subset_strategy"] == "beam"
 
 
 def test_step_grid_best_subset_rejects_infeasible_support_before_optimization() -> None:

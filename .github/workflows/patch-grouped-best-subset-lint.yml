@@ -1,0 +1,39 @@
+name: Patch grouped Best Subset lint
+
+on:
+  push:
+    branches:
+      - codex/composition-multi-best-subset-groups
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message != 'Fix grouped Best Subset lint'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/composition-multi-best-subset-groups
+      - name: Fix SIM101
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("src/bochan/api/support/multi_group_best_subset.py")
+          text = path.read_text()
+          old = '    if isinstance(raw, Mapping) or isinstance(raw, (str, bytes)):\n'
+          new = '    if isinstance(raw, (Mapping, str, bytes)):\n'
+          if old not in text:
+              raise SystemExit("Expected SIM101 anchor not found")
+          path.write_text(text.replace(old, new, 1))
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/bochan/api/support/multi_group_best_subset.py
+          git diff --cached --check
+          git commit -m "Fix grouped Best Subset lint"
+          git push origin HEAD:codex/composition-multi-best-subset-groups

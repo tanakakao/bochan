@@ -490,9 +490,14 @@ def resolve_composition_best_subset(
     if not selected_sites:
         return opt_config
     if len(selected_sites) > 1:
-        raise ValueError(
-            "Composition best_subset currently supports one composition site per "
-            "candidate optimization because CandidateRepairConfig has one sparse group."
+        from .multi_support import resolve_multiple_composition_best_subset
+
+        return resolve_multiple_composition_best_subset(
+            opt_config,
+            selected_sites=selected_sites,
+            composition_sites=composition_sites,
+            composition_transformers=composition_transformers,
+            feature_names=feature_names,
         )
 
     site_name = selected_sites[0]

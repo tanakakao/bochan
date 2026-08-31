@@ -24,6 +24,11 @@ from .best_subset import (
     DEFAULT_BEST_SUBSET_STRATEGY,
     InfeasibleBestSubsetSupportError,
 )
+from .one_shot import (
+    is_one_shot_acquisition,
+    one_shot_support_config,
+    validate_one_shot_best_subset,
+)
 
 BEST_SUBSET_GROUPS_KWARG = "best_subset_groups"
 OptimizeOne = Callable[..., tuple[Any, Any]]
@@ -329,11 +334,25 @@ def _config_for_support(
     config: OptimizeConfig,
     problem: _GroupedProblem,
     support: Sequence[int],
+    *,
+    acqf: Any,
+    bounds: Any,
 ) -> OptimizeConfig:
     repair = config.repair_config
     if repair is None:
         raise ValueError("grouped best_subset requires repair_config.")
     support_tuple = tuple(int(index) for index in support)
+    optimizer_kwargs = _inner_optimizer_kwargs(config)
+    if is_one_shot_acquisition(acqf):
+        validate_one_shot_best_subset(acqf, config)
+        return one_shot_support_config(
+            config,
+            sparse_indices=problem.sparse_indices,
+            support=support_tuple,
+            bounds=bounds,
+            optimizer_kwargs=optimizer_kwargs,
+        )
+
     support_set = set(support_tuple)
     fixed = _merged_fixed_features(config)
     for index in problem.sparse_indices:
@@ -350,7 +369,7 @@ def _config_for_support(
         config,
         repair_config=inner_repair,
         fixed_features=fixed,
-        optimizer_kwargs=_inner_optimizer_kwargs(config),
+        optimizer_kwargs=optimizer_kwargs,
     )
 
 
@@ -374,9 +393,19 @@ def _evaluate_support(
     config: OptimizeConfig,
     optimize_one: OptimizeOne,
 ) -> tuple[Any, Any, float]:
-    inner_config = _config_for_support(config, problem, support)
-    candidates, _ = optimize_one(acqf=acqf, bounds=bounds, config=inner_config)
-    value = acqf(candidates)
+    inner_config = _config_for_support(
+        config,
+        problem,
+        support,
+        acqf=acqf,
+        bounds=bounds,
+    )
+    candidates, optimized_value = optimize_one(
+        acqf=acqf,
+        bounds=bounds,
+        config=inner_config,
+    )
+    value = optimized_value if is_one_shot_acquisition(acqf) else acqf(candidates)
     if hasattr(value, "detach"):
         value = value.detach()
     return candidates, value, _scalar_acquisition_value(value)

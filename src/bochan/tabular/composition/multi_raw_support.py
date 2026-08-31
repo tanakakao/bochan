@@ -16,6 +16,7 @@ from bochan.api import (
     uses_mixed_fixed_features,
 )
 from bochan.api.support.multi_group_best_subset import BEST_SUBSET_GROUPS_KWARG
+from bochan.api.support.one_shot import is_one_shot_acquisition
 from bochan.tabular.data import resolve_optimize_config_columns
 
 from .cardinality import (
@@ -26,10 +27,9 @@ from .cardinality import (
     support_count,
 )
 from .logratio_support import (
-    RawDecisionAcquisition,
     _raw_fixed_features_list_from_training,
-    _reject_one_shot_acquisition,
     is_logratio_best_subset_site,
+    wrap_raw_decision_acquisition,
 )
 from .logratio_support import (
     _remap_optimize_config as _remap_logratio_optimize_config,
@@ -805,7 +805,6 @@ def optimize_multi_raw_best_subset(
 ) -> MultiRawBestSubsetResult:
     """Optimize multiple composition support groups in one composite raw space."""
 
-    _reject_one_shot_acquisition(base_acqf)
     bridge, raw_config, raw_bounds = prepare_multi_raw_best_subset_config(
         opt_config,
         composition_sites=composition_sites,
@@ -817,17 +816,21 @@ def optimize_multi_raw_best_subset(
         model_cat_dims=model_cat_dims,
         train_x=train_x,
     )
-    wrapped = RawDecisionAcquisition(base_acqf, bridge)  # type: ignore[arg-type]
+    wrapped = wrap_raw_decision_acquisition(base_acqf, bridge)
     if optimize_fn is None:
         from bochan.api.optimizer.service import optimize_candidates as optimize_fn
 
-    raw_candidates, _raw_value = optimize_fn(
+    raw_candidates, raw_value = optimize_fn(
         acqf=wrapped,
         bounds=raw_bounds,
         config=raw_config,
     )
     model_candidates = bridge.decision_to_model(raw_candidates)
-    final_value = base_acqf(model_candidates)
+    final_value = (
+        raw_value
+        if is_one_shot_acquisition(base_acqf)
+        else base_acqf(model_candidates)
+    )
     if hasattr(final_value, "detach"):
         final_value = final_value.detach()
     return MultiRawBestSubsetResult(

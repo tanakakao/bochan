@@ -489,6 +489,12 @@ def optimize_candidates(acqf: Any, bounds: Any, config: OptimizeConfig) -> tuple
         "return_best_only": config.return_best_only,
     }
 
+    from .support.one_shot import resolve_one_shot_ic_generator
+
+    one_shot_ic_generator = resolve_one_shot_ic_generator(acqf)
+    if one_shot_ic_generator is not None and "ic_generator" not in config.optimizer_kwargs:
+        common_kwargs["ic_generator"] = one_shot_ic_generator
+
     post_processing_func = _build_post_processing_func(config, bounds)
     if post_processing_func is not None:
         common_kwargs["post_processing_func"] = post_processing_func

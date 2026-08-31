@@ -1,0 +1,69 @@
+name: Apply variable-cardinality step-grid patch
+
+on:
+  push:
+    branches:
+      - codex/composition-variable-cardinality-step-grid
+    paths:
+      - ".github/workflows/variable-cardinality-step-grid-patch.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/composition-variable-cardinality-step-grid
+      - name: Patch Web contract and docs
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(f"Expected one match in {path}, found {count}: {old!r}")
+              file.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          replace_once(
+              "src/bochan/serving/webapp/composition/support.py",
+              '''    if config.get("steps") and minimum != maximum:\n        raise ValueError(\n            "Composition best_subset with component steps currently requires "\n            "min_components == max_components."\n        )\n''',
+              "",
+          )
+
+          replace_once(
+              "docs/composition_best_subset.md",
+              '''The current MILP step projectors are intentionally **exact-cardinality only**. Therefore, when any component `steps` are configured, `min_components` must equal `max_components`. Continuous compositions can use variable cardinality; stepped compositions cannot yet combine multiple cardinalities in one search.\n''',
+              '''The MILP step projectors preserve the support selected by Best Subset and accept every resolved cardinality between `min_components` and `max_components`. The discrete support/cardinality search remains owned by Exact / Beam / Auto; the projector optimizes only the active component values on the experiment grid.\n''',
+          )
+          replace_once(
+              "docs/composition_best_subset.md",
+              '''- `min_components != max_components` with component steps remains rejected explicitly.\n''',
+              '''- variable-cardinality step grids preserve the cardinality of each evaluated support during MILP projection.\n''',
+          )
+          replace_once(
+              "docs/composition_best_subset.md",
+              '''- fixed-total and variable-total component step grids with exact cardinality and Exact, Beam, or Auto support search;\n''',
+              '''- fixed-total and variable-total component step grids with exact or variable cardinality and Exact, Beam, or Auto support search;\n''',
+          )
+          replace_once(
+              "docs/composition_best_subset.md",
+              '''- variable-cardinality step-grid MILP projection;\n''',
+              "",
+          )
+          PY
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/variable-cardinality-step-grid-patch.yml
+          git add src/bochan/serving/webapp/composition/support.py docs/composition_best_subset.md
+          git commit -m "Wire variable-cardinality step grids through Web"
+          git push origin HEAD:codex/composition-variable-cardinality-step-grid

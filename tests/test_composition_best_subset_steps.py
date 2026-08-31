@@ -152,31 +152,46 @@ def test_logratio_step_grid_enforces_raw_fraction_linear_constraint(
 
 
 @pytest.mark.parametrize("representation", ["clr", "alr", "ilr"])
-def test_logratio_step_grid_rejects_process_coupled_raw_constraint(
+def test_logratio_step_grid_enforces_process_coupled_raw_constraint(
     representation: str,
 ) -> None:
     transformer = _transformer(representation)
-    config = OptimizeConfig(
-        equality_constraints=[
-            (
-                ["alloy__fraction__Al", "temperature"],
-                [1.0, -0.001],
-                -0.5,
-            )
-        ]
+    bridge, config, _bounds = prepare_logratio_best_subset_config(
+        OptimizeConfig(
+            equality_constraints=[
+                (
+                    ["alloy__fraction__Al", "temperature"],
+                    [1.0, -0.001],
+                    -0.5,
+                )
+            ]
+        ),
+        site_name="alloy",
+        site_config=_site(representation),
+        transformer=transformer,
+        model_feature_names=_model_layout(transformer),
+        model_bounds=_model_bounds(transformer),
+        dtype=torch.double,
+        device=None,
     )
 
-    with pytest.raises(ValueError, match="mixes composition and non-composition"):
-        prepare_logratio_best_subset_config(
-            config,
-            site_name="alloy",
-            site_config=_site(representation),
-            transformer=transformer,
-            model_feature_names=_model_layout(transformer),
-            model_bounds=_model_bounds(transformer),
-            dtype=torch.double,
-            device=None,
-        )
+    callback = config.final_candidate_postprocess
+    assert isinstance(callback, CompositionGridFinalPostprocess)
+    raw = torch.tensor(
+        [
+            [900.0, 0.44, 0.31, 0.25, 0.0, 0.0, 2.3],
+            [1000.0, 0.44, 0.31, 0.25, 0.0, 0.0, 3.1],
+        ],
+        dtype=torch.double,
+    )
+    projected = callback(raw)
+    fractions = projected[..., bridge.fraction_slice]
+
+    assert projected[:, 0].tolist() == pytest.approx([900.0, 1000.0], abs=1e-10)
+    assert projected[:, -1].tolist() == pytest.approx([2.3, 3.1], abs=1e-10)
+    assert fractions[:, 0].tolist() == pytest.approx([0.4, 0.5], abs=1e-10)
+    assert fractions.sum(dim=-1).tolist() == pytest.approx([1.0, 1.0], abs=1e-10)
+    assert torch.isfinite(bridge.decision_to_model(projected)).all()
 
 
 def test_logratio_step_grid_auto_can_switch_to_beam() -> None:

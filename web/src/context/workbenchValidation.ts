@@ -191,7 +191,6 @@ function validateCompositionCandidateSetting(settings: CompositionSettings): boo
       settings.bestSubsetStrategy === "auto" &&
       supportCount > settings.bestSubsetMaxCombinations
     );
-    if (hasSteps && usesBeam && optionalMax > 0) return false;
     if (
       usesBeam &&
       settings.bestSubsetMaxEvaluations < optionalMax - optionalMin + 1

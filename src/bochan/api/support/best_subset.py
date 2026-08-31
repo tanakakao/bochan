@@ -432,6 +432,10 @@ def _topk_seed_support(
         repair_config=seed_repair,
         fixed_features=fixed,
         optimizer_kwargs=_inner_optimizer_kwargs(config),
+        # Seed construction is heuristic only. Support-dependent final
+        # postprocessing (for example a composition grid MILP) belongs to the
+        # subsequent fixed-support evaluation.
+        final_candidate_postprocess=None,
     )
     candidates, _ = optimize_one(
         acqf=acqf,
@@ -543,9 +547,42 @@ def _optimize_beam_best_subset(
             continue
 
     if not records:
-        raise InfeasibleBestSubsetSupportError(
-            "best_subset beam search did not produce any feasible seed support."
-        )
+        # A heuristic seed may be grid-infeasible. Recover a feasible starting
+        # support by walking the support graph within the normal evaluation budget.
+        frontier = list(seeds)
+        while frontier and len(visited) < max_evaluations and not records:
+            neighbor_set: set[tuple[int, ...]] = set()
+            for support in frontier:
+                neighbor_set.update(_support_neighbors(support, problem))
+            candidates_to_evaluate = sorted(
+                neighbor_set - visited,
+                key=lambda support: _support_order(support, problem),
+            )
+            if not candidates_to_evaluate:
+                break
+
+            frontier = []
+            for support in candidates_to_evaluate:
+                if len(visited) >= max_evaluations:
+                    break
+                visited.add(support)
+                frontier.append(support)
+                try:
+                    records[support] = _evaluate_support(
+                        support=support,
+                        acqf=acqf,
+                        bounds=bounds,
+                        config=config,
+                        optimize_one=optimize_one,
+                    )
+                except InfeasibleBestSubsetSupportError:
+                    continue
+
+        if not records:
+            raise InfeasibleBestSubsetSupportError(
+                "best_subset beam search did not find a feasible seed support within "
+                f"the evaluation budget ({max_evaluations})."
+            )
 
     beam = sorted(
         records,

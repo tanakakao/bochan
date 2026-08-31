@@ -213,25 +213,24 @@ def _validate_grid_strategy(
     optional_count: int,
     optional_k: int,
 ) -> None:
-    """Keep step-grid search on exhaustive exact-cardinality supports for now."""
+    """Validate stepped support search without forcing full enumeration."""
     if not config.get("steps") or optional_k == 0:
         return
     strategy = str(
         optimizer_kwargs.get("best_subset_strategy", "exact")
     ).lower()
+    if strategy not in {"exact", "beam", "auto"}:
+        raise ValueError("best_subset_strategy must be exact, beam, or auto.")
     support_count = comb(optional_count, optional_k)
     maximum = int(
         optimizer_kwargs.get("best_subset_max_combinations", 2000)
     )
-    if strategy == "auto":
-        strategy = "exact" if support_count <= maximum else "beam"
-    if strategy != "exact":
-        raise ValueError(
-            "Composition best_subset with component steps currently requires exact "
-            "support search. Use best_subset_strategy='exact', or 'auto' only when "
-            "the support count is within best_subset_max_combinations."
-        )
-    if support_count > maximum:
+    resolved = (
+        "exact" if strategy == "auto" and support_count <= maximum
+        else "beam" if strategy == "auto"
+        else strategy
+    )
+    if resolved == "exact" and support_count > maximum:
         raise ValueError(
             "Composition step-grid best_subset exact enumeration would evaluate "
             f"{support_count} supports, exceeding best_subset_max_combinations={maximum}."
@@ -354,11 +353,22 @@ def _validate_grid_supports(
     *,
     projector: CompositionGridFinalPostprocess | Any,
     config: Mapping[str, Any],
+    optimizer_kwargs: Mapping[str, Any],
     required: Sequence[str],
     optional: Sequence[str],
     optional_k: int,
 ) -> None:
     if not config.get("steps"):
+        return
+
+    strategy = str(optimizer_kwargs.get("best_subset_strategy", "exact")).lower()
+    support_count = comb(len(optional), optional_k)
+    maximum = int(optimizer_kwargs.get("best_subset_max_combinations", 2000))
+    if strategy == "auto":
+        strategy = "exact" if support_count <= maximum else "beam"
+    if strategy == "beam":
+        # Beam remains scalable by checking feasibility only when a support is
+        # evaluated. Generic Best Subset skips explicit support-infeasibility.
         return
 
     feasible_count = 0
@@ -541,6 +551,7 @@ def resolve_composition_best_subset(
         _validate_grid_supports(
             projector=final_candidate_postprocess,
             config=config,
+            optimizer_kwargs=search_optimizer_kwargs,
             required=ordered_required,
             optional=optional,
             optional_k=cardinality.optional_maximum,

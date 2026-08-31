@@ -5,6 +5,7 @@ import torch
 
 from bochan.api.configs import CandidateRepairConfig, OptimizeConfig
 from bochan.api.factory import optimize_candidates
+from bochan.api.support.best_subset import InfeasibleBestSubsetSupportError
 
 
 def _support_table_acq(table: dict[tuple[int, ...], float], comp_idx: tuple[int, ...]):
@@ -242,3 +243,59 @@ def test_best_subset_rejects_unknown_strategy_and_invalid_beam_settings() -> Non
                 optimizer_kwargs={"best_subset_strategy": "beam", "best_subset_beam_width": 0},
             ),
         )
+
+
+
+def test_best_subset_beam_recovers_from_infeasible_topk_seed() -> None:
+    bounds = torch.tensor([[0.0] * 4, [1.0] * 4])
+    comp_idx = (0, 1, 2, 3)
+    seen: list[tuple[int, ...]] = []
+
+    def final_postprocess(candidates: torch.Tensor) -> torch.Tensor:
+        active = tuple(
+            index
+            for index in comp_idx
+            if bool((candidates[..., index].abs() > 1e-8).any().item())
+        )
+        if active == (0, 1):
+            raise InfeasibleBestSubsetSupportError(
+                "heuristic seed is grid-infeasible"
+            )
+        return candidates
+
+    config = OptimizeConfig(
+        optimizer=_seeded_callable_optimizer(
+            seen,
+            base_values=(0.9, 0.8, 0.7, 0.6),
+        ),
+        optimizer_kwargs={
+            "best_subset_strategy": "beam",
+            "best_subset_beam_width": 2,
+            "best_subset_beam_steps": 1,
+            "best_subset_max_evaluations": 5,
+        },
+        final_candidate_postprocess=final_postprocess,
+        repair_config=CandidateRepairConfig(
+            comp_idx=comp_idx,
+            k=2,
+            score="value",
+            support_selection="best_subset",
+        ),
+    )
+    table = {
+        (0, 2): 2.0,
+        (0, 3): 3.0,
+        (1, 2): 10.0,
+        (1, 3): 4.0,
+    }
+
+    candidates, acq_value = optimize_candidates(
+        _support_table_acq(table, comp_idx),
+        bounds,
+        config,
+    )
+
+    active = tuple(torch.nonzero(candidates[0] > 1e-8).flatten().tolist())
+    assert active == (1, 2)
+    assert float(acq_value.item()) == pytest.approx(10.0)
+    assert len(set(seen)) <= 5

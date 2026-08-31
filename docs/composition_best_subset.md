@@ -243,12 +243,16 @@ A composition constraint can make only some element supports feasible. Such supp
 
 ### Step-grid strategy scope
 
-Step-grid Best Subset currently uses exhaustive support search for both fixed and variable totals:
+Step-grid Best Subset supports both exhaustive and approximate support search for fixed and variable totals:
 
-- `best_subset_strategy="exact"` is supported;
-- `"auto"` is supported only when the exact-cardinality support count is within `best_subset_max_combinations`, so Auto resolves to Exact;
-- `"beam"` with component steps is rejected explicitly;
-- `min_components != max_components` with component steps is rejected explicitly.
+- `best_subset_strategy="exact"` enumerates every exact-cardinality support within `best_subset_max_combinations`;
+- `"beam"` explores only the configured support-evaluation budget;
+- `"auto"` uses Exact below `best_subset_max_combinations` and Beam above it;
+- every evaluated support is ranked by the acquisition value of its final MILP-projected experiment-space candidate;
+- grid/linear-constraint-infeasible supports are skipped explicitly during Beam search;
+- `min_components != max_components` with component steps remains rejected explicitly.
+
+Exact mode prevalidates the complete support set because it will enumerate it anyway. Beam deliberately avoids that combinatorial pre-scan: feasibility is checked lazily when a support is evaluated. If the heuristic top-k seed is infeasible, Beam walks neighboring supports within `best_subset_max_evaluations` until it finds a feasible starting point or exhausts the budget.
 
 For both fixed-total and variable-total stepped compositions, composition-only linear equalities and inequalities are enforced inside the MILP projector. The remaining step-grid restrictions are:
 
@@ -291,7 +295,7 @@ Supported:
 - required and forbidden elements;
 - fixed-total fractional/amount bounds and variable-total absolute amount bounds;
 - continuous compositions with Exact, Beam, or Auto support/cardinality search;
-- fixed-total and variable-total component step grids with exact cardinality and Exact support search (or Auto resolving to Exact);
+- fixed-total and variable-total component step grids with exact cardinality and Exact, Beam, or Auto support search;
 - fixed-total raw-fraction and variable-total raw-amount composition-only linear constraints with step-grid Best Subset projection;
 - variable-total `total_bounds` and raw amount linear constraints;
 - shared support/cardinality for joint q-batches;
@@ -301,7 +305,6 @@ Still explicit future extensions:
 
 - variable-cardinality step-grid MILP projection;
 - multiple simultaneous composition Best Subset groups;
-- Beam search over stepped compositions;
 - stepped constraints that couple composition and process variables;
 - one-shot acquisition functions that introduce augmented optimization variables.
 

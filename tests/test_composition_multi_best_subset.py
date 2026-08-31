@@ -62,7 +62,7 @@ def _fixture(*, steps: bool = False):
     a_elements = ("Al", "Ti", "V")
     b_elements = ("Fe", "Ni", "Co")
     step_values_a = {element: 0.5 for element in a_elements} if steps else None
-    step_values_b = {element: 0.5 for element in b_elements} if steps else None
+    step_values_b = {element: 0.25 for element in b_elements} if steps else None
     sites = {
         "alloy_a": _site(
             "alloy_a",
@@ -230,14 +230,10 @@ def test_two_independent_step_grids_are_chained_without_moving_process_values() 
     assert projected[:, 6].tolist() == pytest.approx([913.0, 987.0], abs=1e-10)
     assert projected[:, :3].sum(dim=-1).tolist() == pytest.approx([1.0, 1.0], abs=1e-10)
     assert projected[:, 3:6].sum(dim=-1).tolist() == pytest.approx([1.0, 1.0], abs=1e-10)
-    assert projected[:, :3].tolist() == pytest.approx(
-        [[0.5, 0.5, 0.0], [0.5, 0.0, 0.5]],
-        abs=1e-10,
-    )
-    assert projected[:, 3:6].tolist() == pytest.approx(
-        [[0.5, 0.0, 0.5], [0.5, 0.5, 0.0]],
-        abs=1e-10,
-    )
+    assert projected[0, :3].tolist() == pytest.approx([0.5, 0.5, 0.0], abs=1e-10)
+    assert projected[1, :3].tolist() == pytest.approx([0.5, 0.0, 0.5], abs=1e-10)
+    assert projected[0, 3:6].tolist() == pytest.approx([0.5, 0.0, 0.5], abs=1e-10)
+    assert projected[1, 3:6].tolist() == pytest.approx([0.5, 0.5, 0.0], abs=1e-10)
 
 
 def test_cross_site_linear_constraint_is_rejected_when_both_sites_are_stepped() -> None:

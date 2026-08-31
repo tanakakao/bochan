@@ -66,6 +66,7 @@ jobs:
             tests/test_tabular_composition_element_constraints.py \
             tests/test_tabular_composition_passthrough_bounds.py \
             tests/test_tabular_crabnet_models.py \
+            tests/test_tabular_roost_models.py \
             tests/test_webapp_composition_support.py
       - name: Lint composition APIs
         run: |
@@ -175,4 +176,5 @@ jobs:
             tests/test_tabular_composition_element_constraints.py \
             tests/test_tabular_composition_passthrough_bounds.py \
             tests/test_tabular_crabnet_models.py \
+            tests/test_tabular_roost_models.py \
             tests/test_webapp_composition_support.py

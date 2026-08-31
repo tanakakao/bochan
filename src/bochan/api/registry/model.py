@@ -62,6 +62,8 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
             "deepgpdeepkernel": ("bochan.models.regression.gaussian.deep", "DeepKernelDeepGaussianGPModel"),
             "crabnet_gp": ("bochan.models.regression.gaussian.deep", "CrabNetGPModel"),
             "crabnet_dkl": ("bochan.models.regression.gaussian.deep", "CrabNetDKLModel"),
+            "roost_gp": ("bochan.models.regression.gaussian.deep", "RoostGPModel"),
+            "roost_dkl": ("bochan.models.regression.gaussian.deep", "RoostDKLModel"),
             "saas": ("bochan.models.regression.gaussian.high_dim", "SaasGaussianGPModel"),
             "pca": ("bochan.models.regression.gaussian.high_dim", "PCAGaussianGPModel"),
             "rembo": ("bochan.models.regression.gaussian.high_dim", "REMBOGaussianGPModel"),

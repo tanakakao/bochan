@@ -57,20 +57,23 @@ _CRABNET_FROZEN_MODEL_TYPES = frozenset(
         "crabnet_mixed_multitask",
     }
 )
+_ROOST_MODEL_TYPES = frozenset({"roost_gp", "roost_dkl"})
 _WEIGHT_BASIS_NAMES = frozenset({"weight", "weight_fraction", "mass_fraction", "wt%"})
 
 
-def _independent_crabnet_multi_output_config(
+def _independent_material_multi_output_config(
     config: Any,
     dataset: Any,
     single_output_config: Any,
+    *,
+    family_name: str,
 ) -> Any:
-    """Build fully independent CrabNet submodels for every regression output."""
+    """Build fully independent material-encoder submodels for every output."""
 
     output_names = list(dataset.target_names)
     if len(output_names) != int(dataset.Y.shape[-1]):
         raise RuntimeError(
-            "CrabNet target metadata must match the number of target columns."
+            f"{family_name} target metadata must match the number of target columns."
         )
 
     output_configs = []
@@ -79,7 +82,7 @@ def _independent_crabnet_multi_output_config(
             output_config = copy.deepcopy(single_output_config)
         except Exception as error:
             raise TypeError(
-                "Independent CrabNet multi-output requires model configuration objects "
+                f"Independent {family_name} multi-output requires model configuration objects "
                 "such as injected encoders, transforms, or projections to support deepcopy."
             ) from error
         output_configs.append(
@@ -397,10 +400,11 @@ def _configure_tabular_crabnet_model(
             multi_output_config=None,
         )
         if n_outputs > 1:
-            return _independent_crabnet_multi_output_config(
+            return _independent_material_multi_output_config(
                 config,
                 dataset,
                 single_output_config,
+                family_name="CrabNet",
             )
         return single_output_config
 
@@ -449,10 +453,179 @@ def _configure_tabular_crabnet_model(
         multi_output_config=None,
     )
     if n_outputs > 1:
-        return _independent_crabnet_multi_output_config(
+        return _independent_material_multi_output_config(
             config,
             dataset,
             single_output_config,
+            family_name="CrabNet",
+        )
+    return single_output_config
+
+
+def _configure_tabular_roost_model(
+    owner: Any,
+    dataset: Any,
+    config: Any,
+) -> Any:
+    """Derive the canonical Roost tensor contract from one composition site."""
+
+    model_type = str(config.model_type).lower()
+    if model_type not in _ROOST_MODEL_TYPES:
+        return config
+    if str(config.task_type) not in {"regression", "multi_objective"}:
+        raise ValueError("Tabular Roost models support regression or multi_objective regression only.")
+    if config.multi_output_config is not None:
+        raise ValueError(
+            "Tabular Roost multi-output structure is derived automatically from target_cols; "
+            "do not provide multi_output_config explicitly."
+        )
+    if config.input_type not in (None, "normal"):
+        raise ValueError(f"{model_type} requires input_type='normal'.")
+    if dataset.cat_dims:
+        categorical = [dataset.feature_names[index] for index in dataset.cat_dims]
+        raise ValueError(
+            f"{model_type} supports continuous process columns only; "
+            f"categorical columns were configured: {categorical!r}."
+        )
+    if len(owner.composition.sites) != 1:
+        raise ValueError("Tabular Roost models require exactly one composition site.")
+
+    site_name, site_config = next(iter(owner.composition.sites.items()))
+    if site_config["include_descriptors"]:
+        raise ValueError(
+            "Tabular Roost models do not accept independent composition "
+            f"descriptor columns; disable include_descriptors for site {site_name!r}."
+        )
+    transformer = owner.composition.transformers.get(site_name)
+    if transformer is None:
+        raise RuntimeError("The Roost composition transformer must be fitted before model construction.")
+
+    elements = transformer.fitted_elements
+    coordinate_names = list(transformer.representation_feature_names_)
+    feature_names = list(dataset.feature_names)
+    missing = [name for name in coordinate_names if name not in feature_names]
+    if missing:
+        raise ValueError(
+            "The Roost composition source must be included in input_cols; "
+            f"missing model coordinates: {missing!r}."
+        )
+    composition_indices = [feature_names.index(name) for name in coordinate_names]
+    composition_index_set = set(composition_indices)
+    process_indices = [index for index in range(dataset.X.shape[-1]) if index not in composition_index_set]
+
+    model_kwargs = dict(config.model_kwargs)
+    derived_names = {
+        "element_ids",
+        "input_transform",
+        "composition_indices",
+        "method",
+        "reference_index",
+        "process_bounds",
+        "component_weights",
+        "normalize_process",
+    }
+    reserved = sorted(derived_names.intersection(model_kwargs))
+    if config.input_transform is not None or reserved:
+        raise ValueError(
+            "Tabular Roost models derive composition/process layout from "
+            "composition_sites; do not provide input_transform or derived "
+            f"model kwargs explicitly: {reserved!r}."
+        )
+
+    encoder_training = model_kwargs.pop("encoder_training", None)
+    if model_type == "roost_gp":
+        if encoder_training is not None or "trainable_encoder_layers" in model_kwargs:
+            raise ValueError(
+                "roost_gp always freezes the encoder. Use model_type='roost_dkl' "
+                "for partial or full encoder training."
+            )
+    elif encoder_training is not None and str(encoder_training).lower() not in {
+        "partial",
+        "full",
+    }:
+        raise ValueError(
+            "encoder_training must be 'partial' or 'full'. Use roost_gp when "
+            "encoder fine-tuning is not required."
+        )
+    elif encoder_training is not None:
+        model_kwargs["encoder_training"] = str(encoder_training).lower()
+
+    transform_config = config.input_transform_config
+    normalize_process = True
+    transform_bounds = dataset.bounds
+    if transform_config is not None:
+        if transform_config.perturbation:
+            raise ValueError("Tabular Roost models do not yet support input perturbation.")
+        if transform_config.categorical_idx is not None:
+            raise ValueError("Tabular Roost models do not support categorical input transforms.")
+        normalize_process = bool(transform_config.normalize)
+        if transform_config.bounds is not None:
+            try:
+                transform_bounds = torch.as_tensor(
+                    transform_config.bounds,
+                    dtype=dataset.X.dtype,
+                    device=dataset.X.device,
+                )
+            except (TypeError, ValueError) as error:
+                raise TypeError(
+                    "Roost InputTransformConfig.bounds must be a 2 x d tensor-like value; "
+                    "use tabular bounds for column-addressed mappings."
+                ) from error
+
+    process_bounds = None
+    if process_indices and normalize_process:
+        if transform_bounds is None:
+            transform_bounds = torch.stack(
+                (
+                    dataset.X.min(dim=0).values,
+                    dataset.X.max(dim=0).values,
+                )
+            )
+        if transform_bounds.shape != (2, dataset.X.shape[-1]):
+            raise ValueError("Roost process normalization bounds must have shape [2, d].")
+        process_bounds = transform_bounds[:, process_indices]
+
+    reference_index = None
+    if str(site_config["representation"]).lower() == "alr":
+        reference_element = site_config["reference_element"]
+        reference_index = len(elements) - 1 if reference_element is None else elements.index(reference_element)
+
+    component_weights = dataset.X.new_ones(len(elements))
+    if str(site_config["normalization"]).lower() in _WEIGHT_BASIS_NAMES:
+        component_weights = dataset.X.new_tensor([ATOMIC_WEIGHTS[element] for element in elements])
+    model_kwargs["element_ids"] = dataset.X.new_tensor(
+        [ATOMIC_NUMBERS[element] for element in elements],
+        dtype=torch.long,
+    )
+
+    from bochan.models.regression.gaussian.deep import CompositionMaterialInputTransform
+
+    input_transform = CompositionMaterialInputTransform(
+        input_dim=dataset.X.shape[-1],
+        composition_indices=composition_indices,
+        n_components=len(elements),
+        method=str(site_config["representation"]),
+        reference_index=reference_index,
+        process_bounds=process_bounds,
+        component_weights=component_weights,
+        normalize_process=normalize_process,
+    ).to(dataset.X)
+    single_output_config = replace(
+        config,
+        task_type="regression",
+        input_type="normal",
+        cat_dims=None,
+        input_transform=input_transform,
+        input_transform_config=None,
+        model_kwargs=model_kwargs,
+        multi_output_config=None,
+    )
+    if int(dataset.Y.shape[-1]) > 1:
+        return _independent_material_multi_output_config(
+            config,
+            dataset,
+            single_output_config,
+            family_name="Roost",
         )
     return single_output_config
 
@@ -512,6 +685,7 @@ def model_config_for_dataset(owner: Any, dataset: Any) -> Any:
         dataset,
         owner.model_config,
     )
+    config = _configure_tabular_roost_model(owner, dataset, config)
     if config.cat_dims is None and dataset.cat_dims:
         config = replace(config, cat_dims=dataset.cat_dims)
     return apply_alpha_to_model_config(

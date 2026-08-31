@@ -12,6 +12,7 @@ from bochan.tabular.composition.cardinality import (
     require_exact_cardinality_for_steps,
     resolve_composition_cardinality_range,
 )
+from bochan.tabular.composition.grid import CompositionGridFinalPostprocess
 from bochan.tabular.composition.logratio_support import (
     prepare_logratio_best_subset_config,
 )
@@ -113,18 +114,19 @@ def test_cardinality_helper_maps_total_range_to_optional_range() -> None:
     assert cardinality.optional_cardinalities == (1, 2, 3)
 
 
-def test_step_grid_keeps_exact_cardinality_contract() -> None:
+def test_step_grid_accepts_variable_cardinality_range() -> None:
     cardinality = resolve_composition_cardinality_range(
         {"min_components": 2, "max_components": 4},
         required_count=1,
         optional_count=3,
     )
 
-    with pytest.raises(ValueError, match="min_components == max_components"):
-        require_exact_cardinality_for_steps(
-            {"steps": {"Ti": 0.1}},
-            cardinality,
-        )
+    require_exact_cardinality_for_steps(
+        {"steps": {"Ti": 0.1}},
+        cardinality,
+    )
+    assert cardinality.minimum == 2
+    assert cardinality.maximum == 4
 
 
 def test_fraction_best_subset_maps_component_range_to_generic_optional_k() -> None:
@@ -254,17 +256,23 @@ def test_fraction_variable_cardinality_compares_different_total_component_counts
     assert float(value.item()) == pytest.approx(50.0)
 
 
-def test_variable_cardinality_with_steps_is_rejected_before_optimization() -> None:
+def test_variable_cardinality_with_steps_is_configured_for_grid_projection() -> None:
     transformer = _transformer("ilr")
     site = _site("ilr", steps={"Al": 0.1, "Ti": 0.1, "V": 0.1, "Nb": 0.1})
 
-    with pytest.raises(ValueError, match="min_components == max_components"):
-        prepare_logratio_best_subset_config(
-            OptimizeConfig(),
-            site_name="alloy",
-            site_config=site,
-            transformer=transformer,
-            model_feature_names=_model_layout(transformer, variable_total=False),
-            model_bounds=_model_bounds(transformer, variable_total=False),
-            dtype=torch.double,
-        )
+    _bridge, resolved, _bounds = prepare_logratio_best_subset_config(
+        OptimizeConfig(),
+        site_name="alloy",
+        site_config=site,
+        transformer=transformer,
+        model_feature_names=_model_layout(transformer, variable_total=False),
+        model_bounds=_model_bounds(transformer, variable_total=False),
+        dtype=torch.double,
+    )
+
+    assert resolved.optimizer_kwargs["best_subset_min_k"] == 1
+    assert resolved.optimizer_kwargs["best_subset_max_k"] == 3
+    projector = resolved.final_candidate_postprocess
+    assert isinstance(projector, CompositionGridFinalPostprocess)
+    assert projector.minimum_cardinality == 2
+    assert projector.exact_k == 4

@@ -57,6 +57,14 @@ jobs:
               raise SystemExit("one-shot inequality initializer block not found")
           text = text.replace(old_call, new_call, 1)
           p.write_text(text)
+
+          p = Path("src/bochan/api/support/best_subset.py")
+          text = p.read_text()
+          old = '''    if scores.ndim == 1:\n        aggregate = scores\n    else:\n        aggregate = scores.reshape(-1, scores.shape[-1]).mean(dim=0)\n'''
+          new = '''    aggregate = (\n        scores\n        if scores.ndim == 1\n        else scores.reshape(-1, scores.shape[-1]).mean(dim=0)\n    )\n'''
+          if old in text:
+              text = text.replace(old, new, 1)
+          p.write_text(text)
           PY
       - name: Install test tools
         run: |
@@ -89,6 +97,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add \
             src/bochan/api/support/one_shot.py \
+            src/bochan/api/support/best_subset.py \
             src/bochan/tabular/composition/logratio_support.py \
             src/bochan/tabular/composition/multi_raw_support.py \
             src/bochan/tabular/composition/variable_total_support.py \

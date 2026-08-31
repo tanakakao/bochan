@@ -2,7 +2,7 @@
 
 Variable-total compositions are optimized in raw absolute component amounts.
 This keeps element support, component bounds, and the site total in one decision
-space.  The fitted surrogate still sees its original composition representation
+space. The fitted surrogate still sees its original composition representation
 (fractions / CLR / ALR / ILR) plus the fitted total feature.
 """
 
@@ -25,6 +25,13 @@ from bochan.api import (
 )
 from bochan.tabular.data import resolve_optimize_config_columns
 
+from .cardinality import (
+    BEST_SUBSET_MAX_K_KWARG,
+    BEST_SUBSET_MIN_K_KWARG,
+    apply_optional_cardinality_range,
+    require_exact_cardinality_for_steps,
+    resolve_composition_cardinality_range,
+)
 from .grid import CompositionVariableTotalGridFinalPostprocess
 from .logratio_support import RawDecisionAcquisition
 from .raw_bridge import CompositionRawDecisionBridge
@@ -354,7 +361,9 @@ class CompositionVariableTotalDecisionBridge:
         try:
             return (self.process_index_map[resolved],)
         except KeyError as exc:
-            raise ValueError(f"Cannot map model feature index {resolved} to raw decision space.") from exc
+            raise ValueError(
+                f"Cannot map model feature index {resolved} to raw decision space."
+            ) from exc
 
 
 def _as_items(values: Any) -> list[Any]:
@@ -419,10 +428,7 @@ def _map_fixed_features_list(
 ) -> list[dict[Any, float]] | None:
     if values is None:
         return None
-    return [
-        _map_fixed_features(item, bridge) or {}
-        for item in values
-    ]
+    return [_map_fixed_features(item, bridge) or {} for item in values]
 
 
 def _map_numeric_indices(
@@ -454,9 +460,13 @@ def _raw_duplicate_tolerances(
         raise ValueError(
             "duplicate_tolerances width must match the fitted model feature dimension."
         )
-    amount_tolerance = max(float(getattr(config, "duplicate_tolerance", 1e-10)), 1e-12)
+    amount_tolerance = max(
+        float(getattr(config, "duplicate_tolerance", 1e-10)),
+        1e-12,
+    )
     process_inverse = {
-        raw_index: model_index for model_index, raw_index in bridge.process_index_map.items()
+        raw_index: model_index
+        for model_index, raw_index in bridge.process_index_map.items()
     }
     amount_set = set(bridge.amount_indices)
     result: list[float] = []
@@ -525,7 +535,10 @@ def _remap_optimize_config(
     replacements: dict[str, Any] = {
         "repair_config": repair,
         "fixed_features": _map_fixed_features(config.fixed_features, bridge),
-        "fixed_features_list": _map_fixed_features_list(config.fixed_features_list, bridge),
+        "fixed_features_list": _map_fixed_features_list(
+            config.fixed_features_list,
+            bridge,
+        ),
         "equality_constraints": _map_constraints(config.equality_constraints, bridge),
         "inequality_constraints": _map_constraints(config.inequality_constraints, bridge),
         "final_candidate_postprocess": final_candidate_postprocess,
@@ -555,7 +568,10 @@ def _active_floor(config: Mapping[str, Any], element: str) -> float:
     if step is not None:
         return min(float(step), upper)
     total_upper = float(config["total_bounds"][1])
-    return min(max(total_upper * 10.0 * _TOLERANCE, 10.0 * _TOLERANCE), upper)
+    return min(
+        max(total_upper * 10.0 * _TOLERANCE, 10.0 * _TOLERANCE),
+        upper,
+    )
 
 
 def _optimizer_kwargs_for_site(
@@ -567,6 +583,13 @@ def _optimizer_kwargs_for_site(
         value = config.get(key)
         if value is not None:
             optimizer_kwargs.setdefault(key, value)
+    return optimizer_kwargs
+
+
+def _without_cardinality_kwargs(values: Mapping[str, Any] | None) -> dict[str, Any]:
+    optimizer_kwargs = dict(values or {})
+    optimizer_kwargs.pop(BEST_SUBSET_MIN_K_KWARG, None)
+    optimizer_kwargs.pop(BEST_SUBSET_MAX_K_KWARG, None)
     return optimizer_kwargs
 
 
@@ -731,7 +754,9 @@ def _validate_support_feasibility(
 ) -> None:
     total_lower, total_upper = map(float, config["total_bounds"])
     required_lower = sum(_active_floor(config, element) for element in required)
-    required_upper = sum(_component_bounds(config, element)[1] for element in required)
+    required_upper = sum(
+        _component_bounds(config, element)[1] for element in required
+    )
     optional_lower = [_active_floor(config, element) for element in optional]
     optional_upper = [_component_bounds(config, element)[1] for element in optional]
 
@@ -739,13 +764,13 @@ def _validate_support_feasibility(
     smallest_upper = sum(sorted(optional_upper)[:optional_k])
     if required_lower + largest_lower > total_upper + _TOLERANCE:
         raise ValueError(
-            "Variable-total composition best_subset has an exact-k support whose active "
-            "lower bounds exceed the upper total bound."
+            "Variable-total composition best_subset has a support whose active lower "
+            "bounds exceed the upper total bound."
         )
     if required_upper + smallest_upper < total_lower - _TOLERANCE:
         raise ValueError(
-            "Variable-total composition best_subset has an exact-k support whose active "
-            "upper bounds cannot reach the lower total bound."
+            "Variable-total composition best_subset has a support whose active upper "
+            "bounds cannot reach the lower total bound."
         )
 
 
@@ -786,14 +811,9 @@ def prepare_variable_total_best_subset_config(
     """Build raw absolute-amount decision config for variable-total Best Subset."""
 
     if not is_variable_total_best_subset_site(site_config):
-        raise ValueError(f"Composition site {site_name!r} is not variable-total best_subset.")
-    minimum = int(site_config["min_components"])
-    maximum = site_config.get("max_components")
-    if maximum is None or minimum != int(maximum):
         raise ValueError(
-            "Variable-total composition best_subset requires min_components == max_components."
+            f"Composition site {site_name!r} is not variable-total best_subset."
         )
-    exact_k = int(maximum)
 
     bridge = CompositionVariableTotalDecisionBridge.from_transformer(
         transformer,
@@ -813,7 +833,8 @@ def prepare_variable_total_best_subset_config(
         )
     if int(repair.k) != 0:
         raise ValueError(
-            "Variable-total composition best_subset derives k from max_components."
+            "Variable-total composition best_subset derives cardinality from "
+            "min_components/max_components."
         )
     if repair.final_sum_constraint is not None:
         raise ValueError(
@@ -850,22 +871,36 @@ def prepare_variable_total_best_subset_config(
             f"forbidden: {sorted(overlap)!r}."
         )
     optional = [
-        element for element in elements if element not in required and element not in forbidden
+        element
+        for element in elements
+        if element not in required and element not in forbidden
     ]
-    optional_k = exact_k - len(required)
-    if optional_k < 0 or optional_k > len(optional):
-        raise ValueError(
-            "Variable-total composition best_subset cannot satisfy the requested exact "
-            "component count after required/forbidden rules."
-        )
-
-    optimizer_kwargs = _optimizer_kwargs_for_site(raw_config, site_config)
-    _validate_grid_strategy(
-        config=site_config,
-        optimizer_kwargs=optimizer_kwargs,
+    ordered_required = sorted(required, key=elements.index)
+    cardinality = resolve_composition_cardinality_range(
+        site_config,
+        required_count=len(required),
         optional_count=len(optional),
-        optional_k=optional_k,
+        context=f"Variable-total composition site {site_name!r} best_subset",
     )
+    require_exact_cardinality_for_steps(
+        site_config,
+        cardinality,
+        context=f"Variable-total composition site {site_name!r} best_subset",
+    )
+
+    effective_optimizer_kwargs = _optimizer_kwargs_for_site(raw_config, site_config)
+    search_optimizer_kwargs = apply_optional_cardinality_range(
+        effective_optimizer_kwargs,
+        cardinality,
+        context=f"Variable-total composition site {site_name!r} best_subset",
+    )
+    if site_config.get("steps"):
+        _validate_grid_strategy(
+            config=site_config,
+            optimizer_kwargs=search_optimizer_kwargs,
+            optional_count=len(optional),
+            optional_k=cardinality.optional_maximum,
+        )
     _validate_grid_contract(
         raw_config=raw_config,
         repair=repair,
@@ -873,25 +908,28 @@ def prepare_variable_total_best_subset_config(
         bridge=bridge,
         all_fixed=all_fixed,
     )
-    _validate_support_feasibility(
-        config=site_config,
-        required=sorted(required, key=elements.index),
-        optional=optional,
-        optional_k=optional_k,
-    )
+    for optional_k in cardinality.optional_cardinalities:
+        _validate_support_feasibility(
+            config=site_config,
+            required=ordered_required,
+            optional=optional,
+            optional_k=optional_k,
+        )
+
     final_candidate_postprocess = _grid_postprocess(
         raw_config=raw_config,
         site_config=site_config,
         bridge=bridge,
-        exact_k=exact_k,
+        exact_k=cardinality.maximum,
     )
-    _validate_grid_supports(
-        projector=final_candidate_postprocess,
-        site_config=site_config,
-        required=sorted(required, key=elements.index),
-        optional=optional,
-        optional_k=optional_k,
-    )
+    if site_config.get("steps"):
+        _validate_grid_supports(
+            projector=final_candidate_postprocess,
+            site_config=site_config,
+            required=ordered_required,
+            optional=optional,
+            optional_k=cardinality.optional_maximum,
+        )
 
     forbidden_fixed = {by_element[element]: 0.0 for element in forbidden}
     optimizer_fixed.update(forbidden_fixed)
@@ -924,7 +962,7 @@ def prepare_variable_total_best_subset_config(
             optimizer_inequalities.append(([amount_name], [1.0], floor))
 
     optional_names = [by_element[element] for element in optional]
-    if optional_k == 0:
+    if cardinality.optional_maximum == 0:
         repair = replace(
             repair,
             comp_idx=None,
@@ -934,24 +972,18 @@ def prepare_variable_total_best_subset_config(
             inequality_sense="ge",
             fixed_features=repair_fixed or None,
         )
+        optimizer_kwargs = _without_cardinality_kwargs(raw_config.optimizer_kwargs)
     else:
         repair = replace(
             repair,
             comp_idx=optional_names,
-            k=optional_k,
+            k=cardinality.optional_maximum,
             support_selection="best_subset",
             inequality_constraints=repair_inequalities,
             inequality_sense="ge",
             fixed_features=repair_fixed or None,
         )
-        support_count = comb(len(optional_names), optional_k)
-        strategy = str(optimizer_kwargs.get("best_subset_strategy", "exact")).lower()
-        maximum_count = int(optimizer_kwargs.get("best_subset_max_combinations", 2000))
-        if strategy == "exact" and support_count > maximum_count:
-            raise ValueError(
-                "Variable-total best_subset exact enumeration exceeds "
-                "best_subset_max_combinations; use beam/auto or raise the limit."
-            )
+        optimizer_kwargs = search_optimizer_kwargs
 
     raw_config = replace(
         raw_config,
@@ -977,7 +1009,10 @@ def prepare_variable_total_best_subset_config(
         opt_config=raw_config,
         cat_dims=raw_cat_dims,
     )
-    if uses_mixed_fixed_features(raw_config.optimizer) and raw_config.fixed_features_list is None:
+    if (
+        uses_mixed_fixed_features(raw_config.optimizer)
+        and raw_config.fixed_features_list is None
+    ):
         raw_train_x = bridge.model_to_decision(train_x) if train_x is not None else None
         inferred = _raw_fixed_features_list_from_training(raw_train_x, raw_cat_dims)
         if inferred:
@@ -1024,7 +1059,7 @@ def optimize_variable_total_best_subset(
     train_x: Tensor | None = None,
     optimize_fn: Callable[..., tuple[Any, Any]] | None = None,
 ) -> VariableTotalBestSubsetResult:
-    """Optimize support and total jointly in raw absolute component amounts."""
+    """Optimize support cardinality, support, and total jointly in raw amounts."""
 
     _reject_one_shot_acquisition(base_acqf)
     bridge, raw_config, raw_bounds = prepare_variable_total_best_subset_config(

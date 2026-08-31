@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -11,6 +10,7 @@ from botorch.models import SingleTaskGP
 from torch import Tensor, nn
 
 from bochan.api import CandidateRepairConfig, OptimizeConfig
+from bochan.api.optimizer.service import optimize_candidates
 from bochan.api.support.best_subset import optimize_best_subset_candidates
 from bochan.api.support.multi_group_best_subset import (
     BEST_SUBSET_GROUPS_KWARG,
@@ -224,17 +224,71 @@ def test_raw_one_shot_wrapper_preserves_augmented_contract() -> None:
     torch.testing.assert_close(extracted, raw[..., :2, :])
 
 
-def test_raw_qkg_wrapper_recovers_specialized_initializer() -> None:
-    train_x = torch.tensor([[0.0], [0.5], [1.0]], dtype=torch.double)
-    train_y = torch.tensor([[0.0], [1.0], [0.2]], dtype=torch.double)
+def test_one_shot_initializer_expands_to_full_tree_with_interpoint_constraints() -> None:
+    acqf = _FakeOneShot(num_auxiliary=2)
+    generator = resolve_one_shot_ic_generator(acqf)
+    assert generator is not None
+    bounds = torch.tensor([[0.0, 0.0], [1.0, 1.0]], dtype=torch.double)
+    equality = [
+        (
+            torch.tensor([[0, 1]], dtype=torch.long),
+            torch.tensor([1.0], dtype=torch.double),
+            0.0,
+        )
+    ]
+    initial = generator(
+        acq_function=acqf,
+        bounds=bounds,
+        q=1,
+        num_restarts=2,
+        raw_samples=16,
+        equality_constraints=equality,
+    )
+
+    assert initial is not None
+    assert initial.shape == (2, 3, 2)  # actual q=1 + two auxiliary points.
+    assert initial[:, 0, 1].abs().max().item() <= 1e-8
+
+
+def test_real_qkg_optimizes_best_subset_with_actual_q_support_constraints() -> None:
+    train_x = torch.tensor(
+        [[0.10, 0.90], [0.35, 0.65], [0.65, 0.35], [0.90, 0.10]],
+        dtype=torch.double,
+    )
+    train_y = torch.tensor([[0.2], [0.8], [1.0], [0.4]], dtype=torch.double)
     model = SingleTaskGP(train_x, train_y)
-    base = qKnowledgeGradient(
+    acqf = qKnowledgeGradient(
         model=model,
         num_fantasies=2,
         current_value=torch.tensor(1.0, dtype=torch.double),
     )
-    wrapped = wrap_raw_decision_acquisition(base, _ScaleBridge())
-    generator = resolve_one_shot_ic_generator(wrapped)
+    bounds = torch.tensor([[0.0, 0.0], [1.0, 1.0]], dtype=torch.double)
+    config = OptimizeConfig(
+        q=1,
+        num_restarts=2,
+        raw_samples=16,
+        sequential=False,
+        repair_config=CandidateRepairConfig(
+            comp_idx=[0, 1],
+            k=1,
+            support_selection="best_subset",
+            inequality_constraints=[
+                ([0], [1.0], 0.05),
+                ([1], [1.0], 0.05),
+            ],
+            inequality_sense="ge",
+        ),
+        optimizer_kwargs={
+            "best_subset_strategy": "exact",
+            "options": {"maxiter": 20, "batch_limit": 2},
+        },
+    )
 
-    assert generator is not None
-    assert generator.__name__ == "gen_one_shot_kg_initial_conditions"
+    candidates, value = optimize_candidates(acqf, bounds, config)
+
+    assert candidates.shape == (1, 2)
+    assert torch.isfinite(candidates).all()
+    assert torch.isfinite(torch.as_tensor(value)).all()
+    active = candidates[0].abs() > 1e-6
+    assert int(active.sum().item()) == 1
+    assert float(candidates[0, active][0]) >= 0.05 - 1e-5

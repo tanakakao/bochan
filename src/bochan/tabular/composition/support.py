@@ -17,7 +17,12 @@ from .cardinality import (
     require_exact_cardinality_for_steps,
     resolve_composition_cardinality_range,
 )
-from .grid import CompositionGridFinalPostprocess
+from .grid import (
+    CompositionGridFinalPostprocess,
+    GridLinearConstraint,
+    composition_grid_linear_constraints,
+    merge_composition_grid_linear_constraints,
+)
 
 _SUPPORTED_REPRESENTATIONS = {"none", "fraction", "fractions"}
 _TOLERANCE = 1e-8
@@ -232,33 +237,39 @@ def _validate_grid_strategy(
         )
 
 
-def _constraint_items(indices: Any) -> list[Any]:
-    if isinstance(indices, (str, int)):
-        return [indices]
-    if hasattr(indices, "detach"):
-        return indices.detach().cpu().reshape(-1).tolist()
-    return list(indices)
-
-
-def _constraints_touch_composition(
-    constraints: Sequence[tuple[Any, Any, Any]] | None,
+def _grid_linear_constraints(
     *,
+    opt_config: OptimizeConfig,
+    repair: CandidateRepairConfig,
+    config: Mapping[str, Any],
     fraction_names: Sequence[str],
     feature_names: Sequence[Any],
-) -> bool:
-    name_set = set(fraction_names)
-    positions = {
-        index
-        for index, name in enumerate(feature_names)
-        if name in name_set
-    }
-    for indices, _coefficients, _rhs in constraints or ():
-        for item in _constraint_items(indices):
-            if item in name_set:
-                return True
-            if isinstance(item, int) and int(item) in positions:
-                return True
-    return False
+) -> tuple[GridLinearConstraint, ...]:
+    """Collect composition-only constraints in the projector's amount units."""
+
+    total = float(config["total"])
+    optimizer_constraints = composition_grid_linear_constraints(
+        equality_constraints=opt_config.equality_constraints,
+        inequality_constraints=opt_config.inequality_constraints,
+        feature_names=feature_names,
+        composition_feature_names=fraction_names,
+        inequality_sense="ge",
+        rhs_scale=total,
+        context="Composition step-grid best_subset",
+    )
+    repair_constraints = composition_grid_linear_constraints(
+        equality_constraints=repair.equality_constraints,
+        inequality_constraints=repair.inequality_constraints,
+        feature_names=feature_names,
+        composition_feature_names=fraction_names,
+        inequality_sense=str(repair.inequality_sense),
+        rhs_scale=total,
+        context="Composition step-grid best_subset",
+    )
+    return merge_composition_grid_linear_constraints(
+        optimizer_constraints,
+        repair_constraints,
+    )
 
 
 def _validate_grid_contract(
@@ -299,27 +310,19 @@ def _validate_grid_contract(
             "elements instead."
         )
 
-    for constraints in (
-        opt_config.equality_constraints,
-        opt_config.inequality_constraints,
-        repair.equality_constraints,
-        repair.inequality_constraints,
-    ):
-        if _constraints_touch_composition(
-            constraints,
-            fraction_names=fraction_names,
-            feature_names=feature_names,
-        ):
-            raise ValueError(
-                "Composition step-grid best_subset does not yet combine with "
-                "additional linear constraints on composition fractions. Remove "
-                "the element/composition linear constraint for this phase."
-            )
+    _grid_linear_constraints(
+        opt_config=opt_config,
+        repair=repair,
+        config=config,
+        fraction_names=fraction_names,
+        feature_names=feature_names,
+    )
 
 
 def _grid_postprocess(
     *,
     opt_config: OptimizeConfig,
+    repair: CandidateRepairConfig,
     config: Mapping[str, Any],
     elements: Sequence[str],
     fraction_names: Sequence[str],
@@ -335,6 +338,13 @@ def _grid_postprocess(
         elements=elements,
         config=config,
         exact_k=exact_k,
+        linear_constraints=_grid_linear_constraints(
+            opt_config=opt_config,
+            repair=repair,
+            config=config,
+            fraction_names=fraction_names,
+            feature_names=feature_names,
+        ),
         previous=getattr(opt_config, "final_candidate_postprocess", None),
     )
 
@@ -508,6 +518,7 @@ def resolve_composition_best_subset(
 
     final_candidate_postprocess = _grid_postprocess(
         opt_config=opt_config,
+        repair=repair,
         config=config,
         elements=elements,
         fraction_names=fraction_names,

@@ -117,21 +117,56 @@ def test_logratio_best_subset_step_grid_projects_raw_fractions(
 
 
 @pytest.mark.parametrize("representation", ["clr", "alr", "ilr"])
-def test_logratio_step_grid_rejects_raw_fraction_linear_constraint(
+def test_logratio_step_grid_enforces_raw_fraction_linear_constraint(
+    representation: str,
+) -> None:
+    transformer = _transformer(representation)
+    bridge, config, _bounds = prepare_logratio_best_subset_config(
+        OptimizeConfig(
+            equality_constraints=[
+                (["alloy__fraction__Al"], [1.0], 0.4),
+            ]
+        ),
+        site_name="alloy",
+        site_config=_site(representation),
+        transformer=transformer,
+        model_feature_names=_model_layout(transformer),
+        model_bounds=_model_bounds(transformer),
+        dtype=torch.double,
+        device=None,
+    )
+
+    callback = config.final_candidate_postprocess
+    assert isinstance(callback, CompositionGridFinalPostprocess)
+    raw = torch.tensor(
+        [[913.0, 0.44, 0.31, 0.25, 0.0, 0.0, 2.3]],
+        dtype=torch.double,
+    )
+    projected = callback(raw)
+    fractions = projected[..., bridge.fraction_slice]
+
+    assert fractions[0, 0].item() == pytest.approx(0.4, abs=1e-10)
+    assert fractions.sum().item() == pytest.approx(1.0, abs=1e-10)
+    assert int((fractions > 1e-10).sum().item()) == 3
+    assert torch.isfinite(bridge.decision_to_model(projected)).all()
+
+
+@pytest.mark.parametrize("representation", ["clr", "alr", "ilr"])
+def test_logratio_step_grid_rejects_process_coupled_raw_constraint(
     representation: str,
 ) -> None:
     transformer = _transformer(representation)
     config = OptimizeConfig(
         equality_constraints=[
             (
-                ["alloy__fraction__Ti", "alloy__fraction__V"],
-                [1.0, -1.0],
-                0.0,
+                ["alloy__fraction__Al", "temperature"],
+                [1.0, -0.001],
+                -0.5,
             )
         ]
     )
 
-    with pytest.raises(ValueError, match="additional linear constraints"):
+    with pytest.raises(ValueError, match="mixes composition and non-composition"):
         prepare_logratio_best_subset_config(
             config,
             site_name="alloy",

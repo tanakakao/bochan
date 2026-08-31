@@ -186,6 +186,7 @@ def resolve_multiple_composition_best_subset(
 
     site_metadata: list[dict[str, Any]] = []
     stepped_fraction_names: dict[str, set[str]] = {}
+    fraction_feature_owners: dict[str, str] = {}
     for site_name, config in zip(site_names, configs, strict=True):
         transformer = composition_transformers.get(site_name)
         if transformer is None:
@@ -202,6 +203,17 @@ def resolve_multiple_composition_best_subset(
                 f"Composition fraction features for site {site_name!r} are missing from "
                 f"the optimization dataset: {missing!r}."
             )
+        overlapping = sorted(
+            name for name in fraction_names if name in fraction_feature_owners
+        )
+        if overlapping:
+            owners = sorted({fraction_feature_owners[name] for name in overlapping})
+            raise ValueError(
+                "Multiple composition Best Subset sites must use disjoint fraction "
+                f"feature blocks. Site {site_name!r} overlaps sites {owners!r}: "
+                f"{overlapping!r}."
+            )
+        fraction_feature_owners.update({name: site_name for name in fraction_names})
         if config.get("steps"):
             stepped_fraction_names[site_name] = set(fraction_names)
         site_metadata.append(

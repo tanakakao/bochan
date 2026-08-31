@@ -92,9 +92,25 @@ def apply_optional_cardinality_range(
     *,
     context: str = "Composition best_subset",
 ) -> dict[str, Any]:
-    """Attach the composition-owned optional-k range to generic Best Subset."""
+    """Attach a composition-owned optional-k range to generic Best Subset.
+
+    Exact-cardinality sites preserve the historical contract and continue to
+    use ``repair_config.k`` only. The explicit generic min/max kwargs are added
+    only when the composition site actually requests multiple cardinalities.
+    """
 
     result = dict(optimizer_kwargs or {})
+    if cardinality.optional_exact:
+        for key in (BEST_SUBSET_MIN_K_KWARG, BEST_SUBSET_MAX_K_KWARG):
+            if key in result and int(result[key]) != cardinality.optional_minimum:
+                raise ValueError(
+                    f"{context} derives exact optional cardinality "
+                    f"{cardinality.optional_minimum}; remove the conflicting explicit "
+                    f"optimizer value {key}={result[key]!r}."
+                )
+            result.pop(key, None)
+        return result
+
     expected = {
         BEST_SUBSET_MIN_K_KWARG: cardinality.optional_minimum,
         BEST_SUBSET_MAX_K_KWARG: cardinality.optional_maximum,

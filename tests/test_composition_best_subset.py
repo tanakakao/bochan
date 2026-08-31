@@ -301,7 +301,7 @@ def test_scope_guards_are_explicit() -> None:
         _resolve(variable)
 
     site = _site()
-    with pytest.raises(ValueError, match="one composition site"):
+    with pytest.raises(ValueError, match="disjoint fraction feature blocks"):
         resolve_composition_best_subset(
             OptimizeConfig(),
             composition_sites={"a": site, "b": dict(site)},

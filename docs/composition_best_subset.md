@@ -185,15 +185,29 @@ The fixed-total projection preserves:
 - every configured component step;
 - non-zero fixed raw-fraction values;
 - the fixed composition total;
-- supported composition-only linear equalities and inequalities.
+- linear equalities and inequalities that touch composition, including constraints coupled to process variables.
 
 For fixed-total sites, the continuous optimizer expresses composition constraints on fractions while the grid MILP works internally in total-scaled component amounts. bochan therefore maps `c @ fraction >= rhs` to the equivalent `c @ amount >= rhs * total` before MILP projection. The same conversion is applied to equalities and to repair constraints.
 
-A composition-only constraint is enforced twice deliberately: once during continuous acquisition optimization and again during final grid projection. The final acquisition value is then recomputed on the projected candidate. This prevents support ranking from using a continuous candidate whose nearest step-grid point violates the intended composition constraint.
+For a coupled constraint such as:
+
+```text
+c @ fraction + d @ process >= rhs
+```
+
+bochan uses the equivalent amount-space relation:
+
+```text
+c @ amount + total * d @ process >= total * rhs
+```
+
+The process values are taken from the candidate row after any preceding final-candidate postprocessing and are held fixed while the MILP moves only the active composition values onto their grid. Each row in a joint q-batch therefore gets its own coupled-constraint RHS.
+
+A constraint that touches composition is enforced twice deliberately: once during continuous acquisition optimization and again during final grid projection. The final acquisition value is then recomputed on the projected candidate. This prevents support ranking from using a continuous candidate whose nearest step-grid point violates the intended constraint.
 
 A non-zero fixed fraction is likewise enforced in both spaces. Continuous acquisition optimization keeps the normal `fixed_features` constraint. For final MILP projection, bochan converts that fraction to its fixed-total amount, validates it against the original component bounds and original step lattice, then fixes the projector's component bound to that exact amount. The projector therefore cannot silently round or move a fixed value. A fixed value that is not on the configured grid is rejected before candidate optimization.
 
-Process-only constraints remain compatible because the composition projector does not modify process dimensions. A single stepped constraint that mixes composition and process terms is still rejected explicitly: projecting only the composition block could otherwise invalidate the coupled relation after process postprocessing.
+Process-only constraints remain compatible because the composition projector does not modify process dimensions. Coupled constraints are candidate-dependent, so support prevalidation checks only composition-only constraints; the coupled relation is checked when each concrete support candidate is projected. A support that cannot satisfy the relation for its optimized process values is skipped through the normal `InfeasibleBestSubsetSupportError` path.
 
 ### Variable-total example
 
@@ -238,9 +252,9 @@ The variable-total MILP operates directly in raw absolute amounts and preserves:
 - every configured absolute-amount step;
 - non-zero fixed raw component amounts;
 - `total_lower <= sum(amounts) <= total_upper`;
-- composition-only linear equalities and inequalities on raw amounts.
+- linear equalities and inequalities on raw amounts, including constraints coupled to process variables.
 
-A fitted total-feature constraint is first expanded to the equivalent sum of raw element amounts, so it is enforced consistently by both the continuous optimizer and the final step-grid MILP. Raw-amount element constraints are copied to the same projector without scale conversion.
+A fitted total-feature constraint is first expanded to the equivalent sum of raw element amounts, so it is enforced consistently by both the continuous optimizer and the final step-grid MILP. Raw-amount element constraints are copied to the same projector without scale conversion. For a coupled relation `c @ amount + d @ process >= rhs`, the process term is evaluated at the candidate row and moved to the MILP RHS without additional scaling.
 
 For non-zero fixed amounts, the variable-total path uses the same contract as fixed total: the continuous optimizer retains `fixed_features`, while the final MILP receives an exact projector-only component bound after validating the fixed amount against the original absolute bounds and step lattice. Off-grid fixed amounts are rejected rather than rounded.
 
@@ -259,12 +273,9 @@ Step-grid Best Subset supports both exhaustive and approximate support search fo
 - grid/linear-constraint-infeasible supports are skipped explicitly during Beam search;
 - variable-cardinality step grids preserve the cardinality of each evaluated support during MILP projection.
 
-Exact mode prevalidates the complete support set because it will enumerate it anyway. Beam deliberately avoids that combinatorial pre-scan: feasibility is checked lazily when a support is evaluated. If the heuristic top-k seed is infeasible, Beam walks neighboring supports within `best_subset_max_evaluations` until it finds a feasible starting point or exhausts the budget.
+Exact mode prevalidates the complete support set because it will enumerate it anyway. Beam deliberately avoids that combinatorial pre-scan: feasibility is checked lazily when a support is evaluated. If the heuristic top-k seed is infeasible, Beam walks neighboring supports within `best_subset_max_evaluations` until it finds a feasible starting point or exhausts the budget. Coupled composition/process constraints depend on the optimized process values and are therefore deferred to candidate-time MILP projection for both strategies.
 
-For both fixed-total and variable-total stepped compositions, composition-only linear equalities and inequalities are enforced inside the MILP projector. Non-zero fixed composition values are supported when they lie on the configured grid. The remaining step-grid restrictions are:
-
-- a constraint that mixes composition and process variables is rejected;
-- optimizer backends that bypass `final_candidate_postprocess` are rejected.
+For both fixed-total and variable-total stepped compositions, composition-only and composition/process-coupled linear equalities and inequalities are enforced inside the MILP projector. Non-zero fixed composition values are supported when they lie on the configured grid. The remaining step-grid restriction is that optimizer backends which bypass `final_candidate_postprocess` are rejected.
 
 Process-only linear constraints and process-variable rounding/fixed values remain compatible because they do not alter the projected composition block.
 
@@ -304,7 +315,7 @@ Supported:
 - fixed-total and variable-total component step grids with exact or variable cardinality and Exact, Beam, or Auto support search;
 - on-grid non-zero fixed fractions for fixed-total step grids, including CLR/ALR/ILR raw-fraction bridges;
 - on-grid non-zero fixed raw amounts for variable-total step grids;
-- fixed-total raw-fraction and variable-total raw-amount composition-only linear constraints with step-grid Best Subset projection;
+- fixed-total raw-fraction and variable-total raw-amount linear constraints with step-grid Best Subset projection, including process-coupled constraints;
 - variable-total `total_bounds` and raw amount linear constraints;
 - shared support/cardinality for joint q-batches;
 - Web result restoration from exact raw fraction or raw amount decisions.
@@ -312,7 +323,6 @@ Supported:
 Still explicit future extensions:
 
 - multiple simultaneous composition Best Subset groups;
-- stepped constraints that couple composition and process variables;
 - one-shot acquisition functions that introduce augmented optimization variables.
 
 These cases are intentionally rejected instead of falling back to transformed-coordinate sparsity or post-hoc rounding that would change the optimization problem.

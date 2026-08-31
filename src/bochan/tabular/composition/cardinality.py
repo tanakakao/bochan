@@ -125,9 +125,13 @@ def require_exact_cardinality_for_steps(
     *,
     context: str = "Composition best_subset",
 ) -> None:
-    """Keep current MILP step projectors on exact-cardinality supports."""
+    """Keep current MILP step projectors on configured exact-cardinality supports."""
 
-    if config.get("steps") and not cardinality.exact:
+    if not config.get("steps"):
+        return
+    minimum = int(config.get("min_components", cardinality.minimum))
+    maximum_raw = config.get("max_components")
+    if maximum_raw is None or minimum != int(maximum_raw):
         raise ValueError(
             f"{context} with component steps currently requires "
             "min_components == max_components. Remove steps or use an exact "

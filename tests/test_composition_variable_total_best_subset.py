@@ -250,20 +250,25 @@ def test_variable_total_best_subset_attaches_amount_grid_postprocess() -> None:
     )
 
 
-def test_variable_total_step_grid_rejects_beam_support_search() -> None:
+def test_variable_total_step_grid_supports_beam_search() -> None:
     transformer = _transformer("ilr")
     site = _stepped_site("ilr")
     site["best_subset_strategy"] = "beam"
-    with pytest.raises(ValueError, match="requires exact support search"):
-        prepare_variable_total_best_subset_config(
-            OptimizeConfig(),
-            site_name="alloy",
-            site_config=site,
-            transformer=transformer,
-            model_feature_names=_layout(transformer),
-            model_bounds=_model_bounds(transformer),
-            dtype=torch.double,
-        )
+    _bridge, config, _bounds = prepare_variable_total_best_subset_config(
+        OptimizeConfig(),
+        site_name="alloy",
+        site_config=site,
+        transformer=transformer,
+        model_feature_names=_layout(transformer),
+        model_bounds=_model_bounds(transformer),
+        dtype=torch.double,
+    )
+
+    assert isinstance(
+        config.final_candidate_postprocess,
+        CompositionVariableTotalGridFinalPostprocess,
+    )
+    assert config.optimizer_kwargs["best_subset_strategy"] == "beam"
 
 
 def test_variable_total_step_grid_rejects_support_without_feasible_total() -> None:

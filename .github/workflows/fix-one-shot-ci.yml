@@ -32,17 +32,31 @@ jobs:
               text = p.read_text()
               old = '''    if is_one_shot_acquisition(base_acqf):\n        final_value = raw_value\n    else:\n        final_value = base_acqf(model_candidates)\n'''
               new = '''    final_value = (\n        raw_value\n        if is_one_shot_acquisition(base_acqf)\n        else base_acqf(model_candidates)\n    )\n'''
-              if old not in text:
-                  raise SystemExit(f"final value block not found in {path}")
-              p.write_text(text.replace(old, new, 1))
+              if old in text:
+                  p.write_text(text.replace(old, new, 1))
 
           p = Path("tests/test_k_sparse_best_subset_one_shot.py")
           text = p.read_text()
           old = 'with pytest.raises(ValueError, match="mixed fixed_features_list"):'
           new = 'with pytest.raises(ValueError, match="fixed_features_list"):'
-          if old not in text:
-              raise SystemExit("mixed fixed_features_list assertion not found")
-          p.write_text(text.replace(old, new, 1))
+          if old in text:
+              p.write_text(text.replace(old, new, 1))
+
+          p = Path("src/bochan/api/support/one_shot.py")
+          text = p.read_text()
+          marker = '''\ndef gen_one_shot_best_subset_initial_conditions(\n'''
+          helper = '''\ndef _sampling_inequality_constraints(\n    constraints: Sequence[Any] | None,\n    *,\n    bounds: Tensor,\n) -> list[Any] | None:\n    \"\"\"Move tiny lower floors into the numerical interior for IC sampling only.\n\n    SciPy's LP feasibility tolerance may treat very small positive lower floors\n    (for example the 1e-7 composition support floor) as zero. BoTorch's\n    hit-and-run sampler subsequently performs a strict feasibility check and can\n    reject that boundary point. The optimizer itself must keep the original\n    constraints, so only the initializer receives a minimally tightened copy.\n    \"\"\"\n\n    if constraints is None:\n        return None\n    stabilized: list[Any] = []\n    for indices, coefficients, rhs in constraints:\n        index_tensor = torch.as_tensor(indices)\n        coefficient_tensor = torch.as_tensor(\n            coefficients,\n            dtype=bounds.dtype,\n            device=bounds.device,\n        ).reshape(-1)\n        rhs_value = float(rhs)\n        if coefficient_tensor.numel() == 1 and float(coefficient_tensor[0]) > 0.0:\n            feature_index = int(index_tensor.reshape(-1)[-1])\n            coefficient = float(coefficient_tensor[0])\n            lower = float(bounds[0, feature_index])\n            upper = float(bounds[1, feature_index])\n            span = max(upper - lower, 0.0)\n            if span > 0.0:\n                original_floor = rhs_value / coefficient\n                interior_floor = lower + 1e-6 * span\n                if lower <= original_floor < interior_floor:\n                    rhs_value = coefficient * interior_floor\n        stabilized.append((indices, coefficients, rhs_value))\n    return stabilized\n\n'''
+          if helper.strip() not in text:
+              if marker not in text:
+                  raise SystemExit("one-shot initializer marker not found")
+              text = text.replace(marker, helper + marker, 1)
+
+          old_call = '''        inequality_constraints=None\n        if inequality_constraints is None\n        else list(inequality_constraints),\n'''
+          new_call = '''        inequality_constraints=_sampling_inequality_constraints(\n            inequality_constraints,\n            bounds=bounds,\n        ),\n'''
+          if old_call not in text and new_call not in text:
+              raise SystemExit("one-shot inequality initializer block not found")
+          text = text.replace(old_call, new_call, 1)
+          p.write_text(text)
           PY
       - name: Install test tools
         run: |
@@ -74,6 +88,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add \
+            src/bochan/api/support/one_shot.py \
             src/bochan/tabular/composition/logratio_support.py \
             src/bochan/tabular/composition/multi_raw_support.py \
             src/bochan/tabular/composition/variable_total_support.py \

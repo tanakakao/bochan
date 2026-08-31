@@ -19,6 +19,11 @@ from ..composition.logratio_support import (
     optimize_logratio_best_subset,
     resolve_logratio_best_subset_site,
 )
+from ..composition.multi_raw_support import (
+    optimize_multi_raw_best_subset,
+    raw_best_subset_site_names,
+    uses_multi_raw_best_subset,
+)
 from ..composition.support import resolve_composition_best_subset
 from ..composition.totals import CompositionTotalConstraintResolver
 from ..config import make_acquisition_config, make_optimize_config
@@ -247,8 +252,8 @@ class CandidateService:
         )
         if isinstance(opt_config, Mapping):
             opt_config = make_optimize_config(opt_config)
-        logratio_site = resolve_logratio_best_subset_site(self.composition.sites)
-        if owner.dataset is not None and logratio_site is None:
+        raw_sites = raw_best_subset_site_names(self.composition.sites)
+        if owner.dataset is not None and not raw_sites:
             opt_config = resolve_composition_best_subset(
                 opt_config,
                 composition_sites=self.composition.sites,
@@ -284,9 +289,6 @@ class CandidateService:
         if model_bounds is None:
             raise RuntimeError("Candidate bounds are required for composition optimization.")
 
-        # Reuse the fitted BayesianOptimizer's acquisition construction so the
-        # surrogate/objective/context semantics remain identical.  Candidate
-        # optimization itself is replaced by the raw-space bridge only.
         context = owner.bo._resolve_data_context(data_context)
         base_acqf = owner.bo.acquisition(acq_config, data_context=context)
         optimized = optimize_logratio_best_subset(
@@ -310,8 +312,53 @@ class CandidateService:
             opt_config=optimized.raw_opt_config,
             data_context=context,
         )
-        # Keep the exact raw decision candidate available to internal callers
-        # without widening the public CandidateResult contract in this phase.
+        result.raw_composition_candidates = optimized.raw_candidates
+        result.composition_raw_bridge = optimized.bridge
+        owner.bo.history.append(result)
+        if return_result:
+            return result
+        return result.candidates, result.acq_value
+
+    def _raw_multi_candidate(
+        self,
+        owner: Any,
+        acq_config: AcquisitionConfig,
+        opt_config: OptimizeConfig,
+        *,
+        data_context: DataContext | None,
+        bounds: Any,
+        return_result: bool,
+    ) -> Any:
+        """Optimize multiple composition Best Subset groups in one raw decision space."""
+
+        if owner.dataset is None:
+            raise RuntimeError("Tabular optimizer must be fitted before candidate generation.")
+        model_bounds = owner.dataset.bounds if bounds is None else bounds
+        if model_bounds is None:
+            raise RuntimeError("Candidate bounds are required for composition optimization.")
+
+        context = owner.bo._resolve_data_context(data_context)
+        base_acqf = owner.bo.acquisition(acq_config, data_context=context)
+        optimized = optimize_multi_raw_best_subset(
+            base_acqf,
+            opt_config,
+            composition_sites=self.composition.sites,
+            composition_transformers=self.composition.transformers,
+            model_feature_names=owner.dataset.feature_names,
+            model_bounds=model_bounds,
+            dtype=resolve_dtype(owner.data_config.dtype),
+            device=owner.data_config.device,
+            model_cat_dims=owner.dataset.cat_dims,
+            train_x=owner.dataset.X,
+        )
+        result = CandidateResult(
+            candidates=optimized.candidates,
+            acq_value=optimized.acq_value,
+            acqf=base_acqf,
+            acq_config=acq_config,
+            opt_config=optimized.raw_opt_config,
+            data_context=context,
+        )
         result.raw_composition_candidates = optimized.raw_candidates
         result.composition_raw_bridge = optimized.bridge
         owner.bo.history.append(result)
@@ -329,9 +376,13 @@ class CandidateService:
         bounds: Any,
         return_result: bool,
     ) -> Any:
-        logratio_site = resolve_logratio_best_subset_site(self.composition.sites)
-        if logratio_site is not None:
-            site_name, site_config = logratio_site
+        multi_raw = uses_multi_raw_best_subset(self.composition.sites)
+        logratio_site = (
+            None
+            if multi_raw
+            else resolve_logratio_best_subset_site(self.composition.sites)
+        )
+        if multi_raw or logratio_site is not None:
             started = perf_counter()
             emit_progress(
                 "candidate_generation_started",
@@ -340,16 +391,27 @@ class CandidateService:
                 optimizer=str(opt_config.optimizer),
             )
             try:
-                result = self._raw_logratio_candidate(
-                    owner,
-                    acq_config,
-                    opt_config,
-                    data_context=data_context,
-                    bounds=bounds,
-                    return_result=return_result,
-                    site_name=site_name,
-                    site_config=site_config,
-                )
+                if multi_raw:
+                    result = self._raw_multi_candidate(
+                        owner,
+                        acq_config,
+                        opt_config,
+                        data_context=data_context,
+                        bounds=bounds,
+                        return_result=return_result,
+                    )
+                else:
+                    site_name, site_config = logratio_site
+                    result = self._raw_logratio_candidate(
+                        owner,
+                        acq_config,
+                        opt_config,
+                        data_context=data_context,
+                        bounds=bounds,
+                        return_result=return_result,
+                        site_name=site_name,
+                        site_config=site_config,
+                    )
             except Exception:
                 emit_progress(
                     "candidate_generation_failed",

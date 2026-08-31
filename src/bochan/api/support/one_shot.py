@@ -28,28 +28,60 @@ def base_one_shot_acquisition(acqf: Any) -> Any:
     return getattr(acqf, "_bochan_one_shot_base", acqf)
 
 
+def gen_one_shot_best_subset_initial_conditions(
+    acq_function: Any,
+    bounds: Tensor,
+    q: int,
+    num_restarts: int,
+    raw_samples: int,
+    fixed_features: Mapping[int, float] | None = None,
+    options: Mapping[str, Any] | None = None,
+    inequality_constraints: Sequence[Any] | None = None,
+    equality_constraints: Sequence[Any] | None = None,
+    **kwargs: Any,
+) -> Tensor | None:
+    """Generate feasible initial conditions for a support-constrained one-shot tree.
+
+    BoTorch's specialized qKG/qHVKG initializers currently reject inter-point
+    linear constraints. Best Subset needs exactly those constraints so inactive
+    sparse dimensions can be zeroed on the real ``q`` experiment candidates
+    without imposing the same support on auxiliary fantasy/value-function points.
+
+    The generic batch initializer accepts inter-point constraints. We therefore
+    expand ``q`` to the acquisition's full augmented tree size explicitly and
+    initialize that full tree in one pass. This is less heuristic than qKG's
+    specialized fantasy initializer, but preserves the exact optimization domain
+    and works uniformly for qKG, qHVKG, qMultiStepLookahead, and transparent raw
+    decision wrappers.
+    """
+
+    from botorch.optim.initializers import gen_batch_initial_conditions
+
+    q_augmented = int(acq_function.get_augmented_q_batch_size(int(q)))
+    return gen_batch_initial_conditions(
+        acq_function=acq_function,
+        bounds=bounds,
+        q=q_augmented,
+        num_restarts=int(num_restarts),
+        raw_samples=int(raw_samples),
+        fixed_features=None if fixed_features is None else dict(fixed_features),
+        options=None if options is None else dict(options),
+        inequality_constraints=None
+        if inequality_constraints is None
+        else list(inequality_constraints),
+        equality_constraints=None
+        if equality_constraints is None
+        else list(equality_constraints),
+        **kwargs,
+    )
+
+
 def resolve_one_shot_ic_generator(acqf: Any) -> Any | None:
-    """Recover BoTorch's specialized one-shot initializer through wrappers."""
+    """Return the Best Subset-compatible initializer for one-shot acquisitions."""
 
     if not is_one_shot_acquisition(acqf):
         return None
-    base = base_one_shot_acquisition(acqf)
-    try:
-        from botorch.acquisition.knowledge_gradient import qKnowledgeGradient
-        from botorch.acquisition.multi_objective.hypervolume_knowledge_gradient import (
-            qHypervolumeKnowledgeGradient,
-        )
-        from botorch.optim.initializers import (
-            gen_one_shot_hvkg_initial_conditions,
-            gen_one_shot_kg_initial_conditions,
-        )
-    except ImportError:  # pragma: no cover
-        return None
-    if isinstance(base, qHypervolumeKnowledgeGradient):
-        return gen_one_shot_hvkg_initial_conditions
-    if isinstance(base, qKnowledgeGradient):
-        return gen_one_shot_kg_initial_conditions
-    return None
+    return gen_one_shot_best_subset_initial_conditions
 
 
 def _merged_fixed_features(config: OptimizeConfig) -> dict[int, float]:
@@ -350,6 +382,7 @@ def one_shot_support_config(
 
 __all__ = [
     "base_one_shot_acquisition",
+    "gen_one_shot_best_subset_initial_conditions",
     "is_one_shot_acquisition",
     "one_shot_support_config",
     "resolve_one_shot_ic_generator",

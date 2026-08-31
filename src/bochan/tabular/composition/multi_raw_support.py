@@ -7,7 +7,6 @@ from dataclasses import dataclass, replace
 from math import prod
 from typing import Any
 
-import torch
 from torch import Tensor
 
 from bochan.api import (
@@ -30,8 +29,10 @@ from .logratio_support import (
     RawDecisionAcquisition,
     _raw_fixed_features_list_from_training,
     _reject_one_shot_acquisition,
-    _remap_optimize_config as _remap_logratio_optimize_config,
     is_logratio_best_subset_site,
+)
+from .logratio_support import (
+    _remap_optimize_config as _remap_logratio_optimize_config,
 )
 from .multi_support import (
     _merge_search_controls,
@@ -57,17 +58,33 @@ from .support import (
 )
 from .variable_total_support import (
     CompositionVariableTotalDecisionBridge,
-    _active_floor as _variable_active_floor,
-    _component_bounds as _variable_component_bounds,
     _composition_fixed_amounts,
     _grid_config_with_fixed_amounts,
-    _grid_postprocess as _variable_grid_postprocess,
-    _remap_optimize_config as _remap_variable_optimize_config,
-    _validate_grid_contract as _validate_variable_grid_contract,
-    _validate_grid_strategy as _validate_variable_grid_strategy,
-    _validate_grid_supports as _validate_variable_grid_supports,
-    _validate_support_feasibility as _validate_variable_support_feasibility,
     is_variable_total_best_subset_site,
+)
+from .variable_total_support import (
+    _active_floor as _variable_active_floor,
+)
+from .variable_total_support import (
+    _component_bounds as _variable_component_bounds,
+)
+from .variable_total_support import (
+    _grid_postprocess as _variable_grid_postprocess,
+)
+from .variable_total_support import (
+    _remap_optimize_config as _remap_variable_optimize_config,
+)
+from .variable_total_support import (
+    _validate_grid_contract as _validate_variable_grid_contract,
+)
+from .variable_total_support import (
+    _validate_grid_strategy as _validate_variable_grid_strategy,
+)
+from .variable_total_support import (
+    _validate_grid_supports as _validate_variable_grid_supports,
+)
+from .variable_total_support import (
+    _validate_support_feasibility as _validate_variable_support_feasibility,
 )
 
 

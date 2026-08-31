@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   patch:
+    if: github.event.head_commit.message != 'Wire multiple composition Best Subset groups'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -77,29 +78,6 @@ jobs:
               '        )\n',
           )
 
-          replace_once(
-              ".github/workflows/best-subset-smoke.yml",
-              '            tests/test_k_sparse_best_subset_cardinality.py\n',
-              '            tests/test_k_sparse_best_subset_cardinality.py \\\n'
-              '            tests/test_k_sparse_best_subset_groups.py \\\n'
-              '            tests/test_composition_multi_best_subset.py\n',
-          )
-          replace_once(
-              ".github/workflows/best-subset-smoke.yml",
-              '            src/bochan/api/support/best_subset.py \\\n',
-              '            src/bochan/api/support/best_subset.py \\\n'
-              '            src/bochan/api/support/multi_group_best_subset.py \\\n'
-              '            src/bochan/tabular/composition/multi_support.py \\\n'
-              '            src/bochan/tabular/composition/support.py \\\n',
-          )
-          replace_once(
-              ".github/workflows/best-subset-smoke.yml",
-              '            tests/test_k_sparse_best_subset_cardinality.py\n',
-              '            tests/test_k_sparse_best_subset_cardinality.py \\\n'
-              '            tests/test_k_sparse_best_subset_groups.py \\\n'
-              '            tests/test_composition_multi_best_subset.py\n',
-          )
-
           docs = Path("docs/composition_best_subset.md")
           text = docs.read_text()
           anchor = "## Variable-total compositions\n"
@@ -113,20 +91,19 @@ jobs:
               '- single-site raw-decision Best Subset bridges for CLR / ALR / ILR and variable-total compositions;\n',
               1,
           )
-          text = text.replace(
-              'Still explicit future extensions:\n\n- multiple simultaneous composition Best Subset groups;\n- one-shot acquisition functions that introduce augmented optimization variables.\n',
-              'Still explicit future extensions:\n\n- multiple simultaneous raw-decision Best Subset bridges (CLR / ALR / ILR and variable-total groups);\n- linear step-grid constraints that directly couple two stepped composition sites;\n- one-shot acquisition functions that introduce augmented optimization variables.\n',
-              1,
-          )
-          docs.write_text(text)
-
-          Path(".github/workflows/patch-multi-best-subset-groups.yml").unlink()
+          old_future = 'Still explicit future extensions:\n\n- multiple simultaneous composition Best Subset groups;\n- one-shot acquisition functions that introduce augmented optimization variables.\n'
+          new_future = 'Still explicit future extensions:\n\n- multiple simultaneous raw-decision Best Subset bridges (CLR / ALR / ILR and variable-total groups);\n- linear step-grid constraints that directly couple two stepped composition sites;\n- one-shot acquisition functions that introduce augmented optimization variables.\n'
+          if old_future not in text:
+              raise SystemExit("Documentation future-scope anchor not found")
+          docs.write_text(text.replace(old_future, new_future, 1))
           PY
       - name: Commit patch
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
+          git add src/bochan/api/optimizer/dispatch.py \
+                  src/bochan/tabular/composition/support.py \
+                  docs/composition_best_subset.md
           git diff --cached --check
           git commit -m "Wire multiple composition Best Subset groups"
           git push origin HEAD:codex/composition-multi-best-subset-groups

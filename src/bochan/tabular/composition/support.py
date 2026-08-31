@@ -9,6 +9,7 @@ from math import comb
 from typing import Any
 
 from bochan.api import CandidateRepairConfig, OptimizeConfig
+from bochan.api.support.best_subset import InfeasibleBestSubsetSupportError
 
 from .cardinality import (
     BEST_SUBSET_MAX_K_KWARG,
@@ -359,8 +360,19 @@ def _validate_grid_supports(
 ) -> None:
     if not config.get("steps"):
         return
+
+    feasible_count = 0
+    last_error: InfeasibleBestSubsetSupportError | None = None
     for selected in combinations(optional, optional_k):
-        projector.validate_support([*required, *selected])
+        try:
+            projector.validate_support([*required, *selected])
+        except InfeasibleBestSubsetSupportError as exc:
+            last_error = exc
+            continue
+        feasible_count += 1
+
+    if feasible_count == 0 and last_error is not None:
+        raise last_error
 
 
 def resolve_composition_best_subset(

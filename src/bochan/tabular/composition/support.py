@@ -10,6 +10,13 @@ from typing import Any
 
 from bochan.api import CandidateRepairConfig, OptimizeConfig
 
+from .cardinality import (
+    BEST_SUBSET_MAX_K_KWARG,
+    BEST_SUBSET_MIN_K_KWARG,
+    apply_optional_cardinality_range,
+    require_exact_cardinality_for_steps,
+    resolve_composition_cardinality_range,
+)
 from .grid import CompositionGridFinalPostprocess
 
 _SUPPORTED_REPRESENTATIONS = {"none", "fraction", "fractions"}
@@ -105,7 +112,7 @@ def _validate_all_supports_feasible(
     optional_k: int,
     config: Mapping[str, Any],
 ) -> None:
-    """Reject settings where some enumerated exact-k support cannot sum to one."""
+    """Reject settings where some enumerated support cannot sum to one."""
     total = float(config["total"])
     required_lower = 0.0
     required_upper = 0.0
@@ -130,21 +137,21 @@ def _validate_all_supports_feasible(
     smallest_upper_sum = sum(sorted(optional_uppers)[:optional_k])
     if required_lower + largest_floor_sum > 1.0 + _TOLERANCE:
         raise ValueError(
-            "Composition best_subset has an exact-k support whose active lower "
-            "bounds cannot satisfy the unit composition sum."
+            "Composition best_subset has a support whose active lower bounds cannot "
+            "satisfy the unit composition sum."
         )
     if required_upper + smallest_upper_sum < 1.0 - _TOLERANCE:
         raise ValueError(
-            "Composition best_subset has an exact-k support whose active upper "
-            "bounds cannot satisfy the unit composition sum. Relax component upper "
-            "bounds or reduce the candidate element set."
+            "Composition best_subset has a support whose active upper bounds cannot "
+            "satisfy the unit composition sum. Relax component upper bounds or reduce "
+            "the candidate element set."
         )
 
 
 def _validate_site(
     site_name: str,
     config: Mapping[str, Any],
-) -> int:
+) -> tuple[int, int]:
     representation = str(config["representation"]).lower()
     if representation not in _SUPPORTED_REPRESENTATIONS:
         raise ValueError(
@@ -159,13 +166,18 @@ def _validate_site(
             "best_subset currently supports fixed-total sites only."
         )
     minimum = int(config["min_components"])
-    maximum = config["max_components"]
-    if maximum is None or minimum != int(maximum):
+    maximum_raw = config.get("max_components")
+    if maximum_raw is None:
         raise ValueError(
-            f"Composition site {site_name!r} must set min_components == max_components "
-            "for exact-cardinality best_subset search."
+            f"Composition site {site_name!r} must set max_components for best_subset."
         )
-    return int(maximum)
+    maximum = int(maximum_raw)
+    if minimum < 1 or maximum < minimum:
+        raise ValueError(
+            f"Composition site {site_name!r} requires 1 <= min_components <= "
+            "max_components for best_subset search."
+        )
+    return minimum, maximum
 
 
 def _optimizer_kwargs_for_site(
@@ -181,6 +193,13 @@ def _optimizer_kwargs_for_site(
     return optimizer_kwargs
 
 
+def _without_cardinality_kwargs(values: Mapping[str, Any] | None) -> dict[str, Any]:
+    optimizer_kwargs = dict(values or {})
+    optimizer_kwargs.pop(BEST_SUBSET_MIN_K_KWARG, None)
+    optimizer_kwargs.pop(BEST_SUBSET_MAX_K_KWARG, None)
+    return optimizer_kwargs
+
+
 def _validate_grid_strategy(
     *,
     config: Mapping[str, Any],
@@ -188,7 +207,7 @@ def _validate_grid_strategy(
     optional_count: int,
     optional_k: int,
 ) -> None:
-    """Keep step-grid search on exhaustive supports in the initial implementation."""
+    """Keep step-grid search on exhaustive exact-cardinality supports for now."""
     if not config.get("steps") or optional_k == 0:
         return
     strategy = str(
@@ -345,14 +364,14 @@ def resolve_composition_best_subset(
 
     Element support is defined in raw composition space. For fraction representation,
     each element has one model feature, so optional elements can be passed to the core
-    k-sparse best-subset optimizer without confusing log-ratio coordinates for element
+    sparse best-subset optimizer without confusing log-ratio coordinates for element
     presence. Required elements remain free-valued variables; forbidden elements are
     fixed to zero.
 
-    When component steps are configured, inner optimization remains continuous and
-    the final candidate for each support is projected to the nearest feasible fixed-
-    support grid point before acquisition re-evaluation. This keeps support ranking
-    consistent with the actual experiment-space candidate.
+    ``min_components`` / ``max_components`` count all active elements. Required
+    elements are removed from the generic sparse group and the residual optional-k
+    range is passed to the core Best Subset engine. With component steps the current
+    MILP projector remains exact-cardinality only.
     """
     selected_sites = [
         name
@@ -364,12 +383,12 @@ def resolve_composition_best_subset(
     if len(selected_sites) > 1:
         raise ValueError(
             "Composition best_subset currently supports one composition site per "
-            "candidate optimization because CandidateRepairConfig has one k-sparse group."
+            "candidate optimization because CandidateRepairConfig has one sparse group."
         )
 
     site_name = selected_sites[0]
     config = composition_sites[site_name]
-    exact_k = _validate_site(site_name, config)
+    _validate_site(site_name, config)
     transformer = composition_transformers.get(site_name)
     if transformer is None:
         raise RuntimeError(
@@ -395,8 +414,8 @@ def resolve_composition_best_subset(
         )
     if int(repair.k) != 0:
         raise ValueError(
-            "Composition best_subset derives k from max_components. Remove the generic "
-            "CandidateRepairConfig.k setting."
+            "Composition best_subset derives cardinality from min_components/"
+            "max_components. Remove the generic CandidateRepairConfig.k setting."
         )
     if repair.final_sum_constraint is not None:
         raise ValueError(
@@ -452,31 +471,40 @@ def resolve_composition_best_subset(
         for element in elements
         if element not in required and element not in forbidden
     ]
-    optional_k = exact_k - len(required)
-    if optional_k < 0:
-        raise ValueError(
-            f"Composition site {site_name!r} requires {len(required)} components but "
-            f"max_components={exact_k}."
-        )
-    if optional_k > len(optional):
-        raise ValueError(
-            f"Composition site {site_name!r} cannot choose {optional_k} optional "
-            f"components from only {len(optional)} available components."
-        )
+    ordered_required = sorted(required, key=elements.index)
+    cardinality = resolve_composition_cardinality_range(
+        config,
+        required_count=len(required),
+        optional_count=len(optional),
+        context=f"Composition site {site_name!r} best_subset",
+    )
+    require_exact_cardinality_for_steps(
+        config,
+        cardinality,
+        context=f"Composition site {site_name!r} best_subset",
+    )
 
     effective_optimizer_kwargs = _optimizer_kwargs_for_site(opt_config, config)
-    _validate_grid_strategy(
-        config=config,
-        optimizer_kwargs=effective_optimizer_kwargs,
-        optional_count=len(optional),
-        optional_k=optional_k,
+    search_optimizer_kwargs = apply_optional_cardinality_range(
+        effective_optimizer_kwargs,
+        cardinality,
+        context=f"Composition site {site_name!r} best_subset",
     )
-    _validate_all_supports_feasible(
-        required=sorted(required, key=elements.index),
-        optional=optional,
-        optional_k=optional_k,
-        config=config,
-    )
+
+    if config.get("steps"):
+        _validate_grid_strategy(
+            config=config,
+            optimizer_kwargs=search_optimizer_kwargs,
+            optional_count=len(optional),
+            optional_k=cardinality.optional_maximum,
+        )
+    for optional_k in cardinality.optional_cardinalities:
+        _validate_all_supports_feasible(
+            required=ordered_required,
+            optional=optional,
+            optional_k=optional_k,
+            config=config,
+        )
 
     final_candidate_postprocess = _grid_postprocess(
         opt_config=opt_config,
@@ -484,15 +512,16 @@ def resolve_composition_best_subset(
         elements=elements,
         fraction_names=fraction_names,
         feature_names=feature_names,
-        exact_k=exact_k,
+        exact_k=cardinality.maximum,
     )
-    _validate_grid_supports(
-        projector=final_candidate_postprocess,
-        config=config,
-        required=sorted(required, key=elements.index),
-        optional=optional,
-        optional_k=optional_k,
-    )
+    if config.get("steps"):
+        _validate_grid_supports(
+            projector=final_candidate_postprocess,
+            config=config,
+            required=ordered_required,
+            optional=optional,
+            optional_k=cardinality.optional_maximum,
+        )
 
     forbidden_fixed = {by_element[element]: 0.0 for element in forbidden}
     optimizer_fixed = _merge_fixed_features(optimizer_fixed, forbidden_fixed)
@@ -525,7 +554,7 @@ def resolve_composition_best_subset(
             optimizer_inequalities.append(([feature_name], [1.0], floor_value))
 
     optional_names = [by_element[element] for element in optional]
-    if optional_k == 0:
+    if cardinality.optional_maximum == 0:
         repair = replace(
             repair,
             comp_idx=None,
@@ -537,12 +566,12 @@ def resolve_composition_best_subset(
             fixed_features=repair_fixed or None,
             final_sum_constraint=(fraction_names, 1.0),
         )
-        optimizer_kwargs = dict(opt_config.optimizer_kwargs or {})
+        optimizer_kwargs = _without_cardinality_kwargs(opt_config.optimizer_kwargs)
     else:
         repair = replace(
             repair,
             comp_idx=optional_names,
-            k=optional_k,
+            k=cardinality.optional_maximum,
             support_selection="best_subset",
             equality_constraints=repair_equalities,
             inequality_constraints=repair_inequalities,
@@ -550,7 +579,7 @@ def resolve_composition_best_subset(
             fixed_features=repair_fixed or None,
             final_sum_constraint=(fraction_names, 1.0),
         )
-        optimizer_kwargs = effective_optimizer_kwargs
+        optimizer_kwargs = search_optimizer_kwargs
 
     return replace(
         opt_config,

@@ -106,6 +106,22 @@ opt_config = OptimizeConfig(
 )
 ```
 
+## Multiple composition Best Subset groups
+
+Multiple fixed-total sites using `representation="fractions"` can participate in one candidate optimization. Each site's optional elements form an independent sparse group with its own `min_components` / `max_components` range. Required and forbidden elements remain site-local.
+
+For Exact search, the total number of grouped supports is the Cartesian-product size:
+
+```text
+N_supports = product(N_supports_for_each_site)
+```
+
+`best_subset_max_combinations` is applied to this product, not to each site independently. Auto uses the same product when choosing Exact versus Beam. Grouped Beam seeds every allowed cardinality combination and changes one composition group at a time with swap/add/drop moves. One complete grouped support is shared by the whole joint q-batch.
+
+Independent step grids are chained through the existing final-candidate MILP projectors. A linear constraint may still couple one stepped composition site to ordinary process variables. A constraint that directly couples **two stepped composition sites** is rejected because sequential projection would make feasibility depend on projector order.
+
+This phase covers simultaneous fixed-total Fraction sites. CLR / ALR / ILR and variable-total Best Subset sites still use a single raw-decision bridge and therefore remain single-site until the grouped raw-bridge extension.
+
 ## Variable-total compositions
 
 Variable-total Best Subset is optimized in **raw absolute component amounts**, not in `fraction + total` coordinates.
@@ -304,7 +320,8 @@ For fixed-total CLR / ALR / ILR searches, the Web response continues to restore 
 
 Supported:
 
-- one Best Subset composition site per candidate optimization;
+- multiple simultaneous fixed-total Fraction Best Subset composition sites in Python/tabular candidate optimization;
+- single-site raw-decision Best Subset bridges for CLR / ALR / ILR and variable-total compositions;
 - fixed-total and variable-total compositions in Python/tabular and React/FastAPI Web workflows;
 - Fraction / CLR / ALR / ILR surrogate representations;
 - continuous variable cardinality (`min_components <= max_components`);
@@ -322,7 +339,8 @@ Supported:
 
 Still explicit future extensions:
 
-- multiple simultaneous composition Best Subset groups;
+- multiple simultaneous raw-decision Best Subset bridges (CLR / ALR / ILR and variable-total groups);
+- linear step-grid constraints that directly couple two stepped composition sites;
 - one-shot acquisition functions that introduce augmented optimization variables.
 
 These cases are intentionally rejected instead of falling back to transformed-coordinate sparsity or post-hoc rounding that would change the optimization problem.

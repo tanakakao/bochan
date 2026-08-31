@@ -179,7 +179,7 @@ composition_sites={
 
 The fixed-total projection preserves:
 
-- the selected exact-k support;
+- the selected support and its cardinality;
 - component lower/upper bounds;
 - every configured component step;
 - the fixed composition total;
@@ -229,7 +229,7 @@ composition_sites={
 
 The variable-total MILP operates directly in raw absolute amounts and preserves:
 
-- the selected exact-k element support;
+- the selected element support and its cardinality;
 - absolute component lower/upper bounds;
 - every configured absolute-amount step;
 - `total_lower <= sum(amounts) <= total_upper`;
@@ -275,7 +275,7 @@ The React/FastAPI composition workbench supports the same fixed-total and variab
 - variable-total formula data derives a separate fitted total feature from the original formula coefficients;
 - Fraction / CLR / ALR / ILR model coordinates remain normalized composition features;
 - variable-total Best Subset uses raw absolute element amounts internally and exposes the optimized total in the candidate result;
-- component steps use the same exact-cardinality-only MILP contract as the Python API.
+- component steps use the same variable-cardinality, support-preserving MILP contract as the Python API.
 
 The Web search-space controls therefore distinguish between fixed-total element amounts and variable-total absolute amounts. For a variable-total Best Subset result, response metadata reports `support_space="raw_amount"`, `total_bounds`, and the generated total-feature name. Structural zeros and the optimized total are restored from the exact raw candidate rather than inferred from pseudocount-smoothed log-ratio coordinates.
 

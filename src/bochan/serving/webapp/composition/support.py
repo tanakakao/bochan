@@ -147,9 +147,18 @@ def _validate_best_subset_contract(config: Mapping[str, Any]) -> None:
     if config.get("support_selection") != "best_subset":
         return
     maximum = config.get("max_components")
-    if maximum is None or int(config["min_components"]) != int(maximum):
+    if maximum is None:
+        raise ValueError("Composition best_subset requires max_components.")
+    minimum = int(config["min_components"])
+    maximum = int(maximum)
+    if minimum > maximum:
         raise ValueError(
-            "Composition best_subset requires min_components == max_components."
+            "Composition best_subset requires max_components >= min_components."
+        )
+    if config.get("steps") and minimum != maximum:
+        raise ValueError(
+            "Composition best_subset with component steps currently requires "
+            "min_components == max_components."
         )
 
 

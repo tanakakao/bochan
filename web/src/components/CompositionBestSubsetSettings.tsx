@@ -40,6 +40,14 @@ function combinationCount(n: number, k: number): number {
   return Math.round(result);
 }
 
+function combinationRangeCount(n: number, minimum: number, maximum: number): number {
+  let result = 0;
+  for (let k = minimum; k <= maximum; k += 1) {
+    result += combinationCount(n, k);
+  }
+  return result;
+}
+
 /** Configure acquisition-aware element-combination search for one composition site. */
 export default function CompositionBestSubsetSettings() {
   const [settings, update] = useCompositionSettings();
@@ -47,49 +55,98 @@ export default function CompositionBestSubsetSettings() {
 
   const enabled = settings.supportSelection === "best_subset";
   const variableTotal = settings.totalMode === "variable";
-  const exactCount = settings.maxComponents ?? settings.minComponents;
+  const minCount = clampCount(settings.minComponents, settings.elements.length);
+  const maxCount = clampCount(settings.maxComponents ?? minCount, settings.elements.length);
   const hasSteps = settings.elements.some((element) => (settings.steps[element] ?? 0) > 0);
-  const overlap = settings.requiredComponents.filter((element) => (
-    settings.forbiddenComponents.includes(element)
-  ));
-  const required = settings.requiredComponents.filter(
-    (element) => !settings.forbiddenComponents.includes(element)
-  );
+
+  const boundRequired = settings.elements.filter((element) => {
+    const pair = settings.bounds[element];
+    return pair !== undefined && pair[0] > 0;
+  });
+  const boundForbidden = settings.elements.filter((element) => {
+    const pair = settings.bounds[element];
+    return pair !== undefined && pair[1] <= 0;
+  });
+  const requiredSet = new Set([
+    ...settings.requiredComponents,
+    ...boundRequired
+  ]);
+  const forbiddenSet = new Set([
+    ...settings.forbiddenComponents,
+    ...boundForbidden
+  ]);
+  const overlap = [...requiredSet].filter((element) => forbiddenSet.has(element));
+  const required = [...requiredSet].filter((element) => !forbiddenSet.has(element));
   const optionalCount = settings.elements.filter(
-    (element) => !required.includes(element) && !settings.forbiddenComponents.includes(element)
+    (element) => !requiredSet.has(element) && !forbiddenSet.has(element)
   ).length;
-  const optionalK = Math.max(0, exactCount - required.length);
-  const supportCount = combinationCount(optionalCount, optionalK);
-  const stepGridWouldUseBeam = hasSteps && optionalK > 0 && (
+  const optionalMin = Math.max(0, minCount - required.length);
+  const optionalMax = Math.max(
+    optionalMin,
+    Math.min(optionalCount, maxCount - required.length)
+  );
+  const supportCount = combinationRangeCount(optionalCount, optionalMin, optionalMax);
+  const cardinalityCount = Math.max(0, optionalMax - optionalMin + 1);
+  const variableCardinality = minCount !== maxCount;
+  const stepGridVariableCardinality = hasSteps && variableCardinality;
+  const stepGridWouldUseBeam = hasSteps && !variableCardinality && optionalMax > 0 && (
     settings.bestSubsetStrategy === "beam" ||
     (
       settings.bestSubsetStrategy === "auto" &&
       supportCount > settings.bestSubsetMaxCombinations
     )
   );
+  const beamBudgetTooSmall = enabled && (
+    settings.bestSubsetStrategy === "beam" ||
+    (
+      settings.bestSubsetStrategy === "auto" &&
+      supportCount > settings.bestSubsetMaxCombinations
+    )
+  ) && settings.bestSubsetMaxEvaluations < cardinalityCount;
 
   function setSupportSelection(value: SupportSelection): void {
     update((current) => {
       if (value !== "best_subset") {
         return { ...current, supportSelection: value };
       }
-      const count = clampCount(
-        current.maxComponents ?? current.minComponents,
+      const minimum = clampCount(current.minComponents, current.elements.length);
+      const maximum = clampCount(
+        current.maxComponents ?? minimum,
         current.elements.length
       );
       return {
         ...current,
         supportSelection: value,
-        minComponents: count,
-        maxComponents: count
+        minComponents: Math.min(minimum, maximum),
+        maxComponents: Math.max(minimum, maximum)
       };
     });
   }
 
-  function setExactCount(value: number): void {
+  function setMinCount(value: number): void {
     update((current) => {
-      const count = clampCount(value, current.elements.length);
-      return { ...current, minComponents: count, maxComponents: count };
+      const minimum = clampCount(value, current.elements.length);
+      const maximum = clampCount(
+        current.maxComponents ?? minimum,
+        current.elements.length
+      );
+      return {
+        ...current,
+        minComponents: minimum,
+        maxComponents: Math.max(minimum, maximum)
+      };
+    });
+  }
+
+  function setMaxCount(value: number): void {
+    update((current) => {
+      const maximum = clampCount(value, current.elements.length);
+      const minimum = clampCount(current.minComponents, current.elements.length);
+      return {
+        ...current,
+        minComponents: Math.min(minimum, maximum),
+        maxComponents: maximum
+      };
     });
   }
 
@@ -111,7 +168,7 @@ export default function CompositionBestSubsetSettings() {
         <div>
           <h4>元素組合せの探索方法</h4>
           <p>
-            通常repairに加えて、獲得関数を使って元素の組合せ自体を探索するBest Subsetを選択できます。
+            通常repairに加えて、獲得関数を使って元素の組合せと使用元素数自体を探索するBest Subsetを選択できます。
           </p>
         </div>
         <span className={`status-chip ${enabled ? "success" : ""}`}>
@@ -134,13 +191,23 @@ export default function CompositionBestSubsetSettings() {
         {enabled && (
           <>
             <label>
-              <span>使用元素数</span>
+              <span>使用元素数・最小</span>
               <input
                 type="number"
                 min={1}
                 max={Math.max(settings.elements.length, 1)}
-                value={exactCount}
-                onChange={(event) => setExactCount(Number(event.target.value))}
+                value={minCount}
+                onChange={(event) => setMinCount(Number(event.target.value))}
+              />
+            </label>
+            <label>
+              <span>使用元素数・最大</span>
+              <input
+                type="number"
+                min={1}
+                max={Math.max(settings.elements.length, 1)}
+                value={maxCount}
+                onChange={(event) => setMaxCount(Number(event.target.value))}
               />
             </label>
             <label>
@@ -258,17 +325,22 @@ export default function CompositionBestSubsetSettings() {
           元素supportはraw fraction空間で探索し、{settings.representation.toUpperCase()}座標は学習済みモデルと獲得関数の評価だけに使います。非選択元素はraw空間で厳密に0のまま保持されます。
         </p>
       )}
-      {enabled && settings.minComponents !== settings.maxComponents && (
-        <p className="settings-note warning-text">
-          Best Subsetでは使用元素数を1つに固定してください。上の「使用元素数」を変更すると最小・最大を同じ値に戻します。
+      {enabled && variableCardinality && !hasSteps && (
+        <p className="settings-note">
+          使用元素数は{minCount}〜{maxCount}の各cardinalityを同じ獲得関数で比較します。必須元素は全supportに含まれ、その残りのoptional元素数をBest Subsetが選択します。
         </p>
       )}
-      {enabled && hasSteps && !stepGridWouldUseBeam && !variableTotal && (
+      {enabled && stepGridVariableCardinality && (
+        <p className="settings-note warning-text">
+          step付きBest SubsetのMILP投影は現在exact-cardinalityのみ対応です。stepを解除するか、使用元素数の最小・最大を同じ値にしてください。
+        </p>
+      )}
+      {enabled && hasSteps && !stepGridWouldUseBeam && !stepGridVariableCardinality && !variableTotal && (
         <p className="settings-note">
           元素ごとの刻みはExact support探索で有効です。各supportの連続最適化後に、support・bounds・合計を保った最も近いstep格子点へ投影し、その候補で獲得関数を再評価します。
         </p>
       )}
-      {enabled && hasSteps && !stepGridWouldUseBeam && variableTotal && (
+      {enabled && hasSteps && !stepGridWouldUseBeam && !stepGridVariableCardinality && variableTotal && (
         <p className="settings-note">
           Variable totalの元素量stepはExact support探索で有効です。各supportの連続最適化後にraw amount格子へ投影し、support・元素bounds・total_boundsを保った候補で獲得関数を再評価します。投影後の合計量はtotal_bounds内で動きます。
         </p>
@@ -278,6 +350,11 @@ export default function CompositionBestSubsetSettings() {
           step付きBest Subsetは現在Exact探索のみ対応です。探索戦略をExactにするか、AutoのExact最大組合せ数を{supportCount}以上にしてください。
         </p>
       )}
+      {enabled && beamBudgetTooSmall && (
+        <p className="settings-note warning-text">
+          Beam探索では許容cardinalityごとに少なくとも1つseedを評価します。Support評価上限を{cardinalityCount}以上にしてください。
+        </p>
+      )}
       {enabled && overlap.length > 0 && (
         <p className="settings-note warning-text">
           必須と禁止を同時に指定できない元素があります: {overlap.join(", ")}
@@ -285,7 +362,7 @@ export default function CompositionBestSubsetSettings() {
       )}
       {enabled && (
         <p className="settings-note">
-          qバッチでは現時点で1つの元素supportを共有します。Autoは組合せ数が上限以内ならExact、それを超える場合はBeamへ切り替えます。
+          qバッチでは現時点で1つの元素supportを共有します。Autoは許容元素数全体の組合せ数（現在{supportCount}）が上限以内ならExact、それを超える場合はBeamへ切り替えます。
         </p>
       )}
     </section>

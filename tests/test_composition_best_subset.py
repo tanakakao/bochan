@@ -465,14 +465,29 @@ def test_step_grid_best_subset_rejects_process_coupled_composition_constraint() 
     assert process_only.final_candidate_postprocess is not None
 
 
-def test_step_grid_best_subset_rejects_nonzero_fixed_composition_value() -> None:
-    with pytest.raises(ValueError, match="non-zero fixed composition values"):
-        _resolve(
-            _grid_site(),
-            OptimizeConfig(
-                fixed_features={"alloy__fraction__Al": 0.4},
-            ),
+def test_step_grid_best_subset_preserves_nonzero_fixed_composition_value() -> None:
+    config = _resolve(
+        _grid_site(),
+        OptimizeConfig(
+            fixed_features={"alloy__fraction__Al": 0.4},
+        ),
+    )
+    callback = config.final_candidate_postprocess
+    assert isinstance(callback, CompositionGridFinalPostprocess)
+    assert config.fixed_features is not None
+    assert config.fixed_features["alloy__fraction__Al"] == pytest.approx(0.4)
+
+    projected = callback(
+        torch.tensor(
+            [[0.44, 0.31, 0.25, 0.0, 0.0, 913.0]],
+            dtype=torch.double,
         )
+    )
+    fractions = projected[0, :5]
+
+    assert fractions[0].item() == pytest.approx(0.4, abs=1e-10)
+    assert fractions.sum().item() == pytest.approx(1.0, abs=1e-10)
+    assert int((fractions > 1e-10).sum().item()) == 3
 
 
 def test_infeasible_exact_support_bounds_are_rejected_before_optimizer_calls() -> None:

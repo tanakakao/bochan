@@ -258,7 +258,10 @@ def test_fraction_variable_cardinality_compares_different_total_component_counts
 
 def test_variable_cardinality_with_steps_is_configured_for_grid_projection() -> None:
     transformer = _transformer("ilr")
-    site = _site("ilr", steps={"Al": 0.1, "Ti": 0.1, "V": 0.1, "Nb": 0.1})
+    site = _site(
+        "ilr",
+        steps={"Al": 0.05, "Ti": 0.05, "V": 0.05, "Nb": 0.05},
+    )
 
     _bridge, resolved, _bounds = prepare_logratio_best_subset_config(
         OptimizeConfig(),

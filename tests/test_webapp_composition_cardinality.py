@@ -74,16 +74,23 @@ def test_web_normalizer_accepts_variable_total_variable_cardinality() -> None:
 
 
 @pytest.mark.parametrize("variable_total", [False, True])
-def test_web_normalizer_rejects_step_grid_with_variable_cardinality(
+def test_web_normalizer_accepts_step_grid_with_variable_cardinality(
     variable_total: bool,
 ) -> None:
-    with pytest.raises(ValueError, match="min_components == max_components"):
-        normalize_web_composition_settings(
-            _settings(variable_total=variable_total, steps=True)
-        )
+    config = normalize_web_composition_settings(
+        _settings(variable_total=variable_total, steps=True)
+    )
+
+    assert config["min_components"] == 2
+    assert config["max_components"] == 4
+    assert set(config["steps"]) == {"Al", "Ti", "V", "Nb"}
+    site = composition_site(config)
+    assert site["min_components"] == 2
+    assert site["max_components"] == 4
+    assert site["steps"] == config["steps"]
 
 
-def test_react_best_subset_ui_exposes_minimum_and_maximum_cardinality() -> None:
+def test_react_best_subset_ui_exposes_stepped_variable_cardinality() -> None:
     source = Path("web/src/components/CompositionBestSubsetSettings.tsx").read_text(
         encoding="utf-8"
     )
@@ -92,13 +99,14 @@ def test_react_best_subset_ui_exposes_minimum_and_maximum_cardinality() -> None:
     assert "使用元素数・最大" in source
     assert "combinationRangeCount" in source
     assert "使用元素数を1つに固定してください" not in source
-    assert "step付きBest SubsetのMILP投影は現在exact-cardinalityのみ対応" in source
+    assert "step付きBest SubsetのMILP投影は現在exact-cardinalityのみ対応" not in source
+    assert "step指定時も、各supportのcardinalityを保持したまま実験格子へMILP投影" in source
 
 
-def test_workbench_validation_accepts_range_without_steps_and_guards_step_range() -> None:
+def test_workbench_validation_accepts_step_cardinality_range() -> None:
     source = Path("web/src/context/workbenchValidation.ts").read_text(encoding="utf-8")
 
     assert "combinationRangeCount" in source
     assert "if (settings.maxComponents === null) return false;" in source
-    assert "if (hasSteps && effectiveMin !== effectiveMax) return false;" in source
+    assert "if (hasSteps && effectiveMin !== effectiveMax) return false;" not in source
     assert "settings.minComponents !== settings.maxComponents" not in source

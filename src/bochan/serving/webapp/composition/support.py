@@ -155,11 +155,6 @@ def _validate_best_subset_contract(config: Mapping[str, Any]) -> None:
         raise ValueError(
             "Composition best_subset requires max_components >= min_components."
         )
-    if config.get("steps") and minimum != maximum:
-        raise ValueError(
-            "Composition best_subset with component steps currently requires "
-            "min_components == max_components."
-        )
 
 
 def _uses_logratio_best_subset(config: Mapping[str, Any]) -> bool:

@@ -142,17 +142,19 @@ def require_exact_cardinality_for_steps(
     *,
     context: str = "Composition best_subset",
 ) -> None:
-    """Keep current MILP step projectors on configured exact-cardinality supports."""
+    """Validate the cardinality range used by component step-grid projection.
+
+    The grid projector preserves the support selected by Best Subset, so stepped
+    compositions can use either exact or variable cardinality. This helper remains
+    as the compatibility validation hook used by the composition wiring layers.
+    """
 
     if not config.get("steps"):
         return
-    minimum = int(config.get("min_components", cardinality.minimum))
-    maximum_raw = config.get("max_components")
-    if maximum_raw is None or minimum != int(maximum_raw):
+    if cardinality.minimum < 1 or cardinality.maximum < cardinality.minimum:
         raise ValueError(
-            f"{context} with component steps currently requires "
-            "min_components == max_components. Remove steps or use an exact "
-            "component count."
+            f"{context} has an invalid component range "
+            f"[{cardinality.minimum}, {cardinality.maximum}]."
         )
 
 

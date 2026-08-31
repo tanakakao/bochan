@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
 import torch
 
 from bochan.api import OptimizeConfig
@@ -149,3 +150,107 @@ def test_variable_total_step_grid_accepts_beam() -> None:
         config.final_candidate_postprocess,
         CompositionVariableTotalGridFinalPostprocess,
     )
+
+
+def test_fixed_total_step_grid_accepts_variable_cardinality() -> None:
+    transformer = _transformer()
+    _bridge, config, _bounds = prepare_logratio_best_subset_config(
+        OptimizeConfig(),
+        site_name="alloy",
+        site_config=_fixed_site(
+            min_components=2,
+            max_components=3,
+            best_subset_strategy="exact",
+            best_subset_max_combinations=20,
+        ),
+        transformer=transformer,
+        model_feature_names=_fixed_layout(transformer),
+        model_bounds=_fixed_bounds(transformer),
+        dtype=torch.double,
+        device=None,
+    )
+
+    assert config.optimizer_kwargs["best_subset_min_k"] == 2
+    assert config.optimizer_kwargs["best_subset_max_k"] == 3
+    projector = config.final_candidate_postprocess
+    assert isinstance(projector, CompositionGridFinalPostprocess)
+    assert projector.minimum_cardinality == 2
+    assert projector.exact_k == 3
+
+
+@pytest.mark.parametrize(
+    ("fractions", "expected_active"),
+    [
+        ([0.51, 0.49, 0.0, 0.0], 2),
+        ([0.34, 0.33, 0.33, 0.0], 3),
+    ],
+)
+def test_fixed_total_variable_cardinality_projector_preserves_selected_support(
+    fractions: list[float],
+    expected_active: int,
+) -> None:
+    projector = CompositionGridFinalPostprocess.from_config(
+        feature_indices=(0, 1, 2, 3),
+        elements=("Al", "Ti", "V", "Nb"),
+        config=_fixed_site(min_components=2, max_components=3),
+        exact_k=3,
+    )
+    candidate = torch.tensor([fractions], dtype=torch.double)
+    projected = projector(candidate)
+
+    assert int((projected[0].abs() > 1e-8).sum().item()) == expected_active
+    assert float(projected.sum().item()) == pytest.approx(1.0)
+    assert torch.allclose(projected * 10.0, torch.round(projected * 10.0), atol=1e-7)
+
+
+def test_variable_total_step_grid_accepts_variable_cardinality() -> None:
+    transformer = _transformer()
+    bridge, config, _bounds = prepare_variable_total_best_subset_config(
+        OptimizeConfig(),
+        site_name="alloy",
+        site_config=_variable_site(
+            min_components=2,
+            max_components=3,
+            best_subset_strategy="exact",
+            best_subset_max_combinations=20,
+        ),
+        transformer=transformer,
+        model_feature_names=_variable_layout(transformer),
+        model_bounds=_variable_bounds(transformer),
+        dtype=torch.double,
+        device=None,
+    )
+
+    assert config.optimizer_kwargs["best_subset_min_k"] == 2
+    assert config.optimizer_kwargs["best_subset_max_k"] == 3
+    projector = config.final_candidate_postprocess
+    assert isinstance(projector, CompositionVariableTotalGridFinalPostprocess)
+    assert projector.minimum_cardinality == 2
+    assert projector.exact_k == 3
+    assert projector.feature_indices == bridge.amount_indices
+
+
+@pytest.mark.parametrize(
+    ("amounts", "expected_active"),
+    [
+        ([27.0, 24.0, 0.0, 0.0], 2),
+        ([20.0, 20.0, 20.0, 0.0], 3),
+    ],
+)
+def test_variable_total_variable_cardinality_projector_preserves_selected_support(
+    amounts: list[float],
+    expected_active: int,
+) -> None:
+    projector = CompositionVariableTotalGridFinalPostprocess.from_config(
+        feature_indices=(0, 1, 2, 3),
+        elements=("Al", "Ti", "V", "Nb"),
+        config=_variable_site(min_components=2, max_components=3),
+        exact_k=3,
+    )
+    candidate = torch.tensor([amounts], dtype=torch.double)
+    projected = projector(candidate)
+
+    assert int((projected[0].abs() > 1e-8).sum().item()) == expected_active
+    total = float(projected.sum().item())
+    assert 40.0 <= total <= 90.0
+    assert torch.allclose(projected / 5.0, torch.round(projected / 5.0), atol=1e-7)

@@ -6,16 +6,19 @@ on:
       - main
     paths:
       - "src/bochan/api/support/best_subset.py"
+      - "src/bochan/tabular/composition/cardinality.py"
       - "src/bochan/tabular/composition/support.py"
       - "src/bochan/tabular/composition/variable_total_support.py"
       - "src/bochan/tabular/composition/grid.py"
       - "src/bochan/tabular/composition/logratio_support.py"
+      - "src/bochan/serving/webapp/composition/support.py"
       - "web/src/components/CompositionBestSubsetSettings.tsx"
       - "web/src/context/workbenchValidation.ts"
       - "tests/test_k_sparse_best_subset_beam.py"
       - "tests/test_composition_best_subset_steps.py"
       - "tests/test_composition_step_linear_constraints.py"
       - "tests/test_composition_step_beam.py"
+      - "tests/test_webapp_composition_cardinality.py"
       - ".github/workflows/composition-step-beam-smoke.yml"
   workflow_dispatch:
 
@@ -37,17 +40,21 @@ jobs:
             tests/test_k_sparse_best_subset_beam.py \
             tests/test_composition_best_subset_steps.py \
             tests/test_composition_step_linear_constraints.py \
-            tests/test_composition_step_beam.py
+            tests/test_composition_step_beam.py \
+            tests/test_webapp_composition_cardinality.py
       - name: Lint stepped Beam changes
         run: |
           python -m pip install ruff
           ruff check --ignore SIM108 \
             src/bochan/api/support/best_subset.py \
+            src/bochan/tabular/composition/cardinality.py \
             src/bochan/tabular/composition/support.py \
             src/bochan/tabular/composition/variable_total_support.py \
+            src/bochan/serving/webapp/composition/support.py \
             tests/test_k_sparse_best_subset_beam.py \
             tests/test_composition_best_subset_steps.py \
-            tests/test_composition_step_beam.py
+            tests/test_composition_step_beam.py \
+            tests/test_webapp_composition_cardinality.py
       - uses: pnpm/action-setup@v4
         with:
           version: 10

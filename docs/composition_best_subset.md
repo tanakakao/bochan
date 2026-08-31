@@ -155,7 +155,7 @@ Exact, Beam, and Auto support/cardinality search reuse the same generic Best Sub
 
 Best Subset can return experiment-ready stepped compositions. The inner acquisition optimization stays continuous; for each exact support, the final composition is projected with a small mixed-integer program onto the nearest feasible experiment-space grid point. The acquisition function is then re-evaluated on that projected candidate, so support ranking uses the composition that can actually be executed.
 
-The current MILP step projectors are intentionally **exact-cardinality only**. Therefore, when any component `steps` are configured, `min_components` must equal `max_components`. Continuous compositions can use variable cardinality; stepped compositions cannot yet combine multiple cardinalities in one search.
+The MILP step projectors preserve the support selected by Best Subset and accept every resolved cardinality between `min_components` and `max_components`. The discrete support/cardinality search remains owned by Exact / Beam / Auto; the projector optimizes only the active component values on the experiment grid.
 
 ### Fixed-total example
 
@@ -179,7 +179,7 @@ composition_sites={
 
 The fixed-total projection preserves:
 
-- the selected exact-k support;
+- the selected support and its cardinality;
 - component lower/upper bounds;
 - every configured component step;
 - the fixed composition total;
@@ -229,7 +229,7 @@ composition_sites={
 
 The variable-total MILP operates directly in raw absolute amounts and preserves:
 
-- the selected exact-k element support;
+- the selected element support and its cardinality;
 - absolute component lower/upper bounds;
 - every configured absolute-amount step;
 - `total_lower <= sum(amounts) <= total_upper`;
@@ -250,7 +250,7 @@ Step-grid Best Subset supports both exhaustive and approximate support search fo
 - `"auto"` uses Exact below `best_subset_max_combinations` and Beam above it;
 - every evaluated support is ranked by the acquisition value of its final MILP-projected experiment-space candidate;
 - grid/linear-constraint-infeasible supports are skipped explicitly during Beam search;
-- `min_components != max_components` with component steps remains rejected explicitly.
+- variable-cardinality step grids preserve the cardinality of each evaluated support during MILP projection.
 
 Exact mode prevalidates the complete support set because it will enumerate it anyway. Beam deliberately avoids that combinatorial pre-scan: feasibility is checked lazily when a support is evaluated. If the heuristic top-k seed is infeasible, Beam walks neighboring supports within `best_subset_max_evaluations` until it finds a feasible starting point or exhausts the budget.
 
@@ -275,7 +275,7 @@ The React/FastAPI composition workbench supports the same fixed-total and variab
 - variable-total formula data derives a separate fitted total feature from the original formula coefficients;
 - Fraction / CLR / ALR / ILR model coordinates remain normalized composition features;
 - variable-total Best Subset uses raw absolute element amounts internally and exposes the optimized total in the candidate result;
-- component steps use the same exact-cardinality-only MILP contract as the Python API.
+- component steps use the same variable-cardinality, support-preserving MILP contract as the Python API.
 
 The Web search-space controls therefore distinguish between fixed-total element amounts and variable-total absolute amounts. For a variable-total Best Subset result, response metadata reports `support_space="raw_amount"`, `total_bounds`, and the generated total-feature name. Structural zeros and the optimized total are restored from the exact raw candidate rather than inferred from pseudocount-smoothed log-ratio coordinates.
 
@@ -295,7 +295,7 @@ Supported:
 - required and forbidden elements;
 - fixed-total fractional/amount bounds and variable-total absolute amount bounds;
 - continuous compositions with Exact, Beam, or Auto support/cardinality search;
-- fixed-total and variable-total component step grids with exact cardinality and Exact, Beam, or Auto support search;
+- fixed-total and variable-total component step grids with exact or variable cardinality and Exact, Beam, or Auto support search;
 - fixed-total raw-fraction and variable-total raw-amount composition-only linear constraints with step-grid Best Subset projection;
 - variable-total `total_bounds` and raw amount linear constraints;
 - shared support/cardinality for joint q-batches;
@@ -303,7 +303,6 @@ Supported:
 
 Still explicit future extensions:
 
-- variable-cardinality step-grid MILP projection;
 - multiple simultaneous composition Best Subset groups;
 - stepped constraints that couple composition and process variables;
 - one-shot acquisition functions that introduce augmented optimization variables.

@@ -131,27 +131,47 @@ def test_variable_total_step_grid_enforces_raw_amount_constraints(
             assert value / 5.0 == pytest.approx(round(value / 5.0), abs=1e-8)
 
 
-def test_variable_total_step_grid_rejects_mixed_amount_process_constraint() -> None:
+def test_variable_total_step_grid_enforces_mixed_amount_process_constraint() -> None:
     transformer = _transformer("ilr")
-    with pytest.raises(ValueError, match="mixes composition and non-composition"):
-        prepare_variable_total_best_subset_config(
-            OptimizeConfig(
-                inequality_constraints=[
-                    (
-                        ["alloy__amount__Al", "temperature"],
-                        [1.0, 0.01],
-                        10.0,
-                    )
-                ]
-            ),
-            site_name="alloy",
-            site_config=_site("ilr"),
-            transformer=transformer,
-            model_feature_names=_layout(transformer),
-            model_bounds=_bounds(transformer),
-            dtype=torch.double,
-            device=None,
-        )
+    bridge, resolved, _raw_bounds = prepare_variable_total_best_subset_config(
+        OptimizeConfig(
+            equality_constraints=[
+                (
+                    ["alloy__amount__Al", "temperature"],
+                    [1.0, 0.025],
+                    40.0,
+                )
+            ]
+        ),
+        site_name="alloy",
+        site_config=_site("ilr"),
+        transformer=transformer,
+        model_feature_names=_layout(transformer),
+        model_bounds=_bounds(transformer),
+        dtype=torch.double,
+        device=None,
+    )
+
+    projector = resolved.final_candidate_postprocess
+    assert isinstance(projector, CompositionVariableTotalGridFinalPostprocess)
+    raw = torch.tensor(
+        [
+            [800.0, 22.0, 18.0, 20.0, 0.0, 2.3],
+            [1000.0, 22.0, 18.0, 20.0, 0.0, 3.1],
+        ],
+        dtype=torch.double,
+    )
+    projected = projector(raw)
+    amounts = projected[..., list(bridge.amount_indices)]
+
+    assert projected[:, 0].tolist() == pytest.approx([800.0, 1000.0], abs=1e-8)
+    assert projected[:, -1].tolist() == pytest.approx([2.3, 3.1], abs=1e-8)
+    assert amounts[:, 0].tolist() == pytest.approx([20.0, 15.0], abs=1e-8)
+    for row in amounts:
+        assert int((row > 1e-10).sum()) == 3
+        for value in row.tolist():
+            if value > 1e-10:
+                assert value / 5.0 == pytest.approx(round(value / 5.0), abs=1e-8)
 
 
 def test_repair_amount_constraint_is_copied_to_variable_total_grid_milp() -> None:

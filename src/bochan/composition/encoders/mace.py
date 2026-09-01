@@ -388,7 +388,7 @@ class MACEEncoder(MaterialEncoder):
         return invariant
 
     def _representation_one(self, structure: Any) -> Tensor:
-        output = self.encoder(self._build_batch(structure))
+        output = self.encoder(self._build_batch(structure), compute_force=False)
         if not isinstance(output, Mapping):
             raise TypeError("Raw MACE forward must return a mapping.")
         node_features = output.get("node_feats")

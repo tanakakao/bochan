@@ -315,19 +315,19 @@ class MACEEncoder(MaterialEncoder):
         atoms = self.adapter.to_ase(structure)
         data_module = _mace_module("mace.data")
         tools_module = _mace_module("mace.tools")
+        torch_geometric_module = _mace_module("mace.tools.torch_geometric")
         torch_tools_module = _mace_module("mace.tools.torch_tools")
 
         config_from_atoms = getattr(data_module, "config_from_atoms", None)
         atomic_data_class = getattr(data_module, "AtomicData", None)
         key_specification_class = getattr(data_module, "KeySpecification", None)
         atomic_number_table_class = getattr(tools_module, "AtomicNumberTable", None)
-        torch_geometric = getattr(tools_module, "torch_geometric", None)
         default_dtype = getattr(torch_tools_module, "default_dtype", None)
         if not callable(config_from_atoms) or not isinstance(atomic_data_class, type):
             raise RuntimeError("The installed mace-torch data API is incomplete.")
         if not isinstance(key_specification_class, type) or not isinstance(atomic_number_table_class, type):
             raise RuntimeError("The installed mace-torch structure metadata API is incomplete.")
-        batch_class = getattr(torch_geometric, "Batch", None)
+        batch_class = getattr(torch_geometric_module, "Batch", None)
         if not isinstance(batch_class, type) or not callable(default_dtype):
             raise RuntimeError("The installed mace-torch batching API is incomplete.")
 

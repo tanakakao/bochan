@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import subprocess
 import sys
-from typing import Any
 
 import pytest
 import torch
@@ -65,7 +64,13 @@ class FakeMACE(nn.Module):
         self.readouts = nn.ModuleList([nn.Linear(width, 1) for _ in range(2)])
         self.last_node_feats: Tensor | None = None
 
-    def forward(self, data: dict[str, Tensor]) -> dict[str, Tensor]:
+    def forward(
+        self,
+        data: dict[str, Tensor],
+        *,
+        compute_force: bool = True,
+    ) -> dict[str, Tensor]:
+        assert compute_force is False
         positions = data["positions"]
         first_invariants = self.node_embedding(positions)
         equivariant = torch.cat([positions, positions], dim=-1)
@@ -79,8 +84,14 @@ class FakeMACE(nn.Module):
 
 
 class MissingNodeFeaturesMACE(FakeMACE):
-    def forward(self, data: dict[str, Tensor]) -> dict[str, Tensor]:
+    def forward(
+        self,
+        data: dict[str, Tensor],
+        *,
+        compute_force: bool = True,
+    ) -> dict[str, Tensor]:
         del data
+        assert compute_force is False
         return {"energy": torch.zeros(())}
 
 

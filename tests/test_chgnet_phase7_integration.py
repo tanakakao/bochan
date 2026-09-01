@@ -67,6 +67,12 @@ def test_real_pretrained_chgnet_closes_fastapi_tabular_posterior_path() -> None:
     assert bundle.model.material_encoder.model_name == "0.3.0"
     assert bundle.model.material_encoder.output_dim == 64
 
+    encoder_parameter = next(bundle.model.material_encoder.encoder.parameters())
+    projection_parameter = next(bundle.model.projection.parameters())
+    assert encoder_parameter.dtype == torch.float32
+    assert optimizer.dataset.X.dtype == torch.float64
+    assert projection_parameter.dtype == torch.float64
+
     posterior = bundle.model.posterior(optimizer.dataset.X[:2])
     assert posterior.mean.shape == torch.Size([2, 1])
     assert posterior.variance.shape == torch.Size([2, 1])

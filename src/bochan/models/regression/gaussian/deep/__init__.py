@@ -12,6 +12,12 @@ from .chgnet import (
     CHGNetMixedDKLModel,
     CHGNetMixedGPModel,
 )
+from .chgnet_multitask import (
+    CHGNetMixedMultiTaskDKLModel,
+    CHGNetMixedMultiTaskGPModel,
+    CHGNetMultiTaskDKLModel,
+    CHGNetMultiTaskGPModel,
+)
 from .crabnet import CrabNetDKLModel, CrabNetGPModel
 from .crabnet_mixed import CrabNetMixedGPModel
 from .crabnet_mixed_dkl import CrabNetMixedDKLModel
@@ -40,6 +46,10 @@ __all__ = [
     "CHGNetGPModel",
     "CHGNetMixedDKLModel",
     "CHGNetMixedGPModel",
+    "CHGNetMixedMultiTaskDKLModel",
+    "CHGNetMixedMultiTaskGPModel",
+    "CHGNetMultiTaskDKLModel",
+    "CHGNetMultiTaskGPModel",
     "CrabNetDKLModel",
     "CrabNetGPModel",
     "CrabNetMixedDKLModel",

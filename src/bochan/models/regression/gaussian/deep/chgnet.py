@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
-from os import PathLike
+from collections.abc import Callable, Sequence
 from typing import Any, Literal, cast
 
 from gpytorch.likelihoods import Likelihood
@@ -102,9 +101,13 @@ def _atom_conv_layers(material_encoder: CHGNetEncoder) -> tuple[nn.Module, ...]:
     """Return ordered CHGNet atom-convolution blocks for partial fine-tuning."""
 
     layers = getattr(material_encoder.encoder, "atom_conv_layers", None)
-    if not isinstance(layers, Sequence):
+    if isinstance(layers, nn.ModuleList):
+        candidates = tuple(layers)
+    elif isinstance(layers, (list, tuple)):
+        candidates = tuple(layers)
+    else:
         return ()
-    return tuple(layer for layer in layers if isinstance(layer, nn.Module))
+    return tuple(layer for layer in candidates if isinstance(layer, nn.Module))
 
 
 def _configure_dkl_encoder(

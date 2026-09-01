@@ -92,10 +92,10 @@ class StructureAwareObservationAdapter(ObservationAdapter):
             self.owner.data_config = replace(config, category_maps=learned_maps)
 
         from .chgnet import configure_chgnet_outputs_from_dataset
-        from .m3gnet import validate_m3gnet_outputs_from_dataset
+        from .m3gnet import configure_m3gnet_outputs_from_dataset
         from .multioutput import configure_alignn_outputs_from_dataset
 
-        validate_m3gnet_outputs_from_dataset(self.owner, dataset)
+        configure_m3gnet_outputs_from_dataset(self.owner, dataset)
         configure_chgnet_outputs_from_dataset(self.owner, dataset)
         configure_alignn_outputs_from_dataset(self.owner, dataset)
         return dataset

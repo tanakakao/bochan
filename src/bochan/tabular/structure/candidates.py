@@ -18,7 +18,12 @@ _CHGNET_MODEL_TYPES = frozenset(
 _M3GNET_MODEL_TYPES = frozenset(
     {"m3gnet_gp", "m3gnet_dkl", "m3gnet_multitask", "m3gnet_multitask_dkl"}
 )
-_STRUCTURE_MODEL_TYPES = _ALIGNN_MODEL_TYPES | _CHGNET_MODEL_TYPES | _M3GNET_MODEL_TYPES
+_MACE_MODEL_TYPES = frozenset(
+    {"mace_gp", "mace_dkl", "mace_multitask", "mace_multitask_dkl"}
+)
+_STRUCTURE_MODEL_TYPES = (
+    _ALIGNN_MODEL_TYPES | _CHGNET_MODEL_TYPES | _M3GNET_MODEL_TYPES | _MACE_MODEL_TYPES
+)
 _ALTERNATING_STRUCTURE_THRESHOLD = 10
 _ALTERNATING_OPTION_KEYS = frozenset(
     {

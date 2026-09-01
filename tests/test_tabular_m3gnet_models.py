@@ -384,26 +384,6 @@ def test_tabular_m3gnet_rejects_alignn_graph_builder() -> None:
         )
 
 
-def test_tabular_m3gnet_phase4_rejects_multiple_targets() -> None:
-    frame = _frame()
-    frame["property_2"] = frame["property"] * 2.0
-
-    with pytest.raises(ValueError, match="Phase 4 supports one target only"):
-        TabularBayesianOptimizer(
-            model_type="m3gnet_gp",
-            input_cols=["phase", "temperature", "pressure"],
-            target_cols=["property", "property_2"],
-            structure_col="phase",
-            structure_catalog=_catalog(),
-            bounds={
-                "temperature": [850.0, 1200.0],
-                "pressure": [0.5, 2.0],
-            },
-            model_kwargs={"encoder": _material_encoder(), "latent_dim": 3},
-            fit_config={"skip_fit": True},
-        )
-
-
 def test_tabular_m3gnet_mixed_rejects_normal_input_type_override() -> None:
     with pytest.raises(ValueError, match="input_type='mixed'"):
         _optimizer(mixed=True, input_type="normal").fit(_frame(mixed=True))

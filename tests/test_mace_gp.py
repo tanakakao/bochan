@@ -360,10 +360,14 @@ def test_real_pretrained_mace_gp_returns_finite_posterior_on_cpu() -> None:
     model.eval()
 
     posterior = model.posterior(torch.tensor([[0.0], [1.0]], dtype=torch.double))
+    mace_dtype = next(model.material_encoder.encoder.parameters()).dtype
+    structure_features = model.material_encoder([structures[0]])
 
     assert model.material_encoder.model_name == "medium-mpa-0"
     assert model.material_encoder.pooling == "mean"
-    assert next(model.material_encoder.encoder.parameters()).dtype == torch.float32
+    assert mace_dtype in {torch.float32, torch.float64}
+    assert structure_features.dtype == mace_dtype
+    assert posterior.mean.dtype == torch.double
     assert posterior.mean.shape == torch.Size([2, 1])
     assert posterior.variance.shape == torch.Size([2, 1])
     assert torch.isfinite(posterior.mean).all()

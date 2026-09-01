@@ -1,0 +1,47 @@
+name: CHGNet Phase 7 smoke
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install
+        run: |
+          python -m pip install -e ".[test,tabular,api,materials]"
+          python -m pip install "chgnet==0.4.2"
+      - name: Run CHGNet Phase 7 tests
+        run: |
+          pytest -q --maxfail=1 \
+            tests/test_chgnet_encoder.py \
+            tests/test_chgnet_gp.py \
+            tests/test_chgnet_mixed.py \
+            tests/test_chgnet_multitask.py \
+            tests/test_tabular_chgnet_models.py \
+            tests/test_tabular_chgnet_multioutput.py \
+            tests/test_tabular_chgnet_multitask.py \
+            tests/test_fastapi_chgnet_tabular.py \
+            tests/test_fastapi_chgnet_artifacts.py \
+            tests/test_chgnet_phase7_integration.py
+      - name: Lint CHGNet Phase 7 files
+        run: |
+          python -m pip install ruff
+          ruff check \
+            src/bochan/serving/fastapi/schemas/chgnet_tabular.py \
+            src/bochan/serving/fastapi/services/chgnet_tabular.py \
+            src/bochan/serving/fastapi/routers/chgnet_tabular.py \
+            src/bochan/serving/fastapi/routers/__init__.py \
+            examples/chgnet_fastapi_client.py \
+            tests/test_fastapi_chgnet_tabular.py \
+            tests/test_fastapi_chgnet_artifacts.py \
+            tests/test_chgnet_phase7_integration.py

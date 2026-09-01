@@ -10,7 +10,7 @@ from torch import Tensor, nn
 from bochan.models.regression.gaussian.deep import ALIGNNDKLModel, ALIGNNGPModel
 from bochan.tabular import TabularBayesianOptimizer
 from bochan.tabular.structure.candidates import _use_alternating_structure_search
-from bochan.tabular.structure.scaling import optimize_alignn_structure_alternating
+from bochan.tabular.structure.scaling import optimize_structure_alternating
 
 
 class CountingALIGNN(nn.Module):
@@ -162,7 +162,7 @@ def test_structure_alternating_optimizer_preserves_joint_process_assignments(
     )
     process_assignments = [{2: 0.0, 4: 0.0}, {2: 1.0, 4: 2.0}]
 
-    candidate, value = optimize_alignn_structure_alternating(
+    candidate, value = optimize_structure_alternating(
         acq_function=object(),
         bounds=bounds,
         q=1,
@@ -284,7 +284,7 @@ def test_large_structure_space_routes_q1_to_alternating_backend(monkeypatch) -> 
     candidates, _ = optimizer.candidate(acq_name="logei", q=1)
     config = captured["opt_config"]
 
-    assert config.optimizer is optimize_alignn_structure_alternating
+    assert config.optimizer is optimize_structure_alternating
     assert config.fixed_features_list is None
     assert config.optimizer_kwargs["structure_dim"] == 0
     assert config.optimizer_kwargs["structure_values"] == [float(i) for i in range(12)]
@@ -314,6 +314,6 @@ def test_large_structure_space_keeps_exact_enumeration_for_batch_q(monkeypatch) 
     optimizer.candidate(acq_name="logei", q=2)
     config = captured["opt_config"]
 
-    assert config.optimizer != optimize_alignn_structure_alternating
+    assert config.optimizer != optimize_structure_alternating
     assert config.fixed_features_list is not None
     assert len(config.fixed_features_list) == 24

@@ -183,6 +183,8 @@ model_config = ModelConfig(
 "deepgpdeepkernel"
 "crabnet_gp"
 "crabnet_dkl"
+"roost_gp"
+"roost_dkl"
 "saas"
 "pca"
 "rembo"
@@ -198,7 +200,7 @@ model_config = ModelConfig(
 
 | `task_type` | 登録済み `model_type` |
 |---|---|
-| `regression` | `base`, `deepgp`, `deepkernel`, `deepgpdeepkernel`, `crabnet_gp`, `crabnet_dkl`, `saas`, `pca`, `rembo`, `rrp`, `hetero` |
+| `regression` | `base`, `deepgp`, `deepkernel`, `deepgpdeepkernel`, `crabnet_gp`, `crabnet_dkl`, `roost_gp`, `roost_dkl`, `saas`, `pca`, `rembo`, `rrp`, `hetero` |
 | `multi_objective` | `base`, `deepgp`, `deepkernel`, `deepgpdeepkernel`, `saas`, `pca`, `rembo`, `rrp`, `hetero` |
 | `binary` | `base`, `deepgp`, `deepkernel`, `deepgpdeepkernel`, `saas`, `pca`, `rembo`, `rrp`, `hetero` |
 | `ordinal` | `base`, `deepgp`, `deepkernel`, `deepgpdeepkernel`, `saas`, `pca`, `rembo`, `rrp`, `hetero` |
@@ -216,9 +218,11 @@ model_config = ModelConfig(
 
 `deepgpdeepkernel` は regression / multi_objective / binary / ordinal では登録済みですが、multiclass では独立した registry key としては登録していません。
 
-`crabnet_gp` と `crabnet_dkl` は normal-input の single-output Gaussian
-regression 専用です。Tabular API では `composition_sites` から必要な元素語彙と
-組成・連続process列を自動解決します。
+`crabnet_gp` / `crabnet_dkl` と `roost_gp` / `roost_dkl` は、normal-input の
+single-output Gaussian regression model を解決します。Tabular API では
+`composition_sites` から必要な元素語彙と組成・連続process列を自動解決し、複数の
+回帰targetは独立したmodelを`ModelListGP`として構築します。RoostのTabular設定と
+低レベルAPIからの移行方法は`src/bochan/tabular/README.md`を参照してください。
 
 ### 4.2 regression base
 

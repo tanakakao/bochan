@@ -1,0 +1,32 @@
+name: M3GNet encoder smoke
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install
+        run: |
+          python -m pip install -e ".[test]"
+          python -m pip install "matgl==4.0.3"
+      - name: Test M3GNet encoder
+        run: pytest -q --maxfail=1 tests/test_m3gnet_encoder.py
+      - name: Lint M3GNet encoder
+        run: |
+          python -m pip install ruff
+          ruff check \
+            src/bochan/composition/__init__.py \
+            src/bochan/composition/encoders/__init__.py \
+            src/bochan/composition/encoders/m3gnet.py \
+            tests/test_m3gnet_encoder.py

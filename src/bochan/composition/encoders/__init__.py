@@ -2,6 +2,7 @@
 
 from .alignn import ALIGNNEncoder
 from .base import MaterialEncoder
+from .chgnet import CHGNetEncoder
 from .crabnet import CrabNetEncoder
 from .fusion import (
     ConcatFusion,
@@ -12,6 +13,7 @@ from .roost import RoostEncoder, RoostGraph, build_roost_graph
 
 __all__ = [
     "ALIGNNEncoder",
+    "CHGNetEncoder",
     "ConcatFusion",
     "CrabNetEncoder",
     "MaterialEncoder",

@@ -20,6 +20,7 @@ jobs:
         run: |
           python -m pip install -e ".[test,tabular,api,materials]"
           python -m pip install "alignn==2026.8.11"
+          python -m pip install "chgnet==0.4.2"
       - name: Test composition APIs
         run: |
           pytest -q --maxfail=1 \
@@ -43,6 +44,7 @@ jobs:
             tests/test_fastapi_alignn_artifacts.py \
             tests/test_fastapi_alignn_multioutput_artifacts.py \
             tests/test_common_model_artifact_api.py \
+            tests/test_chgnet_encoder.py \
             tests/test_crabnet_encoder.py \
             tests/test_crabnet_gp.py \
             tests/test_crabnet_integration_closure.py \
@@ -77,6 +79,7 @@ jobs:
             src/bochan/composition/encoders/__init__.py \
             src/bochan/composition/encoders/alignn.py \
             src/bochan/composition/encoders/base.py \
+            src/bochan/composition/encoders/chgnet.py \
             src/bochan/composition/encoders/crabnet.py \
             src/bochan/composition/encoders/fusion.py \
             src/bochan/composition/encoders/roost.py \
@@ -155,6 +158,7 @@ jobs:
             tests/test_fastapi_alignn_artifacts.py \
             tests/test_fastapi_alignn_multioutput_artifacts.py \
             tests/test_common_model_artifact_api.py \
+            tests/test_chgnet_encoder.py \
             tests/test_material_encoder_fusion.py \
             tests/test_material_gp_feature_extractor.py \
             tests/test_roost_encoder.py \

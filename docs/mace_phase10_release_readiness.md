@@ -63,20 +63,28 @@ in Phase 9.
 
 ## ask / pending / artifact lifecycle
 
-The MACE FastAPI `ask` endpoint registers generated candidates as `pending` observations. Phase 10
-makes the tabular facade dataset synchronize immediately after that registration instead of waiting
-for a later save/load operation to synchronize it.
+The MACE FastAPI `ask` endpoint registers generated candidates in the shared canonical
+`ObservationData` state with `status="pending"`. Pending experiments are intentionally not appended to
+`train_X` / `train_Y` or to `TabularDataset`: those surfaces represent successful observations used to
+fit the objective model. The acquisition context derives `X_pending` directly from
+`BayesianOptimizer.observations.pending_X`, so subsequent acquisition calls can condition on in-flight
+experiments without treating their unknown targets as training data.
 
 The resulting state contract is:
 
 ```text
 POST /api/v1/tabular/mace/models/{id}/ask
   -> candidate is generated
-  -> underlying BayesianOptimizer gets a pending observation
-  -> TabularBayesianOptimizer.dataset is synchronized immediately
-  -> save preserves the same pending mask and NaN target placeholder
-  -> trusted load restores the same observation state
+  -> ObservationData receives a pending row with NaN target values
+  -> objective train_X/train_Y and TabularDataset remain unchanged
+  -> acquisition DataContext exposes observations.pending_X as X_pending
+  -> save preserves the canonical pending observation state
+  -> trusted load restores the same pending state
+  -> tell with the completed matching row resolves that pending observation
 ```
+
+This is the same observation-state contract used by the generic optimizer; Phase 10 does not create a
+MACE-specific pending-data representation.
 
 Artifacts remain pickle-backed `.bochan.pt` files and therefore require `trust_pickle=true` only for
 files produced by a trusted bochan process.
@@ -114,8 +122,8 @@ usable through candidate generation and artifact persistence.
 
 The dedicated workflow validates:
 
-1. immediate synchronization of MACE `ask` pending state;
-2. pending-state artifact serialize/deserialize round-trip;
+1. canonical MACE `ask` pending state and `X_pending` propagation;
+2. pending-state artifact serialize/deserialize round-trip without polluting training data;
 3. actual `mace_dkl` candidate optimization;
 4. actual pretrained `medium-mpa-0` candidate optimization;
 5. the focused `mace` optional dependency extra;

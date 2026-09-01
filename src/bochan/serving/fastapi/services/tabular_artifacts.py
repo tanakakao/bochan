@@ -81,13 +81,7 @@ def append_tabular_data(
     if new_observations is None:
         optimizer.bo.update_data(new_dataset.X, new_dataset.Y)
     else:
-        current = optimizer.bo.observations
-        if current is None:
-            raise RuntimeError("Observation-aware tell requires fitted observation state.")
-        optimizer.bo.observations = current.resolve_pending(new_observations)
-        optimizer.bo.train_X, optimizer.bo.train_Y = (
-            optimizer.bo.observations.objective_training_data()
-        )
+        optimizer.bo.tell_observations(new_observations, refit=False)
     synchronize_tabular_dataset(optimizer)
 
 

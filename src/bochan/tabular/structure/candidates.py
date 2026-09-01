@@ -12,7 +12,9 @@ from .scaling import optimize_alignn_structure_alternating
 _ALIGNN_MODEL_TYPES = frozenset(
     {"alignn_gp", "alignn_dkl", "alignn_multitask", "alignn_multitask_dkl"}
 )
-_CHGNET_MODEL_TYPES = frozenset({"chgnet_gp", "chgnet_dkl"})
+_CHGNET_MODEL_TYPES = frozenset(
+    {"chgnet_gp", "chgnet_dkl", "chgnet_multitask", "chgnet_multitask_dkl"}
+)
 _STRUCTURE_MODEL_TYPES = _ALIGNN_MODEL_TYPES | _CHGNET_MODEL_TYPES
 _ALTERNATING_STRUCTURE_THRESHOLD = 10
 _ALTERNATING_OPTION_KEYS = frozenset(

@@ -10,6 +10,7 @@ from .fusion import (
     build_material_process_fusion,
 )
 from .m3gnet import M3GNetEncoder
+from .mace import MACEEncoder
 from .roost import RoostEncoder, RoostGraph, build_roost_graph
 
 __all__ = [
@@ -18,6 +19,7 @@ __all__ = [
     "ConcatFusion",
     "CrabNetEncoder",
     "M3GNetEncoder",
+    "MACEEncoder",
     "MaterialEncoder",
     "MaterialProcessFusion",
     "RoostEncoder",

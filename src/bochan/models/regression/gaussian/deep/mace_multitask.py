@@ -20,8 +20,8 @@ from .deepkernel_configurable import (
     DeepKernelGaussianMixedGPModel,
 )
 from .mace import (
-    _configure_dkl_encoder,
     _DEFAULT_MODEL_NAME,
+    _configure_dkl_encoder,
     _MACEGPFeatureExtractor,
     _Pooling,
     _resolve_input_transform,

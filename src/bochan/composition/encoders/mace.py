@@ -23,6 +23,7 @@ _MACE_INSTALL_HINT = (
     "Install bochan[materials] or install mace-torch directly."
 )
 _DEFAULT_MODEL_NAME = "medium-mpa-0"
+_DEFAULT_BATCH_SIZE = 16
 
 
 def _mace_module(name: str) -> Any:
@@ -158,6 +159,11 @@ class MACEEncoder(MaterialEncoder):
     MACE's own ``extract_invariant`` helper, and pools those per-atom features to
     one fixed-width crystal vector. The original energy readouts are not part of
     the exported representation.
+
+    Native MACE graph construction is batched by default so a structure bank can
+    be encoded with substantially fewer raw-model forward calls. Custom
+    ``batch_builder`` callbacks retain the one-structure callback contract and
+    are still coerced onto the MACE model's device and native floating dtype.
     """
 
     def __init__(
@@ -170,12 +176,15 @@ class MACEEncoder(MaterialEncoder):
         head: str | None = None,
         adapter: StructureAdapter | None = None,
         batch_builder: BatchBuilder | None = None,
+        batch_size: int = _DEFAULT_BATCH_SIZE,
     ) -> None:
         super().__init__()
         if not isinstance(model_name, str) or not model_name:
             raise ValueError("model_name must be a non-empty string.")
         if pooling not in {"mean", "sum"}:
             raise ValueError("pooling must be 'mean' or 'sum'.")
+        if isinstance(batch_size, bool) or not isinstance(batch_size, int) or batch_size <= 0:
+            raise ValueError("batch_size must be a positive integer.")
 
         initialization: Initialization
         if encoder is None:
@@ -220,6 +229,7 @@ class MACEEncoder(MaterialEncoder):
         self._head = resolved_head
         self._atomic_numbers = resolved_atomic_numbers
         self._cutoff = cutoff
+        self._batch_size = batch_size
         self.adapter = adapter if adapter is not None else adapter_class()
         self.batch_builder = batch_builder
 
@@ -269,6 +279,18 @@ class MACEEncoder(MaterialEncoder):
     def cutoff(self) -> float:
         return self._cutoff
 
+    @property
+    def batch_size(self) -> int:
+        """Return the maximum number of structures per native MACE forward."""
+
+        return self._batch_size
+
+    @property
+    def native_batching_enabled(self) -> bool:
+        """Return whether bochan owns graph batching for this encoder."""
+
+        return self.batch_builder is None
+
     def _floating_reference(self) -> Tensor | None:
         for value in (*self.encoder.parameters(), *self.encoder.buffers()):
             if value.is_floating_point():
@@ -311,8 +333,23 @@ class MACEEncoder(MaterialEncoder):
             raise TypeError(f"MACE floating dtype must be float32 or float64, got {reference.dtype}.")
         return reference.dtype, reference.device
 
-    def _default_batch(self, structure: Any) -> Mapping[str, Any]:
-        atoms = self.adapter.to_ase(structure)
+    def _coerce_batch(self, batch: Mapping[str, Any]) -> dict[str, Any]:
+        """Move tensor batch fields to the raw MACE model device/native dtype."""
+
+        dtype, device = self._model_dtype_device()
+        coerced: dict[str, Any] = {}
+        for key, value in batch.items():
+            if torch.is_tensor(value):
+                value = value.to(device=device)
+                if value.is_floating_point():
+                    value = value.to(dtype=dtype)
+            coerced[key] = value
+        return coerced
+
+    def _default_batch_many(self, structures: Sequence[Any]) -> Mapping[str, Any]:
+        """Build one native MACE graph batch for multiple structures."""
+
+        atoms_list = [self.adapter.to_ase(structure) for structure in structures]
         data_module = _mace_module("mace.data")
         tools_module = _mace_module("mace.tools")
         torch_geometric_module = _mace_module("mace.tools.torch_geometric")
@@ -335,32 +372,33 @@ class MACEEncoder(MaterialEncoder):
         dtype_name = "float64" if dtype == torch.float64 else "float32"
         z_table = atomic_number_table_class(list(self.atomic_numbers))
         key_specification = key_specification_class.from_defaults()
+        graphs = []
         with default_dtype(dtype_name):
-            config = config_from_atoms(
-                atoms,
-                key_specification=key_specification,
-                head_name=self.head,
-            )
-            graph = atomic_data_class.from_config(
-                config,
-                z_table=z_table,
-                cutoff=self.cutoff,
-                heads=list(self.available_heads),
-            )
-        batch = batch_class.from_data_list([graph]).to(device)
-        batch_keys = batch.keys
-        keys = batch_keys() if callable(batch_keys) else batch_keys
-        for key in keys:
-            value = batch[key]
-            if torch.is_tensor(value) and value.is_floating_point():
-                batch[key] = value.to(device=device, dtype=dtype)
-        return batch.to_dict()
+            for atoms in atoms_list:
+                config = config_from_atoms(
+                    atoms,
+                    key_specification=key_specification,
+                    head_name=self.head,
+                )
+                graphs.append(
+                    atomic_data_class.from_config(
+                        config,
+                        z_table=z_table,
+                        cutoff=self.cutoff,
+                        heads=list(self.available_heads),
+                    )
+                )
+        batch = batch_class.from_data_list(graphs).to(device)
+        return self._coerce_batch(batch.to_dict())
+
+    def _default_batch(self, structure: Any) -> Mapping[str, Any]:
+        return self._default_batch_many([structure])
 
     def _build_batch(self, structure: Any) -> Mapping[str, Any]:
         batch = self._default_batch(structure) if self.batch_builder is None else self.batch_builder(structure)
         if not isinstance(batch, Mapping):
             raise TypeError("MACE batch_builder must return a mapping accepted by the raw model.")
-        return batch
+        return self._coerce_batch(batch)
 
     def _invariant_node_features(self, node_features: Tensor) -> Tensor:
         if node_features.ndim != 2:
@@ -389,9 +427,9 @@ class MACEEncoder(MaterialEncoder):
             )
         return invariant
 
-    def _representation_one(self, structure: Any) -> Tensor:
+    def _forward_raw(self, batch: Mapping[str, Any]) -> Tensor:
         output = self.encoder(
-            self._build_batch(structure),
+            batch,
             compute_force=False,
             compute_virials=False,
             compute_stress=False,
@@ -401,10 +439,45 @@ class MACEEncoder(MaterialEncoder):
         node_features = output.get("node_feats")
         if not torch.is_tensor(node_features):
             raise TypeError("Raw MACE forward output['node_feats'] must be a Tensor.")
-        invariant = self._invariant_node_features(node_features)
+        return self._invariant_node_features(node_features)
+
+    def _representation_one(self, structure: Any) -> Tensor:
+        invariant = self._forward_raw(self._build_batch(structure))
         if self.pooling == "mean":
             return invariant.mean(dim=0, keepdim=True)
         return invariant.sum(dim=0, keepdim=True)
+
+    def _representation_many_default(self, structures: Sequence[Any]) -> Tensor:
+        batch = self._default_batch_many(structures)
+        invariant = self._forward_raw(batch)
+        membership = batch.get("batch")
+        if not torch.is_tensor(membership) or membership.ndim != 1:
+            raise TypeError("Native MACE graph batches must expose a rank-1 'batch' tensor.")
+        if membership.numel() != invariant.shape[0]:
+            raise ValueError(
+                "MACE batch membership must contain one graph index per node feature."
+            )
+        membership = membership.to(device=invariant.device, dtype=torch.long)
+        n_structures = len(structures)
+        if membership.numel() and (
+            int(membership.min().item()) < 0
+            or int(membership.max().item()) >= n_structures
+        ):
+            raise ValueError("MACE batch membership contains an invalid structure index.")
+
+        pooled = invariant.new_zeros((n_structures, self.output_dim))
+        pooled.index_add_(0, membership, invariant)
+        if self.pooling == "mean":
+            counts = invariant.new_zeros((n_structures, 1))
+            counts.index_add_(
+                0,
+                membership,
+                invariant.new_ones((invariant.shape[0], 1)),
+            )
+            if (counts <= 0).any():
+                raise ValueError("Every MACE batch structure must contain at least one atom.")
+            pooled = pooled / counts
+        return pooled
 
     def forward(self, structures: Sequence[Any]) -> Tensor:
         """Return one differentiable invariant MACE representation per crystal."""
@@ -414,7 +487,13 @@ class MACEEncoder(MaterialEncoder):
         if not structures:
             raise ValueError("structures must contain at least one structure.")
 
-        representations = [self._representation_one(structure) for structure in structures]
+        if self.native_batching_enabled:
+            representations = [
+                self._representation_many_default(structures[start : start + self.batch_size])
+                for start in range(0, len(structures), self.batch_size)
+            ]
+        else:
+            representations = [self._representation_one(structure) for structure in structures]
         features = torch.cat(representations, dim=0)
         expected = (len(structures), self.output_dim)
         if tuple(features.shape) != expected:

@@ -20,9 +20,9 @@ from .deepkernel_configurable import (
     DeepKernelGaussianMixedGPModel,
 )
 from .m3gnet import (
+    _configure_dkl_encoder,
     _DEFAULT_MODEL_NAME,
     _M3GNetGPFeatureExtractor,
-    _configure_dkl_encoder,
     _resolve_input_transform,
     _resolve_material_encoder,
     _resolve_mixed_input_transform,

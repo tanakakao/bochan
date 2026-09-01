@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from typing import Any, Literal, cast
 
+from botorch.models.transforms.input import Normalize
+from botorch.utils.transforms import normalize_indices
 from gpytorch.likelihoods import Likelihood
 from torch import Tensor, nn
 
@@ -12,7 +14,10 @@ from bochan.composition import CHGNetEncoder, MaterialProcessFusion
 from bochan.composition.encoders.chgnet import Checkpoint
 
 from .deepkernel import InputTransformArg, OutcomeTransformArg
-from .deepkernel_configurable import DeepKernelGaussianGPModel
+from .deepkernel_configurable import (
+    DeepKernelGaussianGPModel,
+    DeepKernelGaussianMixedGPModel,
+)
 from .material import EncoderTrainingMode
 from .structure import (
     _resolve_structure_input_transform,
@@ -140,7 +145,9 @@ def _configure_dkl_encoder(
     trainable_modules = layers[-trainable_encoder_layers:]
     parameters = _unique_parameters(trainable_modules)
     if not parameters:
-        raise ValueError("The selected CHGNet atom-convolution blocks expose no parameters to fine-tune.")
+        raise ValueError(
+            "The selected CHGNet atom-convolution blocks expose no parameters to fine-tune."
+        )
     for parameter in parameters:
         parameter.requires_grad_(True)
     return "partial", trainable_modules
@@ -189,6 +196,27 @@ def _resolve_input_transform(
     )
 
 
+def _resolve_mixed_input_transform(
+    train_X: Tensor,
+    *,
+    cat_dims: Sequence[int],
+    input_transform: InputTransformArg,
+) -> InputTransformArg:
+    """Normalize numeric process columns while preserving selectors/categories."""
+
+    if not isinstance(input_transform, str) or input_transform.upper() != "DEFAULT":
+        return input_transform
+    categorical = set(cat_dims)
+    process_dims = [
+        index
+        for index in range(1, train_X.shape[-1])
+        if index not in categorical
+    ]
+    if not process_dims:
+        return None
+    return Normalize(d=train_X.shape[-1], indices=process_dims)
+
+
 class CHGNetGPModel(DeepKernelGaussianGPModel):
     """Exact GP over frozen CHGNet crystal representations.
 
@@ -225,9 +253,13 @@ class CHGNetGPModel(DeepKernelGaussianGPModel):
             raise ValueError("train_X must contain a structure-index column.")
         model_class_name = self.__class__.__name__
         if train_Y.ndim > 1 and train_Y.shape[-1] != 1:
-            raise ValueError(f"{model_class_name} currently supports single-output train_Y only.")
+            raise ValueError(
+                f"{model_class_name} currently supports single-output train_Y only."
+            )
         if train_Yvar is not None:
-            raise NotImplementedError(f"{model_class_name} does not yet support train_Yvar.")
+            raise NotImplementedError(
+                f"{model_class_name} does not yet support train_Yvar."
+            )
         if isinstance(latent_dim, bool) or not isinstance(latent_dim, int) or latent_dim <= 0:
             raise ValueError("latent_dim must be a positive integer.")
         if not isinstance(model_name, str) or not model_name:
@@ -285,7 +317,11 @@ class CHGNetGPModel(DeepKernelGaussianGPModel):
     ) -> CHGNetGPModel:
         module = super()._apply(fn, recurse=recurse)
         reference = next(
-            (value for value in (*self.parameters(), *self.buffers()) if value.is_floating_point()),
+            (
+                value
+                for value in (*self.parameters(), *self.buffers())
+                if value.is_floating_point()
+            ),
             None,
         )
         if reference is not None:
@@ -358,7 +394,9 @@ class CHGNetDKLModel(CHGNetGPModel):
         input_transform: InputTransformArg = "DEFAULT",
         outcome_transform: OutcomeTransformArg = "DEFAULT",
     ) -> None:
-        resolved_trainable_layers = _validate_trainable_encoder_layers(trainable_encoder_layers)
+        resolved_trainable_layers = _validate_trainable_encoder_layers(
+            trainable_encoder_layers
+        )
         super().__init__(
             train_X=train_X,
             train_Y=train_Y,
@@ -391,4 +429,250 @@ class CHGNetDKLModel(CHGNetGPModel):
         return self._trainable_encoder_layers
 
 
-__all__ = ["CHGNetDKLModel", "CHGNetGPModel"]
+class CHGNetMixedGPModel(DeepKernelGaussianMixedGPModel):
+    """Exact mixed GP over frozen CHGNet crystal representations.
+
+    Column 0 is the discrete structure selector. ``cat_dims`` contains only
+    integer-coded categorical process columns. The remaining process columns
+    are numeric and are fused with the selected CHGNet crystal representation.
+    """
+
+    _supports_cache_root = False
+
+    def __init__(
+        self,
+        train_X: Tensor,
+        train_Y: Tensor,
+        cat_dims: Sequence[int],
+        train_Yvar: Tensor | None = None,
+        *,
+        structures: Sequence[Any],
+        encoder: CHGNetEncoder | nn.Module | None = None,
+        checkpoint: Checkpoint | None = None,
+        model_name: str = "0.3.0",
+        encoder_output_dim: int | None = None,
+        latent_dim: int = 32,
+        fusion: Literal["concat"] | MaterialProcessFusion = "concat",
+        projection: nn.Module | None = None,
+        strict_checkpoint: bool = True,
+        likelihood: Likelihood | None = None,
+        input_transform: InputTransformArg = "DEFAULT",
+        outcome_transform: OutcomeTransformArg = "DEFAULT",
+    ) -> None:
+        if train_X.ndim != 2:
+            raise ValueError("train_X must have shape [n, d].")
+        if train_X.shape[-1] < 2:
+            raise ValueError(
+                "CHGNetMixedGPModel requires a structure-index column and at least "
+                "one categorical process column."
+            )
+        model_class_name = self.__class__.__name__
+        if train_Y.ndim > 1 and train_Y.shape[-1] != 1:
+            raise ValueError(
+                f"{model_class_name} currently supports single-output train_Y only."
+            )
+        if train_Yvar is not None:
+            raise NotImplementedError(
+                f"{model_class_name} does not yet support train_Yvar."
+            )
+        if isinstance(latent_dim, bool) or not isinstance(latent_dim, int) or latent_dim <= 0:
+            raise ValueError("latent_dim must be a positive integer.")
+        if not isinstance(model_name, str) or not model_name:
+            raise ValueError("model_name must be a non-empty string.")
+
+        d = train_X.shape[-1]
+        normalized_cat_dims = normalize_indices(indices=list(cat_dims), d=d)
+        if not normalized_cat_dims:
+            raise ValueError(
+                "CHGNetMixedGPModel requires at least one categorical process dimension."
+            )
+        if 0 in normalized_cat_dims:
+            raise ValueError(
+                "The structure-index column (feature 0) is handled by CHGNet and "
+                "cannot be included in cat_dims."
+            )
+
+        validated_structures = _validate_structure_bank(
+            structures,
+            argument_name="structures",
+        )
+        _validate_model_inputs(
+            train_X,
+            num_structures=len(validated_structures),
+            input_dim=d,
+        )
+
+        continuous_dims = sorted(set(range(d)) - set(normalized_cat_dims))
+        if not continuous_dims or continuous_dims[0] != 0:
+            raise RuntimeError(
+                "The CHGNet mixed continuous branch must retain structure-index feature 0."
+            )
+        process_dims = [index for index in continuous_dims if index != 0]
+
+        material_encoder = _resolve_material_encoder(
+            encoder,
+            checkpoint,
+            model_name=model_name,
+            output_dim=encoder_output_dim,
+            strict_checkpoint=strict_checkpoint,
+        )
+        feature_extractor = _CHGNetGPFeatureExtractor(
+            material_encoder=material_encoder,
+            structures=validated_structures,
+            process_dim=len(process_dims),
+            latent_dim=latent_dim,
+            fusion=fusion,
+            projection=projection,
+        ).to(train_X)
+        resolved_input_transform = _resolve_mixed_input_transform(
+            train_X,
+            cat_dims=normalized_cat_dims,
+            input_transform=input_transform,
+        )
+
+        self._continuous_process_dims = tuple(process_dims)
+        super().__init__(
+            train_X=train_X,
+            train_Y=train_Y,
+            cat_dims=normalized_cat_dims,
+            train_Yvar=None,
+            likelihood=likelihood,
+            input_transform=resolved_input_transform,
+            outcome_transform=outcome_transform,
+            feature_extractor=feature_extractor,
+            latent_dim=latent_dim,
+        )
+
+        transformed_train_X = cast(tuple[Tensor, ...], self.deepkernel.train_inputs)[0]
+        continuous_train_X = transformed_train_X[..., self.deepkernel.ord_dims]
+        self.chgnet_feature_extractor.validate_input(continuous_train_X)
+
+    def _apply(
+        self,
+        fn: Callable[[Tensor], Tensor],
+        recurse: bool = True,
+    ) -> CHGNetMixedGPModel:
+        module = super()._apply(fn, recurse=recurse)
+        reference = next(
+            (
+                value
+                for value in (*self.parameters(), *self.buffers())
+                if value.is_floating_point()
+            ),
+            None,
+        )
+        if reference is not None:
+            self._model_dtype = reference.dtype
+            self._model_device = reference.device
+        return cast(CHGNetMixedGPModel, module)
+
+    @property
+    def chgnet_feature_extractor(self) -> _CHGNetGPFeatureExtractor:
+        return cast(_CHGNetGPFeatureExtractor, self.deepkernel.feature_extractor)
+
+    @property
+    def material_encoder(self) -> CHGNetEncoder:
+        return cast(CHGNetEncoder, self.chgnet_feature_extractor.material_encoder)
+
+    @property
+    def projection(self) -> nn.Module:
+        return self.chgnet_feature_extractor.projection
+
+    @property
+    def fusion(self) -> MaterialProcessFusion:
+        return self.chgnet_feature_extractor.fusion
+
+    @property
+    def structures(self) -> tuple[Any, ...]:
+        return self.chgnet_feature_extractor.structures
+
+    @property
+    def num_structures(self) -> int:
+        return self.chgnet_feature_extractor.num_structures
+
+    @property
+    def process_dim(self) -> int:
+        return self.chgnet_feature_extractor.process_dim
+
+    @property
+    def continuous_process_dims(self) -> tuple[int, ...]:
+        return self._continuous_process_dims
+
+    @property
+    def categorical_process_dim(self) -> int:
+        return len(self.cat_dims)
+
+    @property
+    def structure_feature_cache_enabled(self) -> bool:
+        return self.chgnet_feature_extractor.material_feature_cache_enabled
+
+    def clear_structure_feature_cache(self) -> None:
+        self.chgnet_feature_extractor.clear_material_feature_cache()
+
+
+class CHGNetMixedDKLModel(CHGNetMixedGPModel):
+    """Mixed exact GP that jointly fine-tunes the CHGNet structure encoder."""
+
+    def __init__(
+        self,
+        train_X: Tensor,
+        train_Y: Tensor,
+        cat_dims: Sequence[int],
+        train_Yvar: Tensor | None = None,
+        *,
+        structures: Sequence[Any],
+        encoder: CHGNetEncoder | nn.Module | None = None,
+        checkpoint: Checkpoint | None = None,
+        model_name: str = "0.3.0",
+        encoder_output_dim: int | None = None,
+        latent_dim: int = 32,
+        fusion: Literal["concat"] | MaterialProcessFusion = "concat",
+        projection: nn.Module | None = None,
+        strict_checkpoint: bool = True,
+        trainable_encoder_layers: int | Literal["all"] = 1,
+        likelihood: Likelihood | None = None,
+        input_transform: InputTransformArg = "DEFAULT",
+        outcome_transform: OutcomeTransformArg = "DEFAULT",
+    ) -> None:
+        resolved_trainable_layers = _validate_trainable_encoder_layers(
+            trainable_encoder_layers
+        )
+        super().__init__(
+            train_X=train_X,
+            train_Y=train_Y,
+            cat_dims=cat_dims,
+            train_Yvar=train_Yvar,
+            structures=structures,
+            encoder=encoder,
+            checkpoint=checkpoint,
+            model_name=model_name,
+            encoder_output_dim=encoder_output_dim,
+            latent_dim=latent_dim,
+            fusion=fusion,
+            projection=projection,
+            strict_checkpoint=strict_checkpoint,
+            likelihood=likelihood,
+            input_transform=input_transform,
+            outcome_transform=outcome_transform,
+        )
+        training_mode, trainable_modules = _configure_dkl_encoder(
+            self.material_encoder,
+            resolved_trainable_layers,
+        )
+        self._trainable_encoder_layers = resolved_trainable_layers
+        self.chgnet_feature_extractor._configure_encoder_training(
+            training_mode,
+            trainable_modules,
+        )
+
+    @property
+    def trainable_encoder_layers(self) -> int | Literal["all"]:
+        return self._trainable_encoder_layers
+
+
+__all__ = [
+    "CHGNetDKLModel",
+    "CHGNetGPModel",
+    "CHGNetMixedDKLModel",
+    "CHGNetMixedGPModel",
+]

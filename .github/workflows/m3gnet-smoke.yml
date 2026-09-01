@@ -18,15 +18,16 @@ jobs:
           cache: pip
       - name: Install
         run: |
-          python -m pip install -e ".[test]"
+          python -m pip install -e ".[test,tabular]"
           python -m pip install "matgl==4.0.3"
-      - name: Test M3GNet encoder and GP/DKL
+      - name: Test M3GNet encoder, GP/DKL, and tabular workflows
         run: |
           pytest -q --maxfail=1 \
             tests/test_m3gnet_encoder.py \
             tests/test_m3gnet_gp.py \
-            tests/test_m3gnet_mixed.py
-      - name: Lint M3GNet encoder and GP/DKL
+            tests/test_m3gnet_mixed.py \
+            tests/test_tabular_m3gnet_models.py
+      - name: Lint M3GNet encoder, GP/DKL, and tabular workflows
         run: |
           python -m pip install ruff
           ruff check \
@@ -35,6 +36,10 @@ jobs:
             src/bochan/composition/encoders/m3gnet.py \
             src/bochan/models/regression/gaussian/deep/__init__.py \
             src/bochan/models/regression/gaussian/deep/m3gnet.py \
+            src/bochan/tabular/structure/candidates.py \
+            src/bochan/tabular/structure/m3gnet.py \
+            src/bochan/tabular/structure/observation.py \
             tests/test_m3gnet_encoder.py \
             tests/test_m3gnet_gp.py \
-            tests/test_m3gnet_mixed.py
+            tests/test_m3gnet_mixed.py \
+            tests/test_tabular_m3gnet_models.py

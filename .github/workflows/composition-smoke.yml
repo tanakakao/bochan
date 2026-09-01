@@ -51,6 +51,7 @@ jobs:
             tests/test_tabular_chgnet_models.py \
             tests/test_tabular_chgnet_multioutput.py \
             tests/test_tabular_chgnet_multitask.py \
+            tests/test_tabular_m3gnet_models.py \
             tests/test_crabnet_encoder.py \
             tests/test_crabnet_gp.py \
             tests/test_crabnet_integration_closure.py \
@@ -130,6 +131,7 @@ jobs:
             src/bochan/tabular/structure/adapter.py \
             src/bochan/tabular/structure/candidates.py \
             src/bochan/tabular/structure/chgnet.py \
+            src/bochan/tabular/structure/m3gnet.py \
             src/bochan/tabular/structure/scaling.py \
             src/bochan/tabular/structure/fitting.py \
             src/bochan/tabular/structure/multioutput.py \
@@ -174,6 +176,7 @@ jobs:
             tests/test_tabular_chgnet_models.py \
             tests/test_tabular_chgnet_multioutput.py \
             tests/test_tabular_chgnet_multitask.py \
+            tests/test_tabular_m3gnet_models.py \
             tests/test_material_encoder_fusion.py \
             tests/test_material_gp_feature_extractor.py \
             tests/test_roost_encoder.py \

@@ -45,12 +45,15 @@ class StructureAwareObservationAdapter(ObservationAdapter):
         self.owner.source_data_config = resolved
         self.owner.data_config = resolved
 
-        from .chgnet import configure_tabular_chgnet
+        from .m3gnet import configure_tabular_m3gnet
 
-        if not configure_tabular_chgnet(self.owner):
-            from .fitting import configure_tabular_alignn
+        if not configure_tabular_m3gnet(self.owner):
+            from .chgnet import configure_tabular_chgnet
 
-            configure_tabular_alignn(self.owner)
+            if not configure_tabular_chgnet(self.owner):
+                from .fitting import configure_tabular_alignn
+
+                configure_tabular_alignn(self.owner)
         return self.owner.source_data_config
 
     def to_dataset(
@@ -89,8 +92,10 @@ class StructureAwareObservationAdapter(ObservationAdapter):
             self.owner.data_config = replace(config, category_maps=learned_maps)
 
         from .chgnet import configure_chgnet_outputs_from_dataset
+        from .m3gnet import validate_m3gnet_outputs_from_dataset
         from .multioutput import configure_alignn_outputs_from_dataset
 
+        validate_m3gnet_outputs_from_dataset(self.owner, dataset)
         configure_chgnet_outputs_from_dataset(self.owner, dataset)
         configure_alignn_outputs_from_dataset(self.owner, dataset)
         return dataset

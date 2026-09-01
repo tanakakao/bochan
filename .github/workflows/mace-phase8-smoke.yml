@@ -1,0 +1,44 @@
+name: MACE Phase 8 smoke
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Cache MACE foundation models
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/mace
+          key: mace-mpa-0-medium-v1
+      - name: Install
+        run: |
+          python -m pip install -e ".[test,tabular,api]"
+          python -m pip install "mace-torch==0.3.16"
+      - name: Test MACE log multi-objective acquisitions
+        run: |
+          pytest -q --maxfail=1 tests/test_mace_phase8_log_acquisitions.py
+      - name: Recheck Phase 7 and FastAPI contracts
+        run: |
+          pytest -q --maxfail=1 \
+            tests/test_mace_phase7_integration.py \
+            tests/test_fastapi_mace_tabular.py
+      - name: Lint MACE Phase 8 surface
+        run: |
+          python -m pip install ruff
+          ruff check \
+            tests/test_mace_phase8_log_acquisitions.py \
+            tests/test_mace_phase7_integration.py \
+            src/bochan/api/registry/acquisition.py \
+            src/bochan/serving/fastapi/services/mace_tabular.py \
+            src/bochan/serving/fastapi/schemas/mace_tabular.py

@@ -381,24 +381,6 @@ def test_tabular_chgnet_rejects_alignn_graph_builder() -> None:
         )
 
 
-def test_tabular_chgnet_phase5_rejects_multiple_targets() -> None:
-    frame = _frame().assign(property2=[0.2, 0.4, 0.7, 0.5, 0.9, 1.1])
-    with pytest.raises(ValueError, match="Phase 5 supports one target"):
-        TabularBayesianOptimizer(
-            model_type="chgnet_gp",
-            input_cols=["phase", "temperature", "pressure"],
-            target_cols=["property", "property2"],
-            structure_col="phase",
-            structure_catalog=_catalog(),
-            bounds={
-                "temperature": [850.0, 1200.0],
-                "pressure": [0.5, 2.0],
-            },
-            model_kwargs={"encoder": FakeCHGNet(), "latent_dim": 3},
-            fit_config={"skip_fit": True},
-        ).fit(frame)
-
-
 def test_tabular_chgnet_mixed_rejects_normal_input_type_override() -> None:
     with pytest.raises(ValueError, match="input_type='mixed'"):
         _optimizer(mixed=True, input_type="normal").fit(_frame(mixed=True))

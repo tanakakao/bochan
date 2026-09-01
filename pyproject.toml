@@ -54,6 +54,7 @@ materials = [
   "aviary-models>=1.2.1,<2",
   "chgnet>=0.4.2,<0.5",
   "crabnet @ git+https://github.com/sparks-baird/CrabNet.git@d6906fed634a34d9a7cb5f35db2199629fdfd939",
+  "mace-torch>=0.3.16,<0.4",
   "matgl>=4.0.3,<5",
 ]
 
@@ -144,6 +145,7 @@ all = [
   "ipykernel>=6.0",
   "jupyterlab>=4.0",
   "lightgbm>=4.7,<5",
+  "mace-torch>=0.3.16,<0.4",
   "matgl>=4.0.3,<5",
   "matplotlib>=3.7",
   "ngboost>=0.5.11,<0.6",
@@ -163,7 +165,7 @@ Repository = "https://github.com/tanakakao/bochan"
 Issues = "https://github.com/tanakakao/bochan/issues"
 
 [tool.setuptools]
-package-dir = {"" = "src"}
+package-dir = "src"
 include-package-data = true
 
 [tool.setuptools.packages.find]

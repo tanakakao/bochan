@@ -197,6 +197,98 @@ class ObservationData:
             ),
         )
 
+    def resolve_pending(self, other: ObservationData) -> ObservationData:
+        """Replace matching pending rows with completed observations before appending.
+
+        Matching is performed in canonical model-input space. Each completed incoming
+        row resolves at most one pending row, preserving duplicate experiments as
+        distinct observations while preventing the normal ask->tell cycle from
+        leaving stale ``X_pending`` entries behind.
+        """
+
+        torch = _torch()
+        if int(self.X.shape[-1]) != int(other.X.shape[-1]):
+            raise ValueError("ObservationData feature dimensions must match.")
+        if int(self.Y.shape[-1]) != int(other.Y.shape[-1]):
+            raise ValueError("ObservationData target dimensions must match.")
+        if not bool(self.pending_mask.any()) or not bool(other.completed_mask.any()):
+            return self.append(other)
+
+        resolved_x = self.X.clone()
+        resolved_y = self.Y.clone()
+        resolved_observed = self.observed_mask.clone()
+        resolved_failed = self.failed_mask.clone()
+        resolved_pending = self.pending_mask.clone()
+        available_pending = self.pending_mask.clone()
+        consumed = torch.zeros(
+            int(other.X.shape[0]),
+            dtype=torch.bool,
+            device=other.X.device,
+        )
+
+        other_x = other.X.to(self.X)
+        if torch.is_floating_point(self.X):
+            tolerance = 8.0 * torch.finfo(self.X.dtype).eps
+        else:
+            tolerance = 0.0
+
+        completed_indices = torch.nonzero(other.completed_mask, as_tuple=False).flatten()
+        for incoming_index_tensor in completed_indices:
+            incoming_index = int(incoming_index_tensor.item())
+            pending_indices = torch.nonzero(available_pending, as_tuple=False).flatten()
+            if int(pending_indices.numel()) == 0:
+                break
+
+            pending_x = resolved_x[pending_indices]
+            candidate_x = other_x[incoming_index]
+            if torch.is_floating_point(resolved_x):
+                matches = torch.isclose(
+                    pending_x,
+                    candidate_x.unsqueeze(0),
+                    rtol=tolerance,
+                    atol=tolerance,
+                ).all(dim=-1)
+            else:
+                matches = (pending_x == candidate_x.unsqueeze(0)).all(dim=-1)
+            if not bool(matches.any()):
+                continue
+
+            match_offset = int(torch.nonzero(matches, as_tuple=False)[0].item())
+            existing_index = int(pending_indices[match_offset].item())
+            resolved_x[existing_index] = candidate_x
+            resolved_y[existing_index] = other.Y[incoming_index].to(resolved_y)
+            resolved_observed[existing_index] = other.observed_mask[incoming_index].to(
+                resolved_observed.device
+            )
+            resolved_failed[existing_index] = other.failed_mask[incoming_index].to(
+                resolved_failed.device
+            )
+            resolved_pending[existing_index] = other.pending_mask[incoming_index].to(
+                resolved_pending.device
+            )
+            available_pending[existing_index] = False
+            consumed[incoming_index] = True
+
+        resolved = ObservationData(
+            X=resolved_x,
+            Y=resolved_y,
+            observed_mask=resolved_observed,
+            failed_mask=resolved_failed,
+            pending_mask=resolved_pending,
+        )
+        remaining = ~consumed
+        if not bool(remaining.any()):
+            return resolved
+        return resolved.append(
+            ObservationData(
+                X=other.X[remaining],
+                Y=other.Y[remaining],
+                observed_mask=other.observed_mask[remaining],
+                failed_mask=other.failed_mask[remaining],
+                pending_mask=other.pending_mask[remaining],
+            )
+        )
+
     def report(self) -> dict[str, Any]:
         return {
             "n_rows": int(self.X.shape[0]),

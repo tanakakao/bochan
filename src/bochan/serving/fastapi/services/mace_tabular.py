@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import os
 from contextlib import suppress
+from importlib.metadata import PackageNotFoundError, version
 from tempfile import NamedTemporaryFile
 from typing import Any
+
+import torch
 
 from bochan.structure import StructureAdapter
 from bochan.tabular import TabularBayesianOptimizer
@@ -160,12 +163,39 @@ def _encoder_training_mode(model_type: str, model: Any) -> str:
     return "full" if trainable_layers == "all" else "partial"
 
 
-def _encoder_metadata(encoder: Any) -> dict[str, Any]:
-    """Return the public MACE representation contract for one encoder."""
+def _installed_mace_version() -> str | None:
+    """Return the installed mace-torch distribution version when available."""
 
+    try:
+        return version("mace-torch")
+    except PackageNotFoundError:
+        return None
+
+
+def _encoder_runtime(encoder: Any) -> tuple[str | None, str | None]:
+    """Return raw MACE device/dtype without changing the model."""
+
+    raw_model = getattr(encoder, "encoder", None)
+    if raw_model is None:
+        return None, None
+    values = (*raw_model.parameters(), *raw_model.buffers())
+    reference = next(
+        (value for value in values if torch.is_tensor(value) and value.is_floating_point()),
+        None,
+    )
+    if reference is None:
+        return None, None
+    return str(reference.device), str(reference.dtype).removeprefix("torch.")
+
+
+def _encoder_metadata(encoder: Any) -> dict[str, Any]:
+    """Return the public MACE representation and runtime contract for one encoder."""
+
+    device, dtype = _encoder_runtime(encoder)
     return {
         "encoder_initialization": getattr(encoder, "initialization", None),
         "model_name": getattr(encoder, "model_name", None),
+        "mace_torch_version": _installed_mace_version(),
         "encoder_output_dim": getattr(encoder, "output_dim", None),
         "representation_mode": _REPRESENTATION_MODE,
         "num_layers": getattr(encoder, "num_layers", None),
@@ -174,6 +204,10 @@ def _encoder_metadata(encoder: Any) -> dict[str, Any]:
         "head": getattr(encoder, "head", None),
         "available_heads": list(getattr(encoder, "available_heads", ()) or ()),
         "cutoff": getattr(encoder, "cutoff", None),
+        "batch_size": getattr(encoder, "batch_size", None),
+        "native_batching_enabled": getattr(encoder, "native_batching_enabled", False),
+        "encoder_device": device,
+        "encoder_dtype": dtype,
     }
 
 
@@ -312,8 +346,6 @@ def _register_pending_candidates(
     candidates: Any,
 ) -> None:
     """Append generated candidate rows to the canonical observation state as pending."""
-
-    import torch
 
     X_pending, _ = optimizer._prediction_input(candidates)  # noqa: SLF001
     if X_pending.ndim == 1:

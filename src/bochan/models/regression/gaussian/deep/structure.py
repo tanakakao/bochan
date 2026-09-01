@@ -240,9 +240,27 @@ class _StructureGPFeatureExtractor(_BaseMaterialGPFeatureExtractor):
         structure_index_tensor = flat_X[:, 0].round().to(dtype=torch.long)
         cached_bank = self._cached_material_features(X)
         if cached_bank is None:
-            structure_indices = structure_index_tensor.detach().cpu().tolist()
+            unique_indices, inverse_indices = torch.unique(
+                structure_index_tensor,
+                sorted=True,
+                return_inverse=True,
+            )
+            structure_indices = unique_indices.detach().cpu().tolist()
             structures = [self.structure_inputs[index] for index in structure_indices]
-            material_features = self._encode_structure_inputs(structures)
+            unique_features = self._encode_structure_inputs(structures)
+            expected_unique = (
+                len(structure_indices),
+                int(self.material_encoder.output_dim),
+            )
+            if tuple(unique_features.shape) != expected_unique:
+                raise ValueError(
+                    f"{self._encoder_label()} must return one vector per unique structure: "
+                    f"{tuple(unique_features.shape)} != {expected_unique}."
+                )
+            material_features = unique_features.index_select(
+                0,
+                inverse_indices.to(device=unique_features.device),
+            )
         else:
             material_features = cached_bank.index_select(
                 0,

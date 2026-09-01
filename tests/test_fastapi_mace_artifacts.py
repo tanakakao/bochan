@@ -243,6 +243,9 @@ def test_mace_mixed_tell_save_load_predict_roundtrip(client_and_stores) -> None:
         file_store.root_dir / saved["filename"],
         trust_pickle=True,
     )
+    assert artifact["metadata"]["mace"] == saved["metadata"]["mace"]
+    assert artifact["metadata"]["mace"]["batch_size"] == 16
+    assert artifact["metadata"]["mace"]["mace_torch_version"] is not None
     restored = artifact["optimizer"]
     assert tuple(restored.structure.structure_ids) == ("alpha", "beta")
     assert restored.dataset.category_maps["furnace"] == {"A": 0, "B": 1}

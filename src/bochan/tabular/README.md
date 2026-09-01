@@ -345,7 +345,27 @@ pip install -e ".[tabular,materials]"
 process列、process boundsは`composition_sites`と`input_cols`から自動的に導出されます。
 
 ```python
+import pandas as pd
+
 from bochan.tabular import TabularBayesianOptimizer
+
+data = pd.DataFrame(
+    {
+        "formula": [
+            "Li0.25Fe0.25P0.20O0.30",
+            "Li0.30Fe0.20P0.20O0.30",
+            "Li0.20Fe0.30P0.20O0.30",
+            "Li0.25Fe0.20P0.25O0.30",
+            "Li0.20Fe0.25P0.25O0.30",
+            "Li0.30Fe0.25P0.15O0.30",
+            "Li0.25Fe0.30P0.15O0.30",
+            "Li0.20Fe0.20P0.25O0.35",
+        ],
+        "temperature": [650.0, 700.0, 750.0, 800.0, 850.0, 900.0, 950.0, 1000.0],
+        "pressure": [0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0],
+        "property": [0.42, 0.55, 0.63, 0.78, 0.86, 0.94, 1.03, 1.10],
+    }
+)
 
 bo = TabularBayesianOptimizer(
     task_type="regression",

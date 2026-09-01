@@ -1,6 +1,6 @@
 """CHGNet-backed crystal-structure representation encoder.
 
-The upstream CHGNet dependency is imported lazily.  Bochan uses CHGNet's
+The upstream CHGNet dependency is imported lazily. Bochan uses CHGNet's
 public ``return_crystal_feas=True`` forward path so crystal representations
 remain PyTorch tensors and stay differentiable for later DKL integration.
 """
@@ -11,14 +11,15 @@ from collections.abc import Mapping, Sequence
 from importlib import import_module
 from os import PathLike
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import torch
 from torch import Tensor, nn
 
-from bochan.structure.adapter import StructureAdapter
-
 from .base import MaterialEncoder
+
+if TYPE_CHECKING:
+    from bochan.structure.adapter import StructureAdapter
 
 Checkpoint = str | PathLike[str] | Mapping[str, object]
 Initialization = Literal["pretrained", "injected", "checkpoint"]
@@ -51,6 +52,16 @@ def _upstream_chgnet_class() -> type[nn.Module]:
     return cast(type[nn.Module], model_class)
 
 
+def _structure_adapter_class() -> type[StructureAdapter]:
+    """Return StructureAdapter lazily to avoid composition/structure import cycles."""
+
+    module = import_module("bochan.structure.adapter")
+    adapter_class = getattr(module, "StructureAdapter", None)
+    if not isinstance(adapter_class, type):
+        raise RuntimeError("bochan.structure.adapter.StructureAdapter is unavailable.")
+    return cast(type[StructureAdapter], adapter_class)
+
+
 def _is_chgnet_graph(value: Any) -> bool:
     cls = type(value)
     return cls.__name__ == "CrystalGraph" and cls.__module__.startswith("chgnet.graph.")
@@ -75,7 +86,7 @@ class CHGNetEncoder(MaterialEncoder):
 
     Inputs may be common in-memory crystal structures accepted by
     :meth:`bochan.structure.StructureAdapter.to_pymatgen` or pre-built CHGNet
-    ``CrystalGraph`` objects.  For normal structures, the graph converter owned
+    ``CrystalGraph`` objects. For normal structures, the graph converter owned
     by the wrapped CHGNet model is used, keeping graph cutoffs consistent with
     the selected pretrained checkpoint.
     """
@@ -97,8 +108,6 @@ class CHGNetEncoder(MaterialEncoder):
             raise ValueError(
                 f"model_name must be one of {sorted(_SUPPORTED_MODEL_NAMES)}, got {model_name!r}."
             )
-        if adapter is not None and not isinstance(adapter, StructureAdapter):
-            raise TypeError("adapter must be a StructureAdapter.")
 
         initialization: Initialization
         checkpoint_path: str | None = None
@@ -154,12 +163,16 @@ class CHGNetEncoder(MaterialEncoder):
                 "does not expose output_dim or atom_fea_dim."
             )
 
+        adapter_class = _structure_adapter_class()
+        if adapter is not None and not isinstance(adapter, adapter_class):
+            raise TypeError("adapter must be a StructureAdapter.")
+
         self.encoder = encoder
         self._output_dim = inferred_output_dim
         self._model_name = model_name
         self._initialization: Initialization = initialization
         self._checkpoint_path = checkpoint_path
-        self.adapter = adapter or StructureAdapter()
+        self.adapter = adapter or adapter_class()
 
     @staticmethod
     def _load_injected_checkpoint(

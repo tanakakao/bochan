@@ -126,6 +126,29 @@ class _StructureGPFeatureExtractor(_BaseMaterialGPFeatureExtractor):
         state["_material_feature_cache_versions"] = None
         return state
 
+    def _load_from_state_dict(
+        self,
+        state_dict: dict[str, Any],
+        prefix: str,
+        local_metadata: dict[str, Any],
+        strict: bool,
+        missing_keys: list[str],
+        unexpected_keys: list[str],
+        error_msgs: list[str],
+    ) -> None:
+        """Load persisted parameters and discard any derived structure cache."""
+
+        super()._load_from_state_dict(
+            state_dict,
+            prefix,
+            local_metadata,
+            strict,
+            missing_keys,
+            unexpected_keys,
+            error_msgs,
+        )
+        self.clear_material_feature_cache()
+
     @property
     def material_feature_cache_enabled(self) -> bool:
         """Return whether structure-only encoder outputs can be safely reused."""

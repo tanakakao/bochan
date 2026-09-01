@@ -24,10 +24,13 @@ from tests.test_mace_phase7_integration import (
 )
 
 
-def test_mace_ask_pending_state_is_synchronized_and_artifact_safe() -> None:
+def test_mace_ask_pending_state_uses_canonical_observations_and_is_artifact_safe() -> None:
     optimizer = _single_output_optimizer(3)
     assert optimizer.dataset is not None
-    before = int(optimizer.dataset.X.shape[0])
+    assert optimizer.bo.observations is not None
+    before_dataset = int(optimizer.dataset.X.shape[0])
+    before_train = int(optimizer.bo.train_X.shape[0])
+    before_observations = int(optimizer.bo.observations.X.shape[0])
 
     candidate = pd.DataFrame(
         [
@@ -40,9 +43,19 @@ def test_mace_ask_pending_state_is_synchronized_and_artifact_safe() -> None:
     )
     _register_pending_candidates(optimizer, candidate)
 
-    assert int(optimizer.dataset.X.shape[0]) == before + 1
-    assert bool(optimizer.dataset.pending_mask[-1]) is True
-    assert torch.isnan(optimizer.dataset.Y[-1]).all()
+    observations = optimizer.bo.observations
+    assert observations is not None
+    assert int(observations.X.shape[0]) == before_observations + 1
+    assert int(observations.pending_mask.sum().item()) == 1
+    assert int(observations.pending_X.shape[0]) == 1
+    assert torch.isnan(observations.Y[observations.pending_mask]).all()
+
+    # Pending experiments are acquisition state, not successful training observations.
+    assert int(optimizer.bo.train_X.shape[0]) == before_train
+    assert int(optimizer.dataset.X.shape[0]) == before_dataset
+    context = optimizer.bo._resolve_data_context()  # noqa: SLF001
+    assert context.X_pending is not None
+    torch.testing.assert_close(context.X_pending, observations.pending_X)
 
     payload = serialize_model_artifact(
         optimizer,
@@ -55,11 +68,15 @@ def test_mace_ask_pending_state_is_synchronized_and_artifact_safe() -> None:
         expected_backend="tabular",
     )
     restored = artifact["optimizer"]
+    restored_observations = restored.bo.observations
 
     assert artifact["metadata"]["model_family"] == "mace"
-    assert bool(restored.dataset.pending_mask[-1]) is True
-    assert torch.isnan(restored.dataset.Y[-1]).all()
-    assert int(restored.dataset.X.shape[0]) == before + 1
+    assert restored_observations is not None
+    assert int(restored_observations.pending_mask.sum().item()) == 1
+    torch.testing.assert_close(restored_observations.pending_X, observations.pending_X)
+    assert torch.isnan(restored_observations.Y[restored_observations.pending_mask]).all()
+    assert int(restored.bo.train_X.shape[0]) == before_train
+    assert int(restored.dataset.X.shape[0]) == before_dataset
 
 
 def test_mace_dkl_closes_candidate_optimization_path() -> None:

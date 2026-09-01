@@ -101,7 +101,7 @@ def _atom_conv_layers(material_encoder: CHGNetEncoder) -> tuple[nn.Module, ...]:
     """Return ordered CHGNet atom-convolution blocks for partial fine-tuning."""
 
     layers = getattr(material_encoder.encoder, "atom_conv_layers", None)
-    if isinstance(layers, nn.ModuleList) or isinstance(layers, (list, tuple)):
+    if isinstance(layers, (nn.ModuleList, list, tuple)):
         candidates = tuple(layers)
     else:
         return ()

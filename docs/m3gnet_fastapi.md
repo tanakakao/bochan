@@ -89,6 +89,40 @@ For `m3gnet_dkl` and `m3gnet_multitask_dkl`, use the API-safe alias:
 backbone exposed by `M3GNetEncoder.backbone_modules()`. The original property
 head remains outside the representation fine-tuning contract.
 
+## Large structure catalogs
+
+Structure-aware candidate generation shares one backend across ALIGNN, CHGNet,
+and M3GNet. The structure selector is always feature 0 and is handled separately
+from process categorical variables.
+
+For more than 10 candidate structures, `q=1`, `return_best_only=true`, and the
+standard BoTorch acquisition optimizer, bochan automatically switches from full
+structure/process enumeration to a generic alternating mixed optimizer. The
+structure ID is optimized categorically while each observed joint process-category
+tuple is preserved as a feasible assignment.
+
+For `q>1`, bochan intentionally keeps exact enumeration. This allows different
+q slots to select different process-category assignments without changing the
+batch-candidate semantics. Supplying optimizer options unsupported by the
+alternating backend also keeps the exact path.
+
+This behavior is internal: callers continue to use `structure_ids` to restrict
+the candidate structure set and do not select the scaling backend directly.
+
+## Acquisition coverage
+
+The M3GNet integration matrix exercises the same BoTorch-oriented acquisition
+surface as other Gaussian structure models. Phase 7 explicitly closes:
+
+- single-objective qLogEI / LogEI structure-process optimization;
+- single-objective UCB structure-process optimization;
+- independent multi-output NEHVI;
+- correlated multitask NEHVI;
+- mixed process categories combined with discrete structure selection.
+
+The structure selector is discrete and therefore has no acquisition gradient.
+Continuous process dimensions retain gradients through the GP/DKL path.
+
 ## Endpoints
 
 - `POST /api/v1/tabular/m3gnet/models` — fit/store a model
@@ -101,6 +135,31 @@ head remains outside the representation fine-tuning contract.
 
 Candidate requests may pass `structure_ids` to restrict the discrete structure
 search space.
+
+## Ask / tell state contract
+
+`/ask` registers returned candidates as pending observations. A matching `/tell`
+resolves one pending row in canonical model-input space instead of appending a
+second copy. Independent completed replicates at the same X remain distinct
+observations when there is no pending row to resolve.
+
+Candidate DataFrames are serialized with 15-digit floating-point precision so
+continuous process values can round-trip through JSON without leaving stale
+pending rows due only to serialization rounding.
+
+If `experiment_status_col` is configured, tell preserves success, failed, and
+pending masks through the canonical observation state and through artifact
+save/load.
+
+## Frozen representation cache
+
+Frozen `m3gnet_gp` and `m3gnet_multitask` models cache the structure representation
+bank. Repeated posterior calls reuse that bank. Loading model state invalidates
+the non-persistent cache and rebuilds it on the next representation request, so
+serialized artifacts do not carry stale cached tensors across state changes.
+
+DKL variants disable the frozen structure cache because trainable encoder layers
+must be reevaluated while their weights change.
 
 ## Artifact contract
 
@@ -124,6 +183,18 @@ Fit/save/load responses include `metadata.m3gnet` with the pretrained model name
 encoder output width, representation mode, training mode, structure IDs, process
 dimensions/categories, output names, output dependency, and multitask kernel
 information when applicable.
+
+## Phase 7 CI contract
+
+`.github/workflows/m3gnet-smoke.yml` is the dedicated M3GNet integration workflow.
+The required deterministic matrix covers encoder, GP/DKL, mixed inputs,
+independent multi-output, correlated multitask, structure scaling, FastAPI,
+ask/tell state, artifacts, and Ruff.
+
+The official pretrained MatGL model is also probed in the same workflow, but that
+network-dependent probe is non-blocking because Hugging Face rate limits or
+outages must not make the deterministic bochan integration matrix flaky. A
+Hugging Face cache is retained between workflow runs when available.
 
 ## Runnable client
 

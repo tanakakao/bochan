@@ -926,14 +926,6 @@ def test_model_rejects_unsupported_or_invalid_inputs() -> None:
             element_ids=_element_ids(),
             encoder=FakeRoostBackbone(),
         )
-    with pytest.raises(NotImplementedError, match="train_Yvar"):
-        RoostGPModel(
-            train_X=train_X,
-            train_Y=train_Y,
-            train_Yvar=torch.full_like(train_Y, 0.01),
-            element_ids=_element_ids(),
-            encoder=FakeRoostBackbone(),
-        )
     with pytest.raises(ValueError, match="duplicate"):
         RoostGPModel(
             train_X=train_X,

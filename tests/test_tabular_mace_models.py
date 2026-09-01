@@ -17,7 +17,6 @@ from bochan.composition import MACEEncoder
 from bochan.models.regression.gaussian.deep import (
     MACEDKLModel,
     MACEGPModel,
-    MACEMixedDKLModel,
     MACEMixedGPModel,
     MACEMixedMultiTaskDKLModel,
     MACEMixedMultiTaskGPModel,

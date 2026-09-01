@@ -70,7 +70,7 @@ Tabular DataFrame / numpy / CSV workflows:
 pip install -e ".[tabular]"
 ```
 
-CrabNet material encoder:
+CrabNet / Roost material encoders:
 
 ```bash
 pip install -e ".[materials]"
@@ -696,6 +696,14 @@ formula plus continuous process columns. See the
 [`CrabNet-GP / CrabNet-DKL integration guide`](docs/crabnet_fastapi_web.md) for
 checkpoint handling, frozen/partial/full encoder training, validation,
 candidate-response examples, reproducibility, and the final acceptance matrix.
+
+The Python model API and Tabular API also expose the canonical `roost_gp` /
+`roost_dkl` selectors. Tabular Roost derives its element vocabulary and
+differentiable composition/process transform from one `composition_sites`
+entry; `roost_gp` freezes the encoder, while `roost_dkl` supports partial or
+full fine-tuning. See the [Tabular API guide](src/bochan/tabular/README.md#roost-gp--roost-dkl)
+for the minimal configuration and migration note. Roost FastAPI and React
+workbench support are reserved for the next integration phase.
 
 Important endpoints:
 

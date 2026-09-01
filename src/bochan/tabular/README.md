@@ -330,6 +330,79 @@ Transformer層を、`{"encoder_training": "full"}`がencoder全体を学習し�
 現在の初期保証は、1つの組成site、連続process、single-output Gaussian regressionです。
 カテゴリprocess、複数site、multi-outputを指定した場合は明示的なエラーになります。
 
+### Roost-GP / Roost-DKL
+
+Roost表現を使うTabular regressionでは、encoderを凍結する
+`model_type="roost_gp"`と、encoderをGPと共同学習する
+`model_type="roost_dkl"`がcanonical selectorです。Aviaryを含むmaterials extraを
+Tabular extraと一緒に導入してください。
+
+```bash
+pip install -e ".[tabular,materials]"
+```
+
+次の例では、組成式と連続process条件からRoost-DKLを構築します。元素番号、ILR座標、
+process列、process boundsは`composition_sites`と`input_cols`から自動的に導出されます。
+
+```python
+from bochan.tabular import TabularBayesianOptimizer
+
+bo = TabularBayesianOptimizer(
+    task_type="regression",
+    model_type="roost_dkl",
+    input_cols=["formula", "temperature", "pressure"],
+    target_cols="property",
+    composition_sites={
+        "formula": {
+            "column": "formula",
+            "elements": ["Li", "Fe", "P", "O"],
+            "representation": "ilr",
+            "include_descriptors": False,
+            "bounds": {
+                "Li": [0.0, 0.5],
+                "Fe": [0.0, 0.5],
+                "P": [0.0, 0.5],
+                "O": [0.2, 0.8],
+            },
+        }
+    },
+    bounds={
+        "temperature": [600.0, 1000.0],
+        "pressure": [0.5, 2.0],
+    },
+    model_kwargs={
+        "latent_dim": 32,
+        "encoder_training": "partial",
+        # Optional: "checkpoint": "path/to/roost-checkpoint.pt",
+    },
+)
+
+bo.fit(data)
+prediction = bo.predict(data[["formula", "temperature", "pressure"]])
+candidates, acquisition_value = bo.candidate(acq_name="logei", q=2)
+```
+
+`roost_gp`はencoderを常に凍結し、`encoder_training`や
+`trainable_encoder_layers`を受理しません。`roost_dkl`は
+`encoder_training="partial"`（既定）で最後のmessage-passing layerとcrystal
+attention poolを、`encoder_training="full"`でRoost表現全体を学習します。
+`partial`で学習する末尾layer数は`trainable_encoder_layers`で指定できます。
+checkpointを省略するとAviaryの既定Roost descriptorを構築し、必要な場合は
+`model_kwargs`の`checkpoint`または`encoder`で明示できます。
+
+現在のTabular契約は、1つのcomposition site、連続process、
+`include_descriptors=False`です。複数の`target_cols`はtargetごとに独立したRoost
+encoderとGPを持つ`ModelListGP`へ自動変換されるため、`multi_output_config`は
+指定しません。複数site、カテゴリprocess、独立descriptor列は明示的なエラーになります。
+
+#### 低レベルRoost APIからの移行
+
+従来、`RoostGPModel` / `RoostDKLModel`を`model_cls`として注入し、`element_ids`、
+`CompositionMaterialInputTransform`、組成・process indexを呼び出し側で組み立てていた
+Tabularコードは、`model_type="roost_gp"`または`"roost_dkl"`と
+`composition_sites`へ移行してください。Tabular adapterが導出する`element_ids`や
+`input_transform`を`model_kwargs`へ重ねて渡す互換経路はありません。
+
 詳細は以下を参照してください。
 
 - `docs/tabular_composition.md`

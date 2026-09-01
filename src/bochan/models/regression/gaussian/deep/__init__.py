@@ -6,6 +6,7 @@ from .alignn_multitask import (
     ALIGNNMultiTaskDKLModel,
     ALIGNNMultiTaskGPModel,
 )
+from .chgnet import CHGNetDKLModel, CHGNetGPModel
 from .crabnet import CrabNetDKLModel, CrabNetGPModel
 from .crabnet_mixed import CrabNetMixedGPModel
 from .crabnet_mixed_dkl import CrabNetMixedDKLModel
@@ -30,6 +31,8 @@ __all__ = [
     "ALIGNNMixedMultiTaskGPModel",
     "ALIGNNMultiTaskDKLModel",
     "ALIGNNMultiTaskGPModel",
+    "CHGNetDKLModel",
+    "CHGNetGPModel",
     "CrabNetDKLModel",
     "CrabNetGPModel",
     "CrabNetMixedDKLModel",

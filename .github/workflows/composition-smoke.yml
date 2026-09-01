@@ -45,6 +45,7 @@ jobs:
             tests/test_fastapi_alignn_multioutput_artifacts.py \
             tests/test_common_model_artifact_api.py \
             tests/test_chgnet_encoder.py \
+            tests/test_chgnet_gp.py \
             tests/test_crabnet_encoder.py \
             tests/test_crabnet_gp.py \
             tests/test_crabnet_integration_closure.py \
@@ -92,6 +93,7 @@ jobs:
             src/bochan/models/regression/gaussian/deep/alignn.py \
             src/bochan/models/regression/gaussian/deep/alignn_mixed.py \
             src/bochan/models/regression/gaussian/deep/alignn_multitask.py \
+            src/bochan/models/regression/gaussian/deep/chgnet.py \
             src/bochan/models/regression/gaussian/deep/crabnet.py \
             src/bochan/models/regression/gaussian/deep/material.py \
             src/bochan/models/regression/gaussian/deep/roost.py \
@@ -159,6 +161,7 @@ jobs:
             tests/test_fastapi_alignn_multioutput_artifacts.py \
             tests/test_common_model_artifact_api.py \
             tests/test_chgnet_encoder.py \
+            tests/test_chgnet_gp.py \
             tests/test_material_encoder_fusion.py \
             tests/test_material_gp_feature_extractor.py \
             tests/test_roost_encoder.py \

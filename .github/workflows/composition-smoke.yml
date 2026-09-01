@@ -29,6 +29,7 @@ jobs:
             tests/test_alignn_pure_integration.py \
             tests/test_alignn_phase6_scaling.py \
             tests/test_alignn_phase6_cache_pickle.py \
+            tests/test_structure_feature_extractor.py \
             tests/test_structure_alignn.py \
             tests/test_tabular_alignn_models.py \
             tests/test_tabular_alignn_mixed.py \
@@ -91,6 +92,7 @@ jobs:
             src/bochan/models/regression/gaussian/deep/crabnet.py \
             src/bochan/models/regression/gaussian/deep/material.py \
             src/bochan/models/regression/gaussian/deep/roost.py \
+            src/bochan/models/regression/gaussian/deep/structure.py \
             src/bochan/api/modeling/fit.py \
             src/bochan/api/registry/model.py \
             src/bochan/tabular/__init__.py \
@@ -139,6 +141,7 @@ jobs:
             tests/test_alignn_pure_integration.py \
             tests/test_alignn_phase6_scaling.py \
             tests/test_alignn_phase6_cache_pickle.py \
+            tests/test_structure_feature_extractor.py \
             tests/test_structure_alignn.py \
             tests/test_tabular_alignn_models.py \
             tests/test_tabular_alignn_mixed.py \

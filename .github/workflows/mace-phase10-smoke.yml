@@ -1,0 +1,44 @@
+name: MACE Phase 10 smoke
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Cache MACE foundation models
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/mace
+          key: mace-mpa-0-medium-v1
+      - name: Install focused MACE surface
+        run: |
+          python -m pip install -e ".[test,tabular,api,mace]"
+      - name: Test MACE Phase 10 release contract
+        run: |
+          pytest -q --maxfail=1 tests/test_mace_phase10_release.py
+      - name: Recheck MACE Phase 6-9 contracts
+        run: |
+          pytest -q --maxfail=1 \
+            tests/test_mace_phase6_integration.py \
+            tests/test_mace_phase7_integration.py \
+            tests/test_mace_phase8_log_acquisitions.py \
+            tests/test_mace_phase9_performance.py \
+            tests/test_fastapi_mace_artifacts.py \
+            tests/test_fastapi_mace_tabular.py
+      - name: Lint MACE Phase 10 surface
+        run: |
+          python -m pip install ruff
+          ruff check \
+            src/bochan/serving/fastapi/services/mace_tabular.py \
+            tests/test_mace_phase10_release.py

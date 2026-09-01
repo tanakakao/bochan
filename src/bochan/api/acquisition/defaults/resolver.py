@@ -260,6 +260,8 @@ def resolve_multi_output_model_config(
         "alignnmultitaskdkl",
         "chgnetmultitask",
         "chgnetmultitaskdkl",
+        "m3gnetmultitask",
+        "m3gnetmultitaskdkl",
     }:
         return model_config
 

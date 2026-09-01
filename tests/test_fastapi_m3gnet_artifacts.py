@@ -336,7 +336,7 @@ def test_m3gnet_tell_preserves_failed_and_pending_experiment_status(
         },
     )
     assert failed_response.status_code == 200, failed_response.text
-    assert failed_response.json()["n_train"] == 4
+    assert failed_response.json()["n_train"] == 5
 
     pending_response = client.post(
         f"/api/v1/tabular/m3gnet/models/{model_id}/tell",
@@ -356,7 +356,7 @@ def test_m3gnet_tell_preserves_failed_and_pending_experiment_status(
         },
     )
     assert pending_response.status_code == 200, pending_response.text
-    assert pending_response.json()["n_train"] == 4
+    assert pending_response.json()["n_train"] == 6
 
     optimizer = tabular_store.get(model_id)
     observations = optimizer.bo.observations

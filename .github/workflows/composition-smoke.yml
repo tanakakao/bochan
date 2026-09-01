@@ -20,7 +20,7 @@ jobs:
         run: |
           python -m pip install -e ".[test,tabular,api,materials]"
           python -m pip install "alignn==2026.8.11"
-          python -m pip install "chgnet==0.4.1"
+          python -m pip install "chgnet==0.4.2"
       - name: Test composition APIs
         run: |
           pytest -q --maxfail=1 \

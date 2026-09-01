@@ -179,7 +179,7 @@ class BayesianOptimizer(
     ) -> BayesianOptimizer:
         if self.observations is None:
             raise RuntimeError("Call fit(...) before tell_observations(...).")
-        self.observations = self.observations.append(observations)
+        self.observations = self.observations.resolve_pending(observations)
         self.train_X, self.train_Y = self.observations.objective_training_data()
         if refit:
             self.refit(fit_config=fit_config)

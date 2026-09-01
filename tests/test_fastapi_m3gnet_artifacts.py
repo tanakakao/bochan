@@ -265,6 +265,111 @@ def test_m3gnet_mixed_tell_save_load_predict_roundtrip(client_and_stores) -> Non
     assert after_load.json()["records"] == before_save.json()["records"]
 
 
+def test_m3gnet_ask_then_tell_resolves_matching_pending_observation(
+    client_and_stores,
+) -> None:
+    client, tabular_store, _ = client_and_stores
+    fit_response = client.post("/api/v1/tabular/m3gnet/models", json=_mixed_fit_payload())
+    assert fit_response.status_code == 200, fit_response.text
+    model_id = fit_response.json()["model_id"]
+
+    ask_response = client.post(
+        f"/api/v1/tabular/m3gnet/models/{model_id}/ask",
+        json={
+            "acquisition_config": {"name": "logei"},
+            "optimize_config": {"q": 1, "num_restarts": 2, "raw_samples": 8},
+            "structure_ids": ["alpha", "beta"],
+        },
+    )
+    assert ask_response.status_code == 200, ask_response.text
+    candidate = dict(ask_response.json()["candidates"][0])
+
+    optimizer = tabular_store.get(model_id)
+    observations = optimizer.bo.observations
+    assert observations is not None
+    assert int(observations.pending_mask.sum().item()) == 1
+    assert int(observations.X.shape[0]) == 5
+
+    candidate["property"] = 1.35
+    tell_response = client.post(
+        f"/api/v1/tabular/m3gnet/models/{model_id}/tell",
+        json={"data": [candidate], "refit": False},
+    )
+    assert tell_response.status_code == 200, tell_response.text
+    assert tell_response.json()["n_train"] == 5
+
+    observations = optimizer.bo.observations
+    assert observations is not None
+    assert int(observations.pending_mask.sum().item()) == 0
+    assert int(observations.X.shape[0]) == 5
+    assert int(observations.success_mask.sum().item()) == 5
+
+
+def test_m3gnet_tell_preserves_failed_and_pending_experiment_status(
+    client_and_stores,
+) -> None:
+    client, tabular_store, _ = client_and_stores
+    payload = _mixed_fit_payload()
+    for row in payload["data"]:
+        row["status"] = "success"
+    payload["experiment_status_col"] = "status"
+
+    fit_response = client.post("/api/v1/tabular/m3gnet/models", json=payload)
+    assert fit_response.status_code == 200, fit_response.text
+    model_id = fit_response.json()["model_id"]
+
+    failed_response = client.post(
+        f"/api/v1/tabular/m3gnet/models/{model_id}/tell",
+        json={
+            "data": [
+                {
+                    "phase": "alpha",
+                    "temperature": 1090.0,
+                    "pressure": 1.5,
+                    "furnace": "A",
+                    "atmosphere": "air",
+                    "property": 1.4,
+                    "status": "failed",
+                }
+            ],
+            "refit": False,
+        },
+    )
+    assert failed_response.status_code == 200, failed_response.text
+    assert failed_response.json()["n_train"] == 4
+
+    pending_response = client.post(
+        f"/api/v1/tabular/m3gnet/models/{model_id}/tell",
+        json={
+            "data": [
+                {
+                    "phase": "beta",
+                    "temperature": 1100.0,
+                    "pressure": 1.7,
+                    "furnace": "B",
+                    "atmosphere": "N2",
+                    "property": None,
+                    "status": "pending",
+                }
+            ],
+            "refit": False,
+        },
+    )
+    assert pending_response.status_code == 200, pending_response.text
+    assert pending_response.json()["n_train"] == 4
+
+    optimizer = tabular_store.get(model_id)
+    observations = optimizer.bo.observations
+    assert observations is not None
+    assert int(observations.X.shape[0]) == 6
+    assert int(observations.failed_mask.sum().item()) == 1
+    assert int(observations.pending_mask.sum().item()) == 1
+    assert int(observations.success_mask.sum().item()) == 4
+    assert optimizer.dataset.X.shape[0] == 6
+    assert int(optimizer.dataset.failed_mask.sum().item()) == 1
+    assert int(optimizer.dataset.pending_mask.sum().item()) == 1
+
+
 def test_m3gnet_load_requires_trusted_pickle(client_and_stores) -> None:
     client, _, _ = client_and_stores
     fit_response = client.post("/api/v1/tabular/m3gnet/models", json=_mixed_fit_payload())

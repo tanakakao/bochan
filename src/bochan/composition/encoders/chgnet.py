@@ -52,14 +52,14 @@ def _upstream_chgnet_class() -> type[nn.Module]:
     return cast(type[nn.Module], model_class)
 
 
-def _structure_adapter_class() -> type[StructureAdapter]:
+def _structure_adapter_class() -> type[Any]:
     """Return StructureAdapter lazily to avoid composition/structure import cycles."""
 
     module = import_module("bochan.structure.adapter")
     adapter_class = getattr(module, "StructureAdapter", None)
     if not isinstance(adapter_class, type):
         raise RuntimeError("bochan.structure.adapter.StructureAdapter is unavailable.")
-    return cast(type[StructureAdapter], adapter_class)
+    return adapter_class
 
 
 def _is_chgnet_graph(value: Any) -> bool:

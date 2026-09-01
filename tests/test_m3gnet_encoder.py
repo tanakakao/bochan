@@ -55,7 +55,7 @@ class FakeM3GNetConverter:
 
 
 class FakeM3GNet(nn.Module):
-    """Differentiable stand-in for MatGL's bare M3GNet forward contract."""
+    """Differentiable stand-in for MatGL's intensive M3GNet forward contract."""
 
     def __init__(self, output_dim: int = 4) -> None:
         super().__init__()
@@ -67,7 +67,7 @@ class FakeM3GNet(nn.Module):
         self.embedding = nn.Linear(3, output_dim, bias=False)
         self.readout = nn.Identity()
         self.final_layer = nn.Linear(output_dim, 1)
-        self.feature_dict: dict[str, Tensor] = {}
+        self.feature_dict: dict[str, Any] = {}
         self.last_state_attr: Tensor | None | object = object()
 
     def forward(self, g: FakeM3GNetGraph, state_attr: Tensor | None = None) -> Tensor:
@@ -77,6 +77,26 @@ class FakeM3GNet(nn.Module):
         return self.feature_dict["final"].squeeze()
 
 
+class FakeExtensiveM3GNet(FakeM3GNet):
+    """Stand-in for MatPES M3GNet potentials with atomic property heads."""
+
+    def __init__(self, output_dim: int = 4) -> None:
+        super().__init__(output_dim=output_dim)
+        self.is_intensive = False
+        self.n_blocks = 1
+
+    def forward(self, g: FakeM3GNetGraph, state_attr: Tensor | None = None) -> Tensor:
+        self.last_state_attr = state_attr
+        node_features = self.embedding(g.pos)
+        atomic_output = self.final_layer(node_features)
+        self.feature_dict = {
+            "gc_1": {"node_feat": node_features},
+            "readout": atomic_output,
+            "final": atomic_output.sum(),
+        }
+        return self.feature_dict["final"]
+
+
 class MissingReadoutM3GNet(FakeM3GNet):
     def forward(self, g: FakeM3GNetGraph, state_attr: Tensor | None = None) -> Tensor:
         del g, state_attr
@@ -84,10 +104,11 @@ class MissingReadoutM3GNet(FakeM3GNet):
         return torch.zeros(())
 
 
-class ExtensiveM3GNet(FakeM3GNet):
-    def __init__(self) -> None:
-        super().__init__()
-        self.is_intensive = False
+class MissingFinalNodeM3GNet(FakeExtensiveM3GNet):
+    def forward(self, g: FakeM3GNetGraph, state_attr: Tensor | None = None) -> Tensor:
+        del g, state_attr
+        self.feature_dict = {"readout": torch.zeros((2, 1)), "final": torch.zeros(())}
+        return torch.zeros(())
 
 
 def test_public_composition_import_does_not_import_optional_matgl() -> None:
@@ -121,7 +142,7 @@ def test_constructing_pretrained_encoder_has_clear_optional_dependency_error(
         M3GNetEncoder()
 
 
-def test_injected_encoder_uses_direct_differentiable_readout_path() -> None:
+def test_injected_intensive_encoder_uses_direct_differentiable_readout_path() -> None:
     pytest.importorskip("pymatgen")
     upstream = FakeM3GNet()
     converter = FakeM3GNetConverter()
@@ -132,10 +153,25 @@ def test_injected_encoder_uses_direct_differentiable_readout_path() -> None:
     assert isinstance(encoder, MaterialEncoder)
     assert encoder.output_dim == 4
     assert encoder.initialization == "injected"
+    assert encoder.representation_mode == "readout"
     assert features.shape == torch.Size([2, 4])
     assert converter.calls == 2
     assert upstream.last_state_attr is None
     assert torch.isfinite(features).all()
+
+
+def test_injected_extensive_encoder_mean_pools_final_message_passing_nodes() -> None:
+    pytest.importorskip("pymatgen")
+    upstream = FakeExtensiveM3GNet()
+    encoder = M3GNetEncoder(upstream, graph_converter=FakeM3GNetConverter())
+
+    features = encoder([_si_structure()])
+    node_features = upstream.feature_dict["gc_1"]["node_feat"]
+
+    assert encoder.representation_mode == "mean_node"
+    assert features.shape == torch.Size([1, 4])
+    assert torch.allclose(features, node_features.mean(dim=0, keepdim=True))
+    assert not torch.allclose(features[:, :1], upstream.feature_dict["readout"].mean(dim=0))
 
 
 def test_encoder_accepts_periodic_ase_structures() -> None:
@@ -158,7 +194,7 @@ def test_encoder_accepts_periodic_ase_structures() -> None:
 
 def test_outer_double_preserves_native_encoder_dtype_and_autograd() -> None:
     pytest.importorskip("pymatgen")
-    upstream = FakeM3GNet()
+    upstream = FakeExtensiveM3GNet()
     encoder = M3GNetEncoder(upstream, graph_converter=FakeM3GNetConverter()).double()
 
     features = encoder([_si_structure()])
@@ -171,22 +207,17 @@ def test_outer_double_preserves_native_encoder_dtype_and_autograd() -> None:
 
 
 def test_backbone_modules_exclude_original_property_head() -> None:
-    upstream = FakeM3GNet()
+    upstream = FakeExtensiveM3GNet()
     encoder = M3GNetEncoder(upstream, graph_converter=FakeM3GNetConverter())
 
     backbone = encoder.backbone_modules()
 
     assert upstream.embedding in backbone
-    assert upstream.readout in backbone
+    assert upstream.readout not in backbone
     assert upstream.final_layer not in backbone
 
 
-def test_extensive_readout_is_rejected() -> None:
-    with pytest.raises(ValueError, match="intensive"):
-        M3GNetEncoder(ExtensiveM3GNet(), graph_converter=FakeM3GNetConverter())
-
-
-def test_encoder_requires_feature_dict_readout_tensor() -> None:
+def test_intensive_encoder_requires_feature_dict_readout_tensor() -> None:
     pytest.importorskip("pymatgen")
     encoder = M3GNetEncoder(MissingReadoutM3GNet(), graph_converter=FakeM3GNetConverter())
 
@@ -194,7 +225,15 @@ def test_encoder_requires_feature_dict_readout_tensor() -> None:
         encoder([_si_structure()])
 
 
-def test_real_pretrained_m3gnet_returns_graph_readout_on_cpu() -> None:
+def test_extensive_encoder_requires_final_message_passing_node_features() -> None:
+    pytest.importorskip("pymatgen")
+    encoder = M3GNetEncoder(MissingFinalNodeM3GNet(), graph_converter=FakeM3GNetConverter())
+
+    with pytest.raises(RuntimeError, match="gc_1"):
+        encoder([_si_structure()])
+
+
+def test_real_pretrained_m3gnet_returns_graph_representation_on_cpu() -> None:
     pytest.importorskip("matgl")
     pytest.importorskip("pymatgen")
     encoder = M3GNetEncoder(model_name="M3GNet-PES-MatPES-PBE-2025.2")
@@ -204,9 +243,10 @@ def test_real_pretrained_m3gnet_returns_graph_readout_on_cpu() -> None:
         features = encoder([_si_structure()])
 
     assert encoder.initialization == "pretrained"
+    assert encoder.representation_mode == "mean_node"
     assert encoder.output_dim > 0
     assert features.shape == torch.Size([1, encoder.output_dim])
     assert features.device.type == "cpu"
     assert features.dtype == next(encoder.encoder.parameters()).dtype
     assert torch.isfinite(features).all()
-    assert "readout" in encoder.encoder.feature_dict
+    assert f"gc_{encoder.encoder.n_blocks}" in encoder.encoder.feature_dict

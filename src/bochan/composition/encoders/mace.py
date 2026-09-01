@@ -348,7 +348,9 @@ class MACEEncoder(MaterialEncoder):
                 heads=list(self.available_heads),
             )
         batch = batch_class.from_data_list([graph]).to(device)
-        for key in batch.keys():
+        batch_keys = batch.keys
+        keys = batch_keys() if callable(batch_keys) else batch_keys
+        for key in keys:
             value = batch[key]
             if torch.is_tensor(value) and value.is_floating_point():
                 batch[key] = value.to(device=device, dtype=dtype)

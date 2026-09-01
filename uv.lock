@@ -619,6 +619,9 @@ llm = [
     { name = "google-genai" },
     { name = "openai" },
 ]
+mace = [
+    { name = "mace-torch" },
+]
 materials = [
     { name = "aviary-models" },
     { name = "chgnet" },
@@ -702,6 +705,7 @@ requires-dist = [
     { name = "lightgbm", marker = "extra == 'web'", specifier = ">=4.7,<5" },
     { name = "linear-operator", specifier = ">=0.6,<0.7" },
     { name = "mace-torch", marker = "extra == 'all'", specifier = ">=0.3.16,<0.4" },
+    { name = "mace-torch", marker = "extra == 'mace'", specifier = ">=0.3.16,<0.4" },
     { name = "mace-torch", marker = "extra == 'materials'", specifier = ">=0.3.16,<0.4" },
     { name = "matgl", marker = "extra == 'all'", specifier = ">=4.0.3,<5" },
     { name = "matgl", marker = "extra == 'materials'", specifier = ">=4.0.3,<5" },
@@ -756,7 +760,7 @@ requires-dist = [
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'api'", specifier = ">=0.27" },
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'web'", specifier = ">=0.27" },
 ]
-provides-extras = ["api", "tabular", "materials", "visualization", "web", "evo", "ngboost", "lightgbm", "tabpfn", "llm", "notebook", "docs", "test", "dev", "all"]
+provides-extras = ["api", "tabular", "mace", "materials", "visualization", "web", "evo", "ngboost", "lightgbm", "tabpfn", "llm", "notebook", "docs", "test", "dev", "all"]
 
 [[package]]
 name = "boto3"

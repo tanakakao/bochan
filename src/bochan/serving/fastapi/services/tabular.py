@@ -156,7 +156,9 @@ def _frame_records(frame: Any) -> tuple[list[str], list[dict[str, Any]]]:
     """Return strict JSON records, converting NaN and timestamps safely."""
 
     columns = [str(column) for column in frame.columns]
-    records = json.loads(frame.to_json(orient="records", date_format="iso"))
+    records = json.loads(
+        frame.to_json(orient="records", date_format="iso", double_precision=15)
+    )
     return columns, records
 
 

@@ -148,7 +148,9 @@ def test_mace_fastapi_candidate_contract_preserves_qlognehvi() -> None:
     )
     response = service.mace_candidate_response("model-1", FakeOptimizer(), request)
 
-    assert captured["acq_config"].name == "qlognehvi"
+    acq_config = captured["acq_config"]
+    assert isinstance(acq_config, dict)
+    assert acq_config["name"] == "qlognehvi"
     assert captured["objective_mode"] == "multi_output"
     assert captured["objective_outputs"] == ["strength", "conductivity"]
     assert captured["objective_directions"] == ["maximize", "maximize"]

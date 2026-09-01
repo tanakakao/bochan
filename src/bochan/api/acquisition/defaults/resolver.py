@@ -258,6 +258,8 @@ def resolve_multi_output_model_config(
         "crabnetmixedmultitaskdkl",
         "alignnmultitask",
         "alignnmultitaskdkl",
+        "chgnetmultitask",
+        "chgnetmultitaskdkl",
     }:
         return model_config
 

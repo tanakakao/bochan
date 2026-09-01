@@ -1,0 +1,49 @@
+name: MACE Phase 2 smoke
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Cache MACE foundation models
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/mace
+          key: mace-mpa-0-medium-v1
+      - name: Install
+        run: |
+          python -m pip install -e ".[test]"
+          python -m pip install "mace-torch==0.3.16"
+      - name: Test deterministic MACE GP and DKL contracts
+        run: |
+          pytest -q --maxfail=1 -k "not real_pretrained" \
+            tests/test_mace_encoder.py \
+            tests/test_mace_gp.py
+      - name: Probe real pretrained MACE GP
+        run: |
+          pytest -q --maxfail=1 -k "real_pretrained" \
+            tests/test_mace_encoder.py \
+            tests/test_mace_gp.py
+      - name: Lint MACE Phase 2 surface
+        run: |
+          python -m pip install ruff
+          ruff check \
+            src/bochan/composition/__init__.py \
+            src/bochan/composition/encoders/__init__.py \
+            src/bochan/composition/encoders/mace.py \
+            src/bochan/models/regression/gaussian/deep/__init__.py \
+            src/bochan/models/regression/gaussian/deep/mace.py \
+            src/bochan/models/regression/gaussian/deep/structure.py \
+            tests/test_mace_encoder.py \
+            tests/test_mace_gp.py

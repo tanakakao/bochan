@@ -3,6 +3,7 @@
 from .descriptors import CompositionDescriptorCalculator
 from .encoders import (
     ALIGNNEncoder,
+    CHGNetEncoder,
     ConcatFusion,
     CrabNetEncoder,
     MaterialEncoder,
@@ -28,6 +29,7 @@ __all__ = [
     "ALIGNNEncoder",
     "ATOMIC_NUMBERS",
     "ATOMIC_WEIGHTS",
+    "CHGNetEncoder",
     "CompositionDescriptorCalculator",
     "CompositionSearchSpace",
     "CompositionTransformer",

@@ -361,7 +361,7 @@ def test_mace_mixed_dkl_fit_updates_selected_pair_only() -> None:
     selected_product_before = selected_product.scale.detach().clone()
     frozen_product_before = frozen_product.scale.detach().clone()
 
-    fit_deepkernel_mll(model.make_mll(), num_epochs=2, lr=0.01)
+    fit_deepkernel_mll(model.make_mll(), num_epochs=2, lr=0.001)
 
     assert not torch.equal(selected_interaction.weight, selected_interaction_before)
     assert torch.equal(frozen_interaction.weight, frozen_interaction_before)

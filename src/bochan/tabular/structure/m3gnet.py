@@ -1,19 +1,36 @@
-"""Tabular routing for MatGL M3GNet structure/process GP and DKL models."""
+"""Tabular routing for M3GNet structure/process GP, DKL, and multitask models."""
 
 from __future__ import annotations
 
+import copy
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from typing import Any
 
-_M3GNET_MODEL_TYPES = frozenset({"m3gnet_gp", "m3gnet_dkl"})
-_DERIVED_M3GNET_MODEL_CLASSES = frozenset(
+_M3GNET_INDEPENDENT_MODEL_TYPES = frozenset({"m3gnet_gp", "m3gnet_dkl"})
+_M3GNET_CORRELATED_MULTITASK_MODEL_TYPES = frozenset(
+    {"m3gnet_multitask", "m3gnet_multitask_dkl"}
+)
+_M3GNET_MODEL_TYPES = _M3GNET_INDEPENDENT_MODEL_TYPES | _M3GNET_CORRELATED_MULTITASK_MODEL_TYPES
+_DERIVED_INDEPENDENT_M3GNET_MODEL_CLASSES = frozenset(
     {
         "M3GNetGPModel",
         "M3GNetDKLModel",
         "M3GNetMixedGPModel",
         "M3GNetMixedDKLModel",
     }
+)
+_DERIVED_CORRELATED_M3GNET_MODEL_CLASSES = frozenset(
+    {
+        "M3GNetMultiTaskGPModel",
+        "M3GNetMultiTaskDKLModel",
+        "M3GNetMixedMultiTaskGPModel",
+        "M3GNetMixedMultiTaskDKLModel",
+    }
+)
+_DERIVED_M3GNET_MODEL_CLASSES = (
+    _DERIVED_INDEPENDENT_M3GNET_MODEL_CLASSES
+    | _DERIVED_CORRELATED_M3GNET_MODEL_CLASSES
 )
 
 
@@ -47,6 +64,50 @@ def _has_derived_m3gnet_model_cls(model_cls: Any) -> bool:
     )
 
 
+def _derived_multi_output_configs(multi_output_config: Any) -> list[Any] | None:
+    """Return previously derived independent M3GNet output configurations."""
+
+    if multi_output_config is None or multi_output_config.output_configs is None:
+        return None
+    configs = list(multi_output_config.output_configs)
+    if not configs:
+        return None
+    if not all(
+        getattr(getattr(config, "model_cls", None), "__name__", None)
+        in _DERIVED_INDEPENDENT_M3GNET_MODEL_CLASSES
+        and str(getattr(getattr(config, "model_cls", None), "__module__", "")).startswith(
+            "bochan.models.regression.gaussian.deep"
+        )
+        and getattr(config, "multi_output_config", None) is None
+        for config in configs
+    ):
+        return None
+    return configs
+
+
+def _clone_independent_output_config(single_output_config: Any, structures: Any) -> Any:
+    """Clone trainable model state while sharing the immutable raw structure bank."""
+
+    model_kwargs = dict(single_output_config.model_kwargs)
+    model_kwargs.pop("structures", None)
+    try:
+        model_kwargs = copy.deepcopy(model_kwargs)
+        outcome_transform = copy.deepcopy(single_output_config.outcome_transform)
+    except Exception as error:
+        raise TypeError(
+            "Independent M3GNet multi-output requires injected encoders, projections, "
+            "transforms, and other model configuration objects to support deepcopy."
+        ) from error
+    model_kwargs["structures"] = structures
+    return replace(
+        single_output_config,
+        task_type="regression",
+        outcome_transform=outcome_transform,
+        model_kwargs=model_kwargs,
+        multi_output_config=None,
+    )
+
+
 def _validate_model_config(
     config: Any,
     *,
@@ -54,7 +115,7 @@ def _validate_model_config(
     process_cat_dims: list[int],
     expected_input_type: str,
 ) -> tuple[bool, dict[str, Any], Any | None]:
-    """Validate tabular M3GNet model settings and return mutable model kwargs."""
+    """Validate shared tabular M3GNet configuration and return mutable kwargs."""
 
     is_mixed = bool(process_cat_dims)
     derived_config = _has_derived_m3gnet_model_cls(config.model_cls)
@@ -101,13 +162,15 @@ def _apply_encoder_training_policy(
     model_kwargs: dict[str, Any],
     encoder_training: Any | None,
     *,
+    frozen_model_type: str,
+    dkl_model_type: str,
     dkl: bool,
 ) -> None:
     if not dkl:
         if encoder_training is not None or "trainable_encoder_layers" in model_kwargs:
             raise ValueError(
-                "m3gnet_gp freezes the M3GNet structure encoder. Use "
-                "model_type='m3gnet_dkl' for partial or full fine-tuning."
+                f"{frozen_model_type} freezes the M3GNet structure encoder. Use "
+                f"model_type={dkl_model_type!r} for partial or full fine-tuning."
             )
         return
     if encoder_training is None:
@@ -123,7 +186,7 @@ def _apply_encoder_training_policy(
         model_kwargs["trainable_encoder_layers"] = "all"
     else:
         raise ValueError(
-            "encoder_training must be 'partial' or 'full' for m3gnet_dkl."
+            f"encoder_training must be 'partial' or 'full' for {dkl_model_type}."
         )
 
 
@@ -135,10 +198,10 @@ def _configure_single_model(
     process_cat_dims: list[int],
     expected_input_type: str,
 ) -> Any:
-    """Resolve one single-output M3GNet model configuration."""
+    """Resolve one independent single-output M3GNet model configuration."""
 
-    if model_type not in _M3GNET_MODEL_TYPES:
-        raise ValueError(f"Unsupported M3GNet model_type={model_type!r}.")
+    if model_type not in _M3GNET_INDEPENDENT_MODEL_TYPES:
+        raise ValueError(f"Unsupported independent M3GNet model_type={model_type!r}.")
     is_mixed, model_kwargs, encoder_training = _validate_model_config(
         config,
         structures=structures,
@@ -149,6 +212,8 @@ def _configure_single_model(
     _apply_encoder_training_policy(
         model_kwargs,
         encoder_training,
+        frozen_model_type="m3gnet_gp",
+        dkl_model_type="m3gnet_dkl",
         dkl=dkl,
     )
 
@@ -187,30 +252,103 @@ def _configure_single_model(
     )
 
 
+def _configure_correlated_model(
+    config: Any,
+    *,
+    model_type: str,
+    structures: tuple[Any, ...],
+    process_cat_dims: list[int],
+    expected_input_type: str,
+) -> Any:
+    """Resolve one shared-backbone correlated M3GNet multitask configuration."""
+
+    if model_type not in _M3GNET_CORRELATED_MULTITASK_MODEL_TYPES:
+        raise ValueError(f"Unsupported correlated M3GNet model_type={model_type!r}.")
+    is_mixed, model_kwargs, encoder_training = _validate_model_config(
+        config,
+        structures=structures,
+        process_cat_dims=process_cat_dims,
+        expected_input_type=expected_input_type,
+    )
+    dkl = model_type == "m3gnet_multitask_dkl"
+    _apply_encoder_training_policy(
+        model_kwargs,
+        encoder_training,
+        frozen_model_type="m3gnet_multitask",
+        dkl_model_type="m3gnet_multitask_dkl",
+        dkl=dkl,
+    )
+
+    if dkl:
+        if is_mixed:
+            from bochan.models.regression.gaussian.deep import M3GNetMixedMultiTaskDKLModel
+
+            model_cls = M3GNetMixedMultiTaskDKLModel
+        else:
+            from bochan.models.regression.gaussian.deep import M3GNetMultiTaskDKLModel
+
+            model_cls = M3GNetMultiTaskDKLModel
+    elif is_mixed:
+        from bochan.models.regression.gaussian.deep import M3GNetMixedMultiTaskGPModel
+
+        model_cls = M3GNetMixedMultiTaskGPModel
+    else:
+        from bochan.models.regression.gaussian.deep import M3GNetMultiTaskGPModel
+
+        model_cls = M3GNetMultiTaskGPModel
+
+    model_kwargs["structures"] = structures
+    return replace(
+        config,
+        task_type="multi_objective",
+        model_cls=model_cls,
+        model_factory=None,
+        input_type=expected_input_type,
+        cat_dims=process_cat_dims,
+        input_transform=None,
+        input_transform_config=None,
+        pass_cat_dims=is_mixed,
+        pass_input_transform=False,
+        model_kwargs=model_kwargs,
+        multi_output_config=None,
+    )
+
+
 def configure_tabular_m3gnet(owner: Any) -> bool:
-    """Configure the canonical single-output M3GNet structure/process contract."""
+    """Configure canonical M3GNet structure/process and output-dependency contracts."""
 
     model_type = str(owner.model_config.model_type).lower()
     if model_type not in _M3GNET_MODEL_TYPES:
         return False
 
     config = owner.model_config
+    correlated = model_type in _M3GNET_CORRELATED_MULTITASK_MODEL_TYPES
+    derived_output_configs = _derived_multi_output_configs(config.multi_output_config)
+    derived_multi_output = derived_output_configs is not None
     if str(config.task_type) not in {"regression", "multi_objective"}:
         raise ValueError(
-            "Tabular M3GNet models support continuous regression only."
+            "Tabular M3GNet models support regression or multi_objective regression only."
         )
-    if config.multi_output_config is not None:
+    if correlated and config.multi_output_config is not None:
         raise ValueError(
-            "Tabular M3GNet Phase 4 is single-output; do not provide multi_output_config."
+            "Correlated M3GNet multitask models keep wide targets in one model; "
+            "do not provide multi_output_config."
+        )
+    if not correlated and config.multi_output_config is not None and not derived_multi_output:
+        raise ValueError(
+            "Tabular M3GNet derives independent multi-output structure automatically "
+            "from target_cols; do not provide multi_output_config explicitly."
         )
 
+    target_names = _target_names(owner.source_data_config.target_cols)
     target_count = _target_count(owner.source_data_config.target_cols)
     if target_count == 0:
         raise ValueError("Tabular M3GNet requires at least one target column.")
-    if target_count is not None and target_count > 1:
+    if correlated and target_count == 1:
+        fallback = "m3gnet_dkl" if model_type.endswith("_dkl") else "m3gnet_gp"
         raise ValueError(
-            "Tabular M3GNet Phase 4 supports one target only; independent multi-output "
-            "and correlated multitask routing are deferred to the next phase."
+            f"{model_type} requires at least two continuous target columns. "
+            f"Use model_type={fallback!r} for a single target."
         )
     if owner.composition.enabled:
         raise ValueError(
@@ -250,8 +388,7 @@ def configure_tabular_m3gnet(owner: Any) -> bool:
         )
     if continuous_process_cols and source.bounds is None:
         raise ValueError(
-            "Tabular M3GNet requires column-addressed bounds for every continuous "
-            "process variable."
+            "Tabular M3GNet requires column-addressed bounds for every continuous process variable."
         )
     bounds_mapping = source.bounds or {}
     missing_bounds = [
@@ -279,13 +416,80 @@ def configure_tabular_m3gnet(owner: Any) -> bool:
 
     process_cat_dims = [input_cols.index(column) for column in process_categorical_cols]
     expected_input_type = "mixed" if process_cat_dims else "normal"
-    owner.model_config = _configure_single_model(
-        replace(config, task_type="regression", multi_output_config=None),
-        model_type=model_type,
-        structures=owner.structure.structures,
-        process_cat_dims=process_cat_dims,
-        expected_input_type=expected_input_type,
-    )
+    structures = owner.structure.structures
+
+    if correlated:
+        owner.model_config = _configure_correlated_model(
+            replace(config, multi_output_config=None),
+            model_type=model_type,
+            structures=structures,
+            process_cat_dims=process_cat_dims,
+            expected_input_type=expected_input_type,
+        )
+    elif target_count is not None and target_count > 1:
+        if target_names is None:
+            raise RuntimeError("M3GNet multi-output target names could not be resolved.")
+        if derived_output_configs is not None:
+            if len(derived_output_configs) != target_count:
+                raise ValueError(
+                    "The fitted M3GNet multi-output config no longer matches target_cols; "
+                    f"expected {target_count} outputs, got {len(derived_output_configs)}."
+                )
+            output_configs = [
+                _configure_single_model(
+                    replace(output_config, task_type="regression", multi_output_config=None),
+                    model_type=model_type,
+                    structures=structures,
+                    process_cat_dims=process_cat_dims,
+                    expected_input_type=expected_input_type,
+                )
+                for output_config in derived_output_configs
+            ]
+        else:
+            single_output_config = _configure_single_model(
+                replace(config, task_type="regression", multi_output_config=None),
+                model_type=model_type,
+                structures=structures,
+                process_cat_dims=process_cat_dims,
+                expected_input_type=expected_input_type,
+            )
+            output_configs = [
+                _clone_independent_output_config(single_output_config, structures)
+                for _ in target_names
+            ]
+
+        from bochan.api import MultiOutputConfig
+
+        owner.model_config = replace(
+            config,
+            task_type="multi_objective",
+            model_cls=None,
+            model_factory=None,
+            input_type=expected_input_type,
+            cat_dims=process_cat_dims,
+            input_transform=None,
+            input_transform_config=None,
+            pass_cat_dims=bool(process_cat_dims),
+            pass_input_transform=False,
+            model_kwargs={},
+            multi_output_config=MultiOutputConfig(
+                output_configs=output_configs,
+                output_names=[str(name) for name in target_names],
+                use_hybrid=False,
+            ),
+        )
+    else:
+        if derived_output_configs is not None:
+            base_config = derived_output_configs[0]
+        else:
+            base_config = replace(config, task_type="regression", multi_output_config=None)
+        owner.model_config = _configure_single_model(
+            base_config,
+            model_type=model_type,
+            structures=structures,
+            process_cat_dims=process_cat_dims,
+            expected_input_type=expected_input_type,
+        )
 
     from bochan.api import FitConfig
     from bochan.fit import fit_deepkernel_mll
@@ -297,8 +501,24 @@ def configure_tabular_m3gnet(owner: Any) -> bool:
     return True
 
 
-def validate_m3gnet_outputs_from_dataset(owner: Any, dataset: Any) -> None:
-    """Reject array-based multi-output data until M3GNet Phase 5 routing exists."""
+def _dataset_output_names(dataset: Any, n_outputs: int) -> list[Any]:
+    """Resolve target metadata against the authoritative fitted target width."""
+
+    names = list(getattr(dataset, "target_names", None) or [])
+    if not names:
+        names = [f"y{index}" for index in range(n_outputs)]
+        dataset.target_names = names
+        return names
+    if len(names) != n_outputs:
+        raise ValueError(
+            "M3GNet target metadata must match the fitted target tensor width: "
+            f"{len(names)} names for {n_outputs} outputs."
+        )
+    return names
+
+
+def configure_m3gnet_outputs_from_dataset(owner: Any, dataset: Any) -> None:
+    """Reconcile M3GNet output routing with the authoritative ``dataset.Y`` width."""
 
     model_type = str(owner.model_config.model_type).lower()
     if model_type not in _M3GNET_MODEL_TYPES:
@@ -307,22 +527,125 @@ def validate_m3gnet_outputs_from_dataset(owner: Any, dataset: Any) -> None:
     if Y is None:
         return
     if Y.ndim == 1:
-        return
-    if Y.ndim == 2 and Y.shape[-1] == 1:
-        return
-    if Y.ndim not in {1, 2}:
+        n_outputs = 1
+    elif Y.ndim == 2:
+        n_outputs = int(Y.shape[-1])
+    else:
         raise ValueError(
-            "Tabular M3GNet targets must have shape [n] or [n, 1]; "
+            "Tabular M3GNet targets must have shape [n] or [n, m]; "
             f"got {tuple(Y.shape)}."
         )
-    raise ValueError(
-        "Tabular M3GNet Phase 4 supports one target only; independent multi-output "
-        "and correlated multitask routing are deferred to the next phase."
+    if n_outputs < 1:
+        raise ValueError("Tabular M3GNet requires at least one target output.")
+
+    target_names = _dataset_output_names(dataset, n_outputs)
+    config = owner.model_config
+    correlated = model_type in _M3GNET_CORRELATED_MULTITASK_MODEL_TYPES
+    process_cat_dims = [int(index) for index in (config.cat_dims or [])]
+    expected_input_type = "mixed" if process_cat_dims else "normal"
+    structures = owner.structure.structures
+
+    if correlated:
+        if config.multi_output_config is not None:
+            raise ValueError(
+                "Correlated M3GNet multitask models keep wide targets in one model; "
+                "do not provide multi_output_config."
+            )
+        if n_outputs < 2:
+            fallback = "m3gnet_dkl" if model_type.endswith("_dkl") else "m3gnet_gp"
+            raise ValueError(
+                f"{model_type} requires at least two continuous target columns. "
+                f"Use model_type={fallback!r} for a single target."
+            )
+        owner.model_config = _configure_correlated_model(
+            replace(config, task_type="multi_objective", multi_output_config=None),
+            model_type=model_type,
+            structures=structures,
+            process_cat_dims=process_cat_dims,
+            expected_input_type=expected_input_type,
+        )
+        return
+
+    derived_output_configs = _derived_multi_output_configs(config.multi_output_config)
+    if config.multi_output_config is not None and derived_output_configs is None:
+        raise ValueError(
+            "Tabular M3GNet derives independent multi-output structure automatically; "
+            "do not provide multi_output_config explicitly."
+        )
+
+    if n_outputs > 1:
+        if derived_output_configs is not None:
+            if len(derived_output_configs) != n_outputs:
+                raise ValueError(
+                    "The derived M3GNet output configuration does not match the fitted "
+                    f"target tensor width: {len(derived_output_configs)} != {n_outputs}."
+                )
+            output_configs = [
+                _configure_single_model(
+                    replace(output_config, task_type="regression", multi_output_config=None),
+                    model_type=model_type,
+                    structures=structures,
+                    process_cat_dims=process_cat_dims,
+                    expected_input_type=expected_input_type,
+                )
+                for output_config in derived_output_configs
+            ]
+        else:
+            single_output_config = _configure_single_model(
+                replace(config, task_type="regression", multi_output_config=None),
+                model_type=model_type,
+                structures=structures,
+                process_cat_dims=process_cat_dims,
+                expected_input_type=expected_input_type,
+            )
+            output_configs = [
+                _clone_independent_output_config(single_output_config, structures)
+                for _ in range(n_outputs)
+            ]
+
+        from bochan.api import MultiOutputConfig
+
+        owner.model_config = replace(
+            config,
+            task_type="multi_objective",
+            model_cls=None,
+            model_factory=None,
+            input_type=expected_input_type,
+            cat_dims=process_cat_dims,
+            input_transform=None,
+            input_transform_config=None,
+            pass_cat_dims=bool(process_cat_dims),
+            pass_input_transform=False,
+            model_kwargs={},
+            multi_output_config=MultiOutputConfig(
+                output_configs=output_configs,
+                output_names=[str(name) for name in target_names],
+                use_hybrid=False,
+            ),
+        )
+        return
+
+    if derived_output_configs is not None:
+        if len(derived_output_configs) != 1:
+            raise ValueError(
+                "The derived M3GNet output configuration does not match the fitted "
+                f"single target: {len(derived_output_configs)} outputs configured."
+            )
+        base_config = derived_output_configs[0]
+    else:
+        base_config = replace(config, task_type="regression", multi_output_config=None)
+    owner.model_config = _configure_single_model(
+        base_config,
+        model_type=model_type,
+        structures=structures,
+        process_cat_dims=process_cat_dims,
+        expected_input_type=expected_input_type,
     )
 
 
 __all__ = [
+    "_M3GNET_CORRELATED_MULTITASK_MODEL_TYPES",
     "_M3GNET_MODEL_TYPES",
+    "configure_m3gnet_outputs_from_dataset",
     "configure_tabular_m3gnet",
-    "validate_m3gnet_outputs_from_dataset",
 ]

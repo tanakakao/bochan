@@ -103,6 +103,59 @@ readout modules remain outside the representation fine-tuning contract.
 The lower-level `trainable_encoder_layers` argument is intentionally not accepted
 over FastAPI; it remains available through the Python API.
 
+## Large structure catalogs
+
+MACE participates in the same generic structure-aware candidate backend as
+ALIGNN, CHGNet, and M3GNet. Structure selection is always feature 0 and remains
+separate from process categorical variables.
+
+For more than 10 candidate structures, `q=1`, `return_best_only=true`, and the
+standard BoTorch optimizer path, bochan switches from full structure/process
+enumeration to `optimize_structure_alternating`. The structure ID is optimized
+categorically while observed joint process-category assignments remain feasible.
+
+For `q>1`, exact enumeration is retained so separate batch slots may choose
+different structure/category assignments without changing batch semantics.
+Callers continue to use `structure_ids` to restrict the search space; the scaling
+backend is selected internally.
+
+## Acquisition coverage
+
+Phase 7 closes the structure/process optimization path for the Gaussian MACE
+family across the main acquisition modes used by bochan:
+
+- single-objective LogEI / qLogEI-style structure-process optimization;
+- single-objective UCB structure-process optimization;
+- mixed categorical process variables plus discrete structure selection;
+- independent multi-output NEHVI through `ModelListGP`;
+- correlated MACE multitask NEHVI with one shared representation and task covariance.
+
+The structure selector and process categorical columns are discrete, so they are
+handled by fixed-feature enumeration or the alternating backend. Continuous
+process dimensions retain acquisition gradients through the GP or DKL path.
+
+## Ask / tell state contract
+
+`/ask` registers returned candidates as pending observations. A matching `/tell`
+resolves the pending row in canonical encoded model-input space rather than
+creating a duplicate observation. Completed replicates at an already observed X
+remain independent observations when there is no matching pending row.
+
+The MACE FastAPI surface uses the same observation-state and artifact helpers as
+other tabular structure models, so observed, failed, and pending masks survive
+save/load round trips.
+
+## Frozen representation cache
+
+Frozen `mace_gp` and `mace_multitask` models cache the complete MACE structure
+representation bank. Repeated posterior and acquisition evaluations reuse the
+cached invariant descriptors. Loading model state invalidates the non-persistent
+cache and rebuilds it on the next feature request, preventing stale descriptors
+from surviving a state change.
+
+DKL variants disable the frozen structure cache because trainable MACE backbone
+layers must be reevaluated as their weights change.
+
 ## Endpoints
 
 - `POST /api/v1/tabular/mace/models` — fit/store a model
@@ -125,6 +178,16 @@ independent output contract, and observation state.
 
 Loading pickle-backed model artifacts requires explicit `trust_pickle=true`.
 Only load artifacts from trusted sources.
+
+## Phase 7 CI contract
+
+`.github/workflows/mace-phase7-smoke.yml` validates the deterministic MACE
+optimization matrix: large-catalog scaling, batch exact enumeration, LogEI, UCB,
+mixed process categories, independent and correlated NEHVI, cache invalidation,
+FastAPI regressions, and Ruff.
+
+The official pretrained `medium-mpa-0` end-to-end FastAPI/posterior path remains
+covered by the Phase 6 workflow.
 
 ## Runnable client
 

@@ -7,13 +7,6 @@ from collections.abc import Callable, Mapping
 from dataclasses import replace
 from typing import Any
 
-from .best_f import compute_best_f
-from .common import _num_outputs
-from .multiobjective import (
-    make_default_ref_point,
-    make_partitioning,
-    observed_multiobjective_values,
-)
 from ...configs import (
     AcquisitionConfig,
     DataContext,
@@ -23,9 +16,16 @@ from ...configs import (
     ModelConfig,
     MultiOutputConfig,
 )
+from .best_f import compute_best_f
+from .common import _num_outputs
 from .information import (
     is_information_acquisition,
     resolve_information_acquisition_defaults,
+)
+from .multiobjective import (
+    make_default_ref_point,
+    make_partitioning,
+    observed_multiobjective_values,
 )
 
 
@@ -260,6 +260,8 @@ def resolve_multi_output_model_config(
         "alignnmultitaskdkl",
         "chgnetmultitask",
         "chgnetmultitaskdkl",
+        "m3gnetmultitask",
+        "m3gnetmultitaskdkl",
     }:
         return model_config
 

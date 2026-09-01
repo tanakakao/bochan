@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from bochan.structure.adapter import StructureAdapter
 
 Initialization = Literal["pretrained", "injected"]
+RepresentationMode = Literal["readout", "mean_node"]
 
 _MATGL_INSTALL_HINT = (
     "M3GNet support requires matgl>=4.0.3,<5. "
@@ -78,18 +79,32 @@ def _first_linear_in_features(module: nn.Module | None) -> int | None:
     return None
 
 
+def _positive_int_attribute(value: Any) -> int | None:
+    if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+        return value
+    return None
+
+
 class M3GNetEncoder(MaterialEncoder):
-    """Encode periodic crystal structures with a MatGL M3GNet readout vector.
+    """Encode periodic crystal structures with a MatGL M3GNet representation.
 
     The encoder deliberately calls the bare M3GNet model directly instead of
-    ``predict_structure``. MatGL's convenience prediction method detaches the
-    final property prediction, whereas bochan needs the differentiable graph
-    readout for later DKL integration.
+    ``predict_structure``. MatGL's convenience prediction method detaches its
+    final property prediction, whereas bochan needs a differentiable internal
+    representation for later DKL integration.
+
+    Intensive M3GNet models expose a graph-level vector in
+    ``feature_dict['readout']`` and bochan uses that vector directly. Foundation
+    potentials are commonly extensive: their ``readout`` entry is already the
+    per-atom property head output, so bochan instead mean-pools the final
+    message-passing ``node_feat`` stored under ``feature_dict['gc_<n>']``. This
+    keeps the representation upstream of the original property head and yields
+    one fixed-width vector for every crystal.
 
     Common in-memory structure objects are normalized through
     :class:`bochan.structure.StructureAdapter`, then converted with MatGL's
     ``Structure2Graph`` using the exact pretrained model's ``element_types`` and
-    cutoff. The original M3GNet property head is not used as a representation.
+    cutoff.
     """
 
     def __init__(
@@ -115,25 +130,25 @@ class M3GNetEncoder(MaterialEncoder):
                 raise TypeError("encoder must be a torch.nn.Module.")
             initialization = "injected"
 
-        if not bool(getattr(encoder, "is_intensive", True)):
-            raise ValueError(
-                "M3GNetEncoder requires an intensive M3GNet readout; "
-                "extensive atomic readouts do not have a fixed crystal width."
-            )
-
-        inferred_output_dim = self._infer_output_dim(encoder)
+        representation_mode: RepresentationMode = (
+            "readout" if bool(getattr(encoder, "is_intensive", True)) else "mean_node"
+        )
+        inferred_output_dim = self._infer_output_dim(
+            encoder,
+            representation_mode=representation_mode,
+        )
         if output_dim is not None:
             output_dim = _positive_int("output_dim", output_dim)
             if inferred_output_dim is not None and output_dim != inferred_output_dim:
                 raise ValueError(
-                    "output_dim does not match the encoder readout width: "
+                    "output_dim does not match the encoder representation width: "
                     f"{output_dim} != {inferred_output_dim}."
                 )
             inferred_output_dim = output_dim
         if inferred_output_dim is None:
             raise ValueError(
                 "output_dim is required when the injected M3GNet-compatible encoder "
-                "does not expose a discoverable readout width."
+                "does not expose a discoverable representation width."
             )
 
         adapter_class = _structure_adapter_class()
@@ -144,38 +159,52 @@ class M3GNetEncoder(MaterialEncoder):
         self._output_dim = inferred_output_dim
         self._model_name = model_name
         self._initialization: Initialization = initialization
-        self.adapter = adapter or adapter_class()
-        self.graph_converter = graph_converter or self._build_graph_converter()
+        self._representation_mode: RepresentationMode = representation_mode
+        self.adapter = adapter if adapter is not None else adapter_class()
+        self.graph_converter = (
+            graph_converter if graph_converter is not None else self._build_graph_converter()
+        )
 
         reference = self._floating_reference()
         output_reference = torch.empty(0) if reference is None else reference.new_empty(0)
         self.register_buffer("_output_reference", output_reference, persistent=False)
 
     @staticmethod
-    def _infer_output_dim(encoder: nn.Module) -> int | None:
-        value = getattr(encoder, "output_dim", None)
-        if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+    def _infer_output_dim(
+        encoder: nn.Module,
+        *,
+        representation_mode: RepresentationMode,
+    ) -> int | None:
+        value = _positive_int_attribute(getattr(encoder, "output_dim", None))
+        if value is not None:
             return value
 
         final_layer = getattr(encoder, "final_layer", None)
+        init_args = getattr(encoder, "_init_args", None)
+        if not isinstance(init_args, Mapping):
+            init_args = {}
+
+        if representation_mode == "mean_node":
+            value = _positive_int_attribute(getattr(final_layer, "in_feats", None))
+            if value is not None:
+                return value
+            return _positive_int_attribute(init_args.get("dim_node_embedding"))
+
         if isinstance(final_layer, nn.Module):
             width = _first_linear_in_features(final_layer)
             if width is not None and width > 0:
                 return width
 
-        init_args = getattr(encoder, "_init_args", None)
-        if not isinstance(init_args, Mapping):
-            return None
         include_state = bool(init_args.get("include_state", False))
         state_dim = int(init_args.get("dim_state_embedding", 0)) if include_state else 0
         readout_type = str(init_args.get("readout_type", "weighted_atom"))
         field = str(init_args.get("field", "node_feat"))
         if readout_type == "weighted_atom":
-            units = init_args.get("units", 64)
-            return int(units) + state_dim if isinstance(units, int) else None
+            units = _positive_int_attribute(init_args.get("units", 64))
+            return None if units is None else units + state_dim
         feature_key = "dim_node_embedding" if field == "node_feat" else "dim_edge_embedding"
-        input_width = init_args.get(feature_key, 64)
-        if not isinstance(input_width, int):
+        input_width = _positive_int_attribute(init_args.get(feature_key, 64))
+        if input_width is None:
             return None
         if readout_type == "set2set":
             return 2 * input_width + state_dim
@@ -185,7 +214,7 @@ class M3GNetEncoder(MaterialEncoder):
 
     @property
     def output_dim(self) -> int:
-        """Return the fixed M3GNet graph-readout width."""
+        """Return the fixed M3GNet representation width."""
 
         return self._output_dim
 
@@ -200,6 +229,12 @@ class M3GNetEncoder(MaterialEncoder):
         """Return whether the wrapped encoder was pretrained or injected."""
 
         return self._initialization
+
+    @property
+    def representation_mode(self) -> RepresentationMode:
+        """Return the graph representation extraction strategy."""
+
+        return self._representation_mode
 
     def _floating_reference(self) -> Tensor | None:
         for value in (*self.encoder.parameters(), *self.encoder.buffers()):
@@ -217,8 +252,9 @@ class M3GNetEncoder(MaterialEncoder):
         MatGL graph construction is float32-oriented for the supported 4.x
         pretrained M3GNet potentials. The wrapper lets the output-reference
         buffer follow an outer model's dtype/device but restores the M3GNet
-        backbone to the dtype in which it was loaded. Only the exported readout
-        crosses that dtype boundary, preserving future DKL autograd.
+        backbone to the dtype in which it was loaded. Only the exported
+        representation crosses that dtype boundary, preserving future DKL
+        autograd.
         """
 
         reference = self._floating_reference()
@@ -229,7 +265,7 @@ class M3GNetEncoder(MaterialEncoder):
         return cast(M3GNetEncoder, module)
 
     def backbone_modules(self) -> tuple[nn.Module, ...]:
-        """Return modules that contribute to the M3GNet readout representation."""
+        """Return modules that contribute to the M3GNet representation."""
 
         names = (
             "bond_expansion",
@@ -237,8 +273,9 @@ class M3GNetEncoder(MaterialEncoder):
             "basis_expansion",
             "three_body_interactions",
             "graph_layers",
-            "readout",
         )
+        if self.representation_mode == "readout":
+            names = (*names, "readout")
         modules = [getattr(self.encoder, name, None) for name in names]
         resolved = tuple(module for module in modules if isinstance(module, nn.Module))
         return resolved or (self.encoder,)
@@ -297,42 +334,72 @@ class M3GNetEncoder(MaterialEncoder):
             state_tensor = torch.as_tensor(state_attr, device=device, dtype=dtype)
         return graph, state_tensor
 
-    def _readout_one(self, structure: Any) -> Tensor:
-        graph, state_attr = self._prepare_graph(structure)
-        self.encoder(g=graph, state_attr=state_attr)
-        feature_dict = getattr(self.encoder, "feature_dict", None)
-        if not isinstance(feature_dict, Mapping):
-            raise RuntimeError("M3GNet forward did not populate encoder.feature_dict.")
+    def _intensive_representation(self, feature_dict: Mapping[str, Any]) -> Tensor:
         readout = feature_dict.get("readout")
         if not torch.is_tensor(readout):
             raise TypeError("M3GNet feature_dict['readout'] must be a Tensor.")
         if readout.ndim == 1:
             readout = readout.unsqueeze(0)
-        expected = (1, self.output_dim)
-        if tuple(readout.shape) != expected:
-            raise ValueError(
-                "M3GNet readout must contain one fixed-width vector per structure: "
-                f"{tuple(readout.shape)} != {expected}."
-            )
         return readout
 
+    def _extensive_representation(self, feature_dict: Mapping[str, Any]) -> Tensor:
+        n_blocks = _positive_int_attribute(getattr(self.encoder, "n_blocks", None))
+        if n_blocks is None:
+            graph_layers = getattr(self.encoder, "graph_layers", None)
+            if isinstance(graph_layers, Sequence) and not isinstance(graph_layers, (str, bytes)):
+                n_blocks = len(graph_layers)
+        if n_blocks is None or n_blocks <= 0:
+            raise RuntimeError(
+                "Extensive M3GNet representation extraction requires encoder.n_blocks "
+                "or a non-empty graph_layers sequence."
+            )
+        final_graph_features = feature_dict.get(f"gc_{n_blocks}")
+        if not isinstance(final_graph_features, Mapping):
+            raise RuntimeError(
+                f"M3GNet forward did not populate feature_dict['gc_{n_blocks}']."
+            )
+        node_features = final_graph_features.get("node_feat")
+        if not torch.is_tensor(node_features) or node_features.ndim != 2:
+            raise TypeError(
+                "Extensive M3GNet final node features must be a rank-2 Tensor."
+            )
+        return node_features.mean(dim=0, keepdim=True)
+
+    def _representation_one(self, structure: Any) -> Tensor:
+        graph, state_attr = self._prepare_graph(structure)
+        self.encoder(g=graph, state_attr=state_attr)
+        feature_dict = getattr(self.encoder, "feature_dict", None)
+        if not isinstance(feature_dict, Mapping):
+            raise RuntimeError("M3GNet forward did not populate encoder.feature_dict.")
+        if self.representation_mode == "readout":
+            representation = self._intensive_representation(feature_dict)
+        else:
+            representation = self._extensive_representation(feature_dict)
+        expected = (1, self.output_dim)
+        if tuple(representation.shape) != expected:
+            raise ValueError(
+                "M3GNet representation must contain one fixed-width vector per structure: "
+                f"{tuple(representation.shape)} != {expected}."
+            )
+        return representation
+
     def forward(self, structures: Sequence[Any]) -> Tensor:
-        """Return one differentiable M3GNet readout vector per structure."""
+        """Return one differentiable M3GNet representation per structure."""
 
         if isinstance(structures, (str, bytes)) or not isinstance(structures, Sequence):
             raise TypeError("structures must be a non-empty sequence.")
         if not structures:
             raise ValueError("structures must contain at least one structure.")
 
-        readouts = [self._readout_one(structure) for structure in structures]
-        features = torch.cat(readouts, dim=0)
+        representations = [self._representation_one(structure) for structure in structures]
+        features = torch.cat(representations, dim=0)
         expected = (len(structures), self.output_dim)
         if tuple(features.shape) != expected:
             raise ValueError(
                 f"M3GNet features must have shape {expected}, got {tuple(features.shape)}."
             )
         if not torch.isfinite(features).all():
-            raise FloatingPointError("M3GNet encoder produced non-finite readout features.")
+            raise FloatingPointError("M3GNet encoder produced non-finite representation features.")
         return features.to(
             device=self._output_reference.device,
             dtype=self._output_reference.dtype,

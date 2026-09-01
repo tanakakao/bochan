@@ -57,6 +57,7 @@ jobs:
             src/bochan/models/regression/gaussian/deep/__init__.py \
             src/bochan/models/regression/gaussian/deep/m3gnet.py \
             src/bochan/models/regression/gaussian/deep/m3gnet_multitask.py \
+            src/bochan/models/regression/gaussian/deep/structure.py \
             src/bochan/api/acquisition/defaults/resolver.py \
             src/bochan/api/observation/state.py \
             src/bochan/api/optimizer/__init__.py \

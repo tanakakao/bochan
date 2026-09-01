@@ -115,8 +115,6 @@ class CrabNetMixedGPModel(DeepKernelGaussianMixedGPModel):
             raise ValueError("train_X must have shape [n, d].")
         if train_Y.ndim > 1 and train_Y.shape[-1] != 1:
             raise ValueError("CrabNetMixedGPModel currently supports single-output train_Y only.")
-        if train_Yvar is not None:
-            raise NotImplementedError("CrabNetMixedGPModel does not yet support train_Yvar.")
         if isinstance(latent_dim, bool) or not isinstance(latent_dim, int) or latent_dim <= 0:
             raise ValueError("latent_dim must be a positive integer.")
 
@@ -169,7 +167,7 @@ class CrabNetMixedGPModel(DeepKernelGaussianMixedGPModel):
             train_X=train_X,
             train_Y=train_Y,
             cat_dims=normalized_cat_dims,
-            train_Yvar=None,
+            train_Yvar=train_Yvar,
             likelihood=likelihood,
             input_transform=None,
             outcome_transform=outcome_transform,

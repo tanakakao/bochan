@@ -88,10 +88,6 @@ class MACEMixedGPModel(DeepKernelGaussianMixedGPModel):
             raise ValueError(
                 f"{model_class_name} currently supports single-output train_Y only."
             )
-        if train_Yvar is not None:
-            raise NotImplementedError(
-                f"{model_class_name} does not yet support train_Yvar."
-            )
         if isinstance(latent_dim, bool) or not isinstance(latent_dim, int) or latent_dim <= 0:
             raise ValueError("latent_dim must be a positive integer.")
         if not isinstance(model_name, str) or not model_name:
@@ -153,7 +149,7 @@ class MACEMixedGPModel(DeepKernelGaussianMixedGPModel):
             train_X=train_X,
             train_Y=train_Y,
             cat_dims=normalized_cat_dims,
-            train_Yvar=None,
+            train_Yvar=train_Yvar,
             likelihood=likelihood,
             input_transform=resolved_input_transform,
             outcome_transform=outcome_transform,

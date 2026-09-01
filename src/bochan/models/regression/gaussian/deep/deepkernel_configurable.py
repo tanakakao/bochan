@@ -3,7 +3,11 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from botorch.utils.transforms import normalize_indices
-from gpytorch.likelihoods import GaussianLikelihood, MultitaskGaussianLikelihood
+from gpytorch.likelihoods import (
+    FixedNoiseGaussianLikelihood,
+    GaussianLikelihood,
+    MultitaskGaussianLikelihood,
+)
 from torch import Tensor, nn
 
 from bochan.models.components.layers import DeepKernel, DeepKernelMixed
@@ -13,6 +17,29 @@ from .deepkernel import (
     OutcomeTransformArg,
     _BaseDeepKernelGPModel,
 )
+
+
+def _fixed_noise_likelihood(
+    train_Yvar: Tensor | None,
+    *,
+    num_outputs: int,
+) -> FixedNoiseGaussianLikelihood | None:
+    """Build fixed training noise for scalar-output exact GPs.
+
+    ``train_Yvar`` is already in outcome-transform space when this helper is
+    called. Correlated multitask fixed-noise likelihoods require a separate
+    event/noise contract and are intentionally deferred to the next phase.
+    """
+
+    if train_Yvar is None:
+        return None
+    if num_outputs != 1:
+        raise NotImplementedError(
+            "Known observation variance is not yet supported for correlated "
+            "multi-output DeepKernel Gaussian models."
+        )
+    noise = train_Yvar.squeeze(-1) if train_Yvar.shape[-1:] == (1,) else train_Yvar
+    return FixedNoiseGaussianLikelihood(noise=noise)
 
 
 class DeepKernelGaussianGPModel(_BaseDeepKernelGPModel):
@@ -52,10 +79,15 @@ class DeepKernelGaussianGPModel(_BaseDeepKernelGPModel):
         )
 
         if likelihood is None:
-            if self._num_outputs == 1:
-                likelihood = GaussianLikelihood()
-            else:
-                likelihood = MultitaskGaussianLikelihood(num_tasks=self._num_outputs)
+            likelihood = _fixed_noise_likelihood(
+                self.train_Yvar,
+                num_outputs=self._num_outputs,
+            )
+            if likelihood is None:
+                if self._num_outputs == 1:
+                    likelihood = GaussianLikelihood()
+                else:
+                    likelihood = MultitaskGaussianLikelihood(num_tasks=self._num_outputs)
 
         self.likelihood = likelihood
         self.deepkernel = DeepKernel(
@@ -124,14 +156,19 @@ class DeepKernelGaussianMixedGPModel(_BaseDeepKernelGPModel):
         )
 
         if likelihood is None:
-            if self._num_outputs == 1:
-                from botorch.models.utils.gpytorch_modules import (
-                    get_gaussian_likelihood_with_lognormal_prior,
-                )
+            likelihood = _fixed_noise_likelihood(
+                self.train_Yvar,
+                num_outputs=self._num_outputs,
+            )
+            if likelihood is None:
+                if self._num_outputs == 1:
+                    from botorch.models.utils.gpytorch_modules import (
+                        get_gaussian_likelihood_with_lognormal_prior,
+                    )
 
-                likelihood = get_gaussian_likelihood_with_lognormal_prior()
-            else:
-                likelihood = MultitaskGaussianLikelihood(num_tasks=self._num_outputs)
+                    likelihood = get_gaussian_likelihood_with_lognormal_prior()
+                else:
+                    likelihood = MultitaskGaussianLikelihood(num_tasks=self._num_outputs)
 
         self.likelihood = likelihood
         self.deepkernel = DeepKernelMixed(

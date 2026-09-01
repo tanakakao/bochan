@@ -24,7 +24,8 @@ jobs:
         run: |
           pytest -q --maxfail=1 \
             tests/test_m3gnet_encoder.py \
-            tests/test_m3gnet_gp.py
+            tests/test_m3gnet_gp.py \
+            tests/test_m3gnet_mixed.py
       - name: Lint M3GNet encoder and GP/DKL
         run: |
           python -m pip install ruff
@@ -35,4 +36,5 @@ jobs:
             src/bochan/models/regression/gaussian/deep/__init__.py \
             src/bochan/models/regression/gaussian/deep/m3gnet.py \
             tests/test_m3gnet_encoder.py \
-            tests/test_m3gnet_gp.py
+            tests/test_m3gnet_gp.py \
+            tests/test_m3gnet_mixed.py

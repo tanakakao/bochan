@@ -1,0 +1,39 @@
+name: MACE Phase 1 lock refresh
+
+on:
+  push:
+    branches:
+      - feat/mace-phase1-encoder
+    paths:
+      - pyproject.toml
+      - .github/workflows/mace-phase1-lock-refresh.yml
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/mace-phase1-encoder
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
+        with:
+          version: "0.12.1"
+      - name: Install project Python
+        run: uv python install 3.12
+      - name: Refresh lockfile
+        run: uv lock
+      - name: Commit lockfile when changed
+        run: |
+          if git diff --quiet -- uv.lock; then
+            echo "uv.lock is already current"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add uv.lock
+          git commit -m "Update uv lock for MACE"
+          git push origin HEAD:feat/mace-phase1-encoder

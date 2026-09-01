@@ -15,8 +15,8 @@ from .deepkernel import InputTransformArg, OutcomeTransformArg
 from .deepkernel_configurable import DeepKernelGaussianGPModel
 from .material import EncoderTrainingMode
 from .structure import (
-    _StructureGPFeatureExtractor,
     _resolve_structure_input_transform,
+    _StructureGPFeatureExtractor,
     _validate_structure_model_inputs,
 )
 

@@ -7,6 +7,7 @@ import torch
 from botorch.acquisition.logei import qLogExpectedImprovement
 from botorch.models.transforms.input import Normalize
 from botorch.optim import optimize_acqf_mixed
+from gpytorch.likelihoods import GaussianLikelihood
 from torch import Tensor, nn
 
 from bochan.composition import M3GNetEncoder
@@ -138,7 +139,11 @@ def _gp_model() -> M3GNetMixedGPModel:
     )
 
 
-def _dkl_model(trainable_encoder_layers: int | str = 1) -> M3GNetMixedDKLModel:
+def _dkl_model(
+    trainable_encoder_layers: int | str = 1,
+    *,
+    likelihood: GaussianLikelihood | None = None,
+) -> M3GNetMixedDKLModel:
     torch.manual_seed(0)
     train_X, train_Y = _data()
     return M3GNetMixedDKLModel(
@@ -149,6 +154,7 @@ def _dkl_model(trainable_encoder_layers: int | str = 1) -> M3GNetMixedDKLModel:
         encoder=_wrapped_encoder(),
         latent_dim=3,
         trainable_encoder_layers=trainable_encoder_layers,  # type: ignore[arg-type]
+        likelihood=likelihood,
         outcome_transform=None,
     )
 
@@ -327,7 +333,10 @@ def test_m3gnet_mixed_dkl_full_unfreezes_backbone_not_property_head() -> None:
 
 
 def test_m3gnet_mixed_dkl_fit_updates_selected_graph_layer_only() -> None:
-    model = _dkl_model(trainable_encoder_layers=1)
+    model = _dkl_model(
+        trainable_encoder_layers=1,
+        likelihood=GaussianLikelihood(),
+    )
     upstream = model.material_encoder.encoder
     assert isinstance(upstream, FakeM3GNet)
     selected = upstream.graph_layers[-1]

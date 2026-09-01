@@ -7,7 +7,7 @@ from typing import Any, Literal, cast
 
 from botorch.models.transforms.input import Normalize
 from botorch.utils.transforms import normalize_indices
-from gpytorch.likelihoods import Likelihood
+from gpytorch.likelihoods import GaussianLikelihood, Likelihood
 from torch import Tensor, nn
 
 from bochan.composition import M3GNetEncoder, MaterialProcessFusion
@@ -508,6 +508,12 @@ class M3GNetMixedGPModel(DeepKernelGaussianMixedGPModel):
             cat_dims=normalized_cat_dims,
             input_transform=input_transform,
         )
+
+        if likelihood is None:
+            # bochan's DKL fitter uses Adam directly on model parameters. The
+            # BoTorch mixed default has an untransformed positive noise bound,
+            # which Adam can step across; use GPyTorch's transformed constraint.
+            likelihood = GaussianLikelihood()
 
         self._continuous_process_dims = tuple(process_dims)
         super().__init__(

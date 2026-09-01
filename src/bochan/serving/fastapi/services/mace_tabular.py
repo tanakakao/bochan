@@ -34,6 +34,7 @@ from .tabular import (
     build_fit_response,
     to_dataframe,
 )
+from .tabular_artifacts import synchronize_tabular_dataset
 
 _MACE_CORRELATED_MULTITASK_MODEL_TYPES = frozenset(
     {"mace_multitask", "mace_multitask_dkl"}
@@ -363,6 +364,7 @@ def _register_pending_candidates(
         status=["pending"] * int(X_pending.shape[0]),
         refit=False,
     )
+    synchronize_tabular_dataset(optimizer)
 
 
 def mace_candidate_response(

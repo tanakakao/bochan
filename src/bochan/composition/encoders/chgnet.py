@@ -7,7 +7,7 @@ remain PyTorch tensors and stay differentiable for later DKL integration.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from importlib import import_module
 from os import PathLike
 from pathlib import Path
@@ -174,6 +174,18 @@ class CHGNetEncoder(MaterialEncoder):
         self._checkpoint_path = checkpoint_path
         self.adapter = adapter or adapter_class()
 
+        reference = self._floating_reference()
+        output_reference = (
+            torch.empty(0)
+            if reference is None
+            else reference.new_empty(0)
+        )
+        self.register_buffer(
+            "_output_reference",
+            output_reference,
+            persistent=False,
+        )
+
     @staticmethod
     def _load_injected_checkpoint(
         encoder: nn.Module,
@@ -252,6 +264,30 @@ class CHGNetEncoder(MaterialEncoder):
             if value.is_floating_point():
                 return value
         return None
+
+    def _apply(
+        self,
+        fn: Callable[[Tensor], Tensor],
+        recurse: bool = True,
+    ) -> CHGNetEncoder:
+        """Move with the parent model while preserving CHGNet's native dtype.
+
+        CHGNet internally constructs some composition features in its package
+        ``TORCH_DTYPE`` (float32 in the supported release). BoTorch commonly
+        operates in float64, so blindly applying ``model.to(dtype=float64)`` to
+        the upstream CHGNet module breaks its own forward pass. The wrapper
+        therefore lets its output-reference buffer follow the outer model dtype
+        and device, but restores the wrapped encoder to the dtype in which it
+        was loaded. ``forward`` casts only the exported ``crystal_fea`` tensor
+        across that boundary, which remains differentiable for DKL.
+        """
+
+        reference = self._floating_reference()
+        native_dtype = reference.dtype if reference is not None else None
+        module = super()._apply(fn, recurse=recurse)
+        if native_dtype is not None:
+            self.encoder.to(dtype=native_dtype)
+        return cast(CHGNetEncoder, module)
 
     def backbone_modules(self) -> tuple[nn.Module, ...]:
         """Return modules contributing to CHGNet ``crystal_fea``."""
@@ -344,7 +380,10 @@ class CHGNetEncoder(MaterialEncoder):
             raise ValueError("CHGNet crystal_fea must match the encoder device and dtype.")
         if not torch.isfinite(crystal_fea).all():
             raise FloatingPointError("CHGNet encoder produced non-finite crystal features.")
-        return crystal_fea
+        return crystal_fea.to(
+            device=self._output_reference.device,
+            dtype=self._output_reference.dtype,
+        )
 
 
 __all__ = ["CHGNetEncoder"]

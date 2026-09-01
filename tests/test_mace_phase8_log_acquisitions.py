@@ -7,7 +7,9 @@ from typing import Any
 import pandas as pd
 import pytest
 import torch
-from botorch.acquisition.multi_objective.logei import qLogNoisyExpectedHypervolumeImprovement
+from botorch.acquisition.multi_objective.logei import (
+    qLogNoisyExpectedHypervolumeImprovement,
+)
 
 pytest.importorskip("mace")
 
@@ -16,7 +18,11 @@ from bochan.models.regression.gaussian.deep import MACEMixedMultiTaskGPModel
 from bochan.serving.fastapi.schemas.mace_tabular import MACETabularCandidateRequest
 from bochan.serving.fastapi.services import mace_tabular as service
 from bochan.tabular import TabularBayesianOptimizer
-from tests.test_mace_phase7_integration import _catalog, _material_encoder, _multi_output_frame
+from tests.test_mace_phase7_integration import (
+    _catalog,
+    _material_encoder,
+    _multi_output_frame,
+)
 
 
 def _independent_optimizer() -> TabularBayesianOptimizer:
@@ -58,7 +64,9 @@ def _multiobjective_context(optimizer: TabularBayesianOptimizer) -> DataContext:
     )
 
 
-def _qlognehvi_candidate(optimizer: TabularBayesianOptimizer) -> tuple[pd.DataFrame, Any]:
+def _qlognehvi_candidate(
+    optimizer: TabularBayesianOptimizer,
+) -> tuple[pd.DataFrame, Any]:
     return optimizer.candidate(
         acq_name="qlognehvi",
         q=1,
@@ -74,8 +82,19 @@ def _qlognehvi_candidate(optimizer: TabularBayesianOptimizer) -> tuple[pd.DataFr
 
 
 def test_qlognehvi_alias_resolves_to_botorch_log_acquisition() -> None:
-    assert resolve_acqf_cls("qlognehvi") is qLogNoisyExpectedHypervolumeImprovement
-    assert resolve_acqf_cls("lognehvi") is qLogNoisyExpectedHypervolumeImprovement
+    kwargs = {
+        "task_type": "regression",
+        "model_type": "mace_gp",
+        "multi_output": True,
+    }
+    assert (
+        resolve_acqf_cls("qlognehvi", **kwargs)
+        is qLogNoisyExpectedHypervolumeImprovement
+    )
+    assert (
+        resolve_acqf_cls("lognehvi", **kwargs)
+        is qLogNoisyExpectedHypervolumeImprovement
+    )
 
 
 def test_mace_independent_multioutput_optimizes_qlognehvi() -> None:
@@ -112,7 +131,10 @@ def test_mace_fastapi_candidate_contract_preserves_qlognehvi() -> None:
     class FakeOptimizer:
         def candidate(self, **kwargs: Any):
             captured.update(kwargs)
-            return pd.DataFrame([{"phase": "beta", "temperature": 1015.0}]), -0.25
+            return (
+                pd.DataFrame([{"phase": "beta", "temperature": 1015.0}]),
+                -0.25,
+            )
 
     request = MACETabularCandidateRequest.model_validate(
         {

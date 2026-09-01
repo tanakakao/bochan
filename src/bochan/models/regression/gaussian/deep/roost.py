@@ -197,8 +197,8 @@ class RoostGPModel(DeepKernelGaussianGPModel):
     Args:
         train_X: ``[n, composition_dim + process_dim]`` training inputs.
         train_Y: Single-output targets with shape ``[n]`` or ``[n, 1]``.
-        train_Yvar: Reserved for future fixed-noise support and currently
-            unsupported.
+        train_Yvar: Optional known observation variances for fixed-noise GP
+            training.
         element_ids: Atomic-number vocabulary matching the fraction columns.
         encoder: Optional :class:`RoostEncoder` or raw five-tensor Roost
             backbone. Omit it to construct Aviary's default Roost descriptor.
@@ -244,8 +244,6 @@ class RoostGPModel(DeepKernelGaussianGPModel):
             train_Y = train_Y.unsqueeze(-1)
         elif train_Y.ndim != 2 or train_Y.shape[-1] != 1:
             raise ValueError("RoostGPModel currently supports single-output train_Y only.")
-        if train_Yvar is not None:
-            raise NotImplementedError("RoostGPModel does not yet support train_Yvar.")
         if isinstance(latent_dim, bool) or not isinstance(latent_dim, int) or latent_dim <= 0:
             raise ValueError("latent_dim must be a positive integer.")
 
@@ -303,7 +301,7 @@ class RoostGPModel(DeepKernelGaussianGPModel):
         super().__init__(
             train_X=train_X,
             train_Y=train_Y,
-            train_Yvar=None,
+            train_Yvar=train_Yvar,
             likelihood=likelihood,
             input_transform=resolved_input_transform,
             outcome_transform=outcome_transform,

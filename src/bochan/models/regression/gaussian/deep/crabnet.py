@@ -145,8 +145,8 @@ class CrabNetGPModel(DeepKernelGaussianGPModel):
     Args:
         train_X: ``[n, composition_dim + process_dim]`` training inputs.
         train_Y: Single-output targets with shape ``[n]`` or ``[n, 1]``.
-        train_Yvar: Reserved for future fixed-noise support.  It must currently
-            be omitted.
+        train_Yvar: Optional known observation variances for fixed-noise GP
+            training.
         element_ids: One-dimensional atomic-number vocabulary matching the
             fraction columns in ``train_X``.
         encoder: Optional :class:`CrabNetEncoder` or raw upstream encoder.
@@ -189,8 +189,6 @@ class CrabNetGPModel(DeepKernelGaussianGPModel):
         model_name = self.__class__.__name__
         if train_Y.ndim > 1 and train_Y.shape[-1] != 1:
             raise ValueError(f"{model_name} currently supports single-output train_Y only.")
-        if train_Yvar is not None:
-            raise NotImplementedError(f"{model_name} does not yet support train_Yvar.")
         if isinstance(latent_dim, bool) or not isinstance(latent_dim, int) or latent_dim <= 0:
             raise ValueError("latent_dim must be a positive integer.")
 
@@ -247,7 +245,7 @@ class CrabNetGPModel(DeepKernelGaussianGPModel):
         super().__init__(
             train_X=train_X,
             train_Y=train_Y,
-            train_Yvar=None,
+            train_Yvar=train_Yvar,
             likelihood=likelihood,
             input_transform=resolved_input_transform,
             outcome_transform=outcome_transform,
@@ -337,7 +335,7 @@ class CrabNetDKLModel(CrabNetGPModel):
     Args:
         train_X: ``[n, composition_dim + process_dim]`` training inputs.
         train_Y: Single-output targets with shape ``[n]`` or ``[n, 1]``.
-        train_Yvar: Reserved for future fixed-noise support.
+        train_Yvar: Optional known observation variances for fixed-noise training.
         element_ids: Atomic-number vocabulary matching the fraction columns.
         encoder: Optional :class:`CrabNetEncoder` or raw upstream encoder.
         checkpoint: Optional upstream or adapter encoder checkpoint.

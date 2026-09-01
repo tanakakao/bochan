@@ -227,10 +227,9 @@ class ObservationData:
         )
 
         other_x = other.X.to(self.X)
-        if torch.is_floating_point(self.X):
-            tolerance = 8.0 * torch.finfo(self.X.dtype).eps
-        else:
-            tolerance = 0.0
+        tolerance = (
+            8.0 * torch.finfo(self.X.dtype).eps if torch.is_floating_point(self.X) else 0.0
+        )
 
         completed_indices = torch.nonzero(other.completed_mask, as_tuple=False).flatten()
         for incoming_index_tensor in completed_indices:

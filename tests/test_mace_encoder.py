@@ -69,8 +69,12 @@ class FakeMACE(nn.Module):
         data: dict[str, Tensor],
         *,
         compute_force: bool = True,
+        compute_virials: bool = False,
+        compute_stress: bool = False,
     ) -> dict[str, Tensor]:
         assert compute_force is False
+        assert compute_virials is False
+        assert compute_stress is False
         positions = data["positions"]
         first_invariants = self.node_embedding(positions)
         equivariant = torch.cat([positions, positions], dim=-1)
@@ -89,9 +93,13 @@ class MissingNodeFeaturesMACE(FakeMACE):
         data: dict[str, Tensor],
         *,
         compute_force: bool = True,
+        compute_virials: bool = False,
+        compute_stress: bool = False,
     ) -> dict[str, Tensor]:
         del data
         assert compute_force is False
+        assert compute_virials is False
+        assert compute_stress is False
         return {"energy": torch.zeros(())}
 
 

@@ -1,0 +1,34 @@
+name: MACE Phase 10 uv lock update
+
+on:
+  push:
+    branches:
+      - feat/mace-phase10-release-readiness
+
+permissions:
+  contents: write
+
+jobs:
+  update-lock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/mace-phase10-release-readiness
+          fetch-depth: 0
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+      - name: Update lockfile
+        run: uv lock
+      - name: Commit updated lockfile
+        shell: bash
+        run: |
+          if git diff --quiet -- uv.lock; then
+            echo "uv.lock is already current."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add uv.lock
+          git commit -m "Update uv lock for MACE extra"
+          git push origin HEAD:feat/mace-phase10-release-readiness

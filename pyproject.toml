@@ -50,6 +50,10 @@ tabular = [
   "scikit-learn>=1.3",
 ]
 
+mace = [
+  "mace-torch>=0.3.16,<0.4",
+]
+
 materials = [
   "aviary-models>=1.2.1,<2",
   "chgnet>=0.4.2,<0.5",
@@ -218,6 +222,3 @@ target-version = ["py311", "py312"]
 [tool.mypy]
 python_version = "3.11"
 ignore_missing_imports = true
-warn_unused_configs = true
-no_implicit_optional = true
-check_untyped_defs = false

@@ -16,9 +16,9 @@ from .deepkernel import InputTransformArg, OutcomeTransformArg
 from .deepkernel_configurable import DeepKernelGaussianMixedGPModel
 from .mace import (
     _DEFAULT_MODEL_NAME,
+    _configure_dkl_encoder,
     _MACEGPFeatureExtractor,
     _Pooling,
-    _configure_dkl_encoder,
     _resolve_material_encoder,
     _validate_model_inputs,
     _validate_trainable_encoder_layers,

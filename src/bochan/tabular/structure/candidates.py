@@ -7,7 +7,7 @@ from dataclasses import replace
 from typing import Any
 
 from ..optimizer.candidates import CandidateService
-from .scaling import optimize_alignn_structure_alternating
+from .scaling import optimize_structure_alternating
 
 _ALIGNN_MODEL_TYPES = frozenset(
     {"alignn_gp", "alignn_dkl", "alignn_multitask", "alignn_multitask_dkl"}
@@ -181,7 +181,7 @@ class StructureAwareCandidateService(CandidateService):
             )
             return acq_config, replace(
                 resolved_opt,
-                optimizer=optimize_alignn_structure_alternating,
+                optimizer=optimize_structure_alternating,
                 optimizer_kwargs=optimizer_kwargs,
                 fixed_features_list=None,
             )

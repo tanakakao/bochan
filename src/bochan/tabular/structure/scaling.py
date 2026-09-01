@@ -1,4 +1,4 @@
-"""Scalable mixed acquisition optimization for structure-aware ALIGNN models."""
+"""Scalable mixed acquisition optimization for structure-aware models."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ def _merge_fixed_features(
     return merged
 
 
-def optimize_alignn_structure_alternating(
+def optimize_structure_alternating(
     acq_function: Any,
     bounds: Tensor,
     q: int,
@@ -40,24 +40,25 @@ def optimize_alignn_structure_alternating(
     options: Mapping[str, Any] | None = None,
     alternating_options: Mapping[str, Any] | None = None,
 ) -> tuple[Tensor, Tensor]:
-    """Optimize structure categorically while preserving observed process tuples.
+    """Optimize a discrete structure selector while preserving process tuples.
 
     The process categorical dimensions remain fixed to one currently observed
     joint assignment per inner optimization. Only the structure selector is
     exposed as a categorical dimension to BoTorch's alternating mixed optimizer.
-    This preserves the Phase-3 feasible-space contract while avoiding a full
-    ``n_structures * n_process_assignments`` enumeration of continuous solves.
+    This avoids a full ``n_structures * n_process_assignments`` enumeration of
+    continuous solves while preserving the feasible process-category contract.
 
-    Phase 6 intentionally enables this backend for ``q=1`` only. For batch BO,
-    the caller falls back to the exact enumeration backend so different q slots
-    may select different process-category assignments without changing semantics.
+    The scalable backend is intentionally restricted to ``q=1``. Batch BO falls
+    back to exact enumeration so different q slots may choose different process
+    category assignments without changing the established candidate semantics.
     """
 
+    del sequential
     if q != 1:
-        raise ValueError("ALIGNN alternating structure optimization currently requires q=1.")
+        raise ValueError("Structure alternating optimization currently requires q=1.")
     if not return_best_only:
         raise ValueError(
-            "ALIGNN alternating structure optimization requires return_best_only=True."
+            "Structure alternating optimization requires return_best_only=True."
         )
     if not structure_values:
         raise ValueError("structure_values must contain at least one structure index.")
@@ -65,7 +66,7 @@ def optimize_alignn_structure_alternating(
         process_fixed_features_list = ({},)
     if fixed_features is not None and int(structure_dim) in fixed_features:
         raise ValueError(
-            "Fix the ALIGNN structure through structure_ids, not fixed_features, "
+            "Fix the structure through structure_ids, not fixed_features, "
             "when alternating structure optimization is active."
         )
 
@@ -107,8 +108,8 @@ def optimize_alignn_structure_alternating(
             best_value = torch.as_tensor(acq_value)
 
     if best_candidate is None or best_value is None:
-        raise RuntimeError("ALIGNN alternating structure optimization produced no candidate.")
+        raise RuntimeError("Structure alternating optimization produced no candidate.")
     return best_candidate, best_value
 
 
-__all__ = ["optimize_alignn_structure_alternating"]
+__all__ = ["optimize_structure_alternating"]

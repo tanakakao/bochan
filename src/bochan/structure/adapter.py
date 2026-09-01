@@ -17,7 +17,7 @@ _STRUCTURE_INSTALL_HINT = (
 )
 _PYMATGEN_INSTALL_HINT = (
     "Pymatgen structure conversion requires pymatgen. "
-    "Install bochan[materials], chgnet>=0.4.1,<0.5, or pymatgen directly."
+    "Install bochan[materials], chgnet>=0.4.2,<0.5, or pymatgen directly."
 )
 
 

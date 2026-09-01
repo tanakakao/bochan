@@ -196,6 +196,9 @@ def save_mace_tabular_model(
 
     optimizer = _get_optimizer(store, model_id)
     try:
+        mace_metadata = build_mace_fit_response(model_id, optimizer).metadata.get(
+            "mace", {}
+        )
         path = save_tabular_artifact(
             optimizer,
             file_store,
@@ -206,10 +209,8 @@ def save_mace_tabular_model(
                 "surface": "fastapi-mace",
                 "source_model_id": model_id,
                 "model_family": "mace",
+                "mace": mace_metadata,
             },
-        )
-        mace_metadata = build_mace_fit_response(model_id, optimizer).metadata.get(
-            "mace", {}
         )
         return SaveModelResponse(
             model_id=model_id,

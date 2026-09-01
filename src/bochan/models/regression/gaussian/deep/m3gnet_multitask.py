@@ -9,7 +9,7 @@ from botorch.acquisition.objective import PosteriorTransform
 from botorch.posteriors.transformed import TransformedPosterior
 from botorch.utils.transforms import normalize_indices
 from gpytorch.kernels import MultitaskKernel
-from gpytorch.likelihoods import GaussianLikelihood, Likelihood
+from gpytorch.likelihoods import Likelihood
 from torch import Tensor, nn
 
 from bochan.composition import M3GNetEncoder, MaterialProcessFusion
@@ -413,9 +413,6 @@ class M3GNetMixedMultiTaskGPModel(
             cat_dims=normalized_cat_dims,
             input_transform=input_transform,
         )
-
-        if likelihood is None:
-            likelihood = GaussianLikelihood()
 
         self._continuous_process_dims = tuple(process_dims)
         DeepKernelGaussianMixedGPModel.__init__(

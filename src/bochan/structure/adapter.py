@@ -20,6 +20,10 @@ _PYMATGEN_INSTALL_HINT = (
     "Install bochan[materials], chgnet>=0.4.2,<0.5, matgl>=4.0.3,<5, "
     "or pymatgen directly."
 )
+_ASE_INSTALL_HINT = (
+    "ASE structure conversion requires ase. "
+    "Install bochan[materials], mace-torch>=0.3.16,<0.4, or ase directly."
+)
 
 
 def _jarvis_atoms_api() -> tuple[type[Any], Any, Any]:
@@ -58,6 +62,19 @@ def _pymatgen_structure_api() -> tuple[type[Any], type[Any]]:
     return structure_class, ase_adaptor_class
 
 
+def _ase_atoms_api() -> type[Any]:
+    """Return the ASE Atoms class lazily."""
+
+    try:
+        module = import_module("ase")
+    except ImportError as error:
+        raise ImportError(_ASE_INSTALL_HINT) from error
+    atoms_class = getattr(module, "Atoms", None)
+    if not isinstance(atoms_class, type):
+        raise RuntimeError("ase.Atoms is unavailable.")
+    return atoms_class
+
+
 def _as_float_array(name: str, value: Any, *, shape: tuple[int, ...] | None = None) -> np.ndarray:
     try:
         array = np.asarray(value, dtype=float)
@@ -84,11 +101,12 @@ def _validate_ordered_pymatgen(structure: Any) -> None:
 
 
 class StructureAdapter:
-    """Normalize common crystal structures for ALIGNN, CHGNet, and M3GNet backends.
+    """Normalize common crystal structures for atomistic model backends.
 
     ``adapt`` preserves the existing JARVIS canonical representation used by
-    ALIGNN. ``to_pymatgen`` provides a direct pymatgen path for backends such as
-    CHGNet and M3GNet, avoiding an unnecessary JARVIS round trip.
+    ALIGNN. ``to_pymatgen`` provides the direct path used by CHGNet and M3GNet.
+    ``to_ase`` provides the direct path used by MACE and future ASE-native
+    atomistic backends without forcing a JARVIS or pymatgen round trip.
 
     Filesystem paths are never accepted by in-memory conversion methods. Local
     file access remains explicit through :meth:`from_file`.
@@ -195,6 +213,66 @@ class StructureAdapter:
         if not structures:
             raise ValueError("structures must contain at least one structure.")
         return tuple(self.to_pymatgen(structure) for structure in structures)
+
+    def to_ase(self, structure: Any) -> Any:
+        """Return a periodic ASE ``Atoms`` object without unnecessary round trips."""
+
+        if isinstance(structure, (str, bytes, PathLike)):
+            raise TypeError(
+                "Filesystem paths are not accepted by StructureAdapter.to_ase(); "
+                "load the trusted local file explicitly first."
+            )
+
+        atoms_class = _ase_atoms_api()
+        if isinstance(structure, atoms_class):
+            _validate_periodic_ase(structure)
+            return structure
+
+        if isinstance(structure, Mapping):
+            lattice, coords, elements, cartesian = self._mapping_components(structure)
+            kwargs: dict[str, Any] = {
+                "symbols": elements,
+                "cell": lattice,
+                "pbc": True,
+            }
+            if cartesian:
+                kwargs["positions"] = coords
+            else:
+                kwargs["scaled_positions"] = coords
+            return atoms_class(**kwargs)
+
+        if type(structure).__module__.startswith("pymatgen."):
+            structure_class, ase_adaptor_class = _pymatgen_structure_api()
+            if not isinstance(structure, structure_class):
+                raise TypeError("Unsupported pymatgen structure object.")
+            _validate_ordered_pymatgen(structure)
+            converted = ase_adaptor_class.get_atoms(structure)
+            _validate_periodic_ase(converted)
+            return converted
+
+        if type(structure).__module__.startswith("jarvis."):
+            converter = getattr(structure, "ase_converter", None)
+            if not callable(converter):
+                raise TypeError("JARVIS structure does not expose ase_converter().")
+            converted = converter()
+            if not isinstance(converted, atoms_class):
+                raise TypeError("JARVIS ase_converter() did not return ASE Atoms.")
+            _validate_periodic_ase(converted)
+            return converted
+
+        raise TypeError(
+            "Unsupported structure type. Expected ASE Atoms, pymatgen Structure, "
+            "JARVIS Atoms, or a mapping with lattice_mat/coords/elements."
+        )
+
+    def to_ase_many(self, structures: Sequence[Any]) -> tuple[Any, ...]:
+        """Normalize a non-empty sequence directly to periodic ASE structures."""
+
+        if isinstance(structures, (str, bytes)) or not isinstance(structures, Sequence):
+            raise TypeError("structures must be a non-empty sequence.")
+        if not structures:
+            raise ValueError("structures must contain at least one structure.")
+        return tuple(self.to_ase(structure) for structure in structures)
 
     def from_file(
         self,

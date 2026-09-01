@@ -17,7 +17,8 @@ _STRUCTURE_INSTALL_HINT = (
 )
 _PYMATGEN_INSTALL_HINT = (
     "Pymatgen structure conversion requires pymatgen. "
-    "Install bochan[materials], chgnet>=0.4.2,<0.5, or pymatgen directly."
+    "Install bochan[materials], chgnet>=0.4.2,<0.5, matgl>=4.0.3,<5, "
+    "or pymatgen directly."
 )
 
 
@@ -83,11 +84,11 @@ def _validate_ordered_pymatgen(structure: Any) -> None:
 
 
 class StructureAdapter:
-    """Normalize common crystal structures for ALIGNN and CHGNet backends.
+    """Normalize common crystal structures for ALIGNN, CHGNet, and M3GNet backends.
 
     ``adapt`` preserves the existing JARVIS canonical representation used by
     ALIGNN. ``to_pymatgen`` provides a direct pymatgen path for backends such as
-    CHGNet, avoiding an unnecessary JARVIS round trip.
+    CHGNet and M3GNet, avoiding an unnecessary JARVIS round trip.
 
     Filesystem paths are never accepted by in-memory conversion methods. Local
     file access remains explicit through :meth:`from_file`.

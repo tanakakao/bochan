@@ -25,7 +25,7 @@ Checkpoint = str | PathLike[str] | Mapping[str, object]
 Initialization = Literal["pretrained", "injected", "checkpoint"]
 
 _CHGNET_INSTALL_HINT = (
-    "CHGNet support requires chgnet>=0.4.1,<0.5. "
+    "CHGNet support requires chgnet>=0.4.2,<0.5. "
     "Install bochan[materials] or install chgnet directly."
 )
 _SUPPORTED_MODEL_NAMES = {"0.2.0", "0.3.0", "r2scan"}

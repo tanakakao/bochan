@@ -44,11 +44,13 @@ jobs:
             src/bochan/models/regression/gaussian/deep/m3gnet.py \
             src/bochan/models/regression/gaussian/deep/m3gnet_multitask.py \
             src/bochan/api/acquisition/defaults/resolver.py \
+            src/bochan/api/observation/state.py \
             src/bochan/tabular/structure/candidates.py \
             src/bochan/tabular/structure/m3gnet.py \
             src/bochan/tabular/structure/observation.py \
             src/bochan/serving/fastapi/schemas/m3gnet_tabular.py \
             src/bochan/serving/fastapi/services/m3gnet_tabular.py \
+            src/bochan/serving/fastapi/services/tabular_artifacts.py \
             src/bochan/serving/fastapi/routers/m3gnet_tabular.py \
             src/bochan/serving/fastapi/routers/__init__.py \
             examples/m3gnet_fastapi_client.py \

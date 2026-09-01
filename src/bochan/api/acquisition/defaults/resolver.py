@@ -262,6 +262,8 @@ def resolve_multi_output_model_config(
         "chgnetmultitaskdkl",
         "m3gnetmultitask",
         "m3gnetmultitaskdkl",
+        "macemultitask",
+        "macemultitaskdkl",
     }:
         return model_config
 

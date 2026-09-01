@@ -46,6 +46,7 @@ jobs:
             tests/test_common_model_artifact_api.py \
             tests/test_chgnet_encoder.py \
             tests/test_chgnet_gp.py \
+            tests/test_chgnet_mixed.py \
             tests/test_crabnet_encoder.py \
             tests/test_crabnet_gp.py \
             tests/test_crabnet_integration_closure.py \
@@ -162,6 +163,7 @@ jobs:
             tests/test_common_model_artifact_api.py \
             tests/test_chgnet_encoder.py \
             tests/test_chgnet_gp.py \
+            tests/test_chgnet_mixed.py \
             tests/test_material_encoder_fusion.py \
             tests/test_material_gp_feature_extractor.py \
             tests/test_roost_encoder.py \

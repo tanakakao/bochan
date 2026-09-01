@@ -18,12 +18,14 @@ jobs:
           ref: feat/material-train-yvar-phase1
           fetch-depth: 0
       - name: Apply Phase 1 patch
-        run: python .github/scripts/apply_material_train_yvar_phase1.py
+        run: |
+          python .github/scripts/apply_material_train_yvar_phase1.py
+          rm -f .github/workflows/material-train-yvar-phase1-smoke.yml
       - name: Commit implementation
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/bochan/models/regression/gaussian/deep tests/test_material_train_yvar_phase1.py docs/material_train_yvar_phase1.md .github/workflows/material-train-yvar-phase1-smoke.yml
+          git add src/bochan/models/regression/gaussian/deep tests/test_material_train_yvar_phase1.py docs/material_train_yvar_phase1.md
           if ! git diff --cached --quiet; then
             git commit -m "feat: add material fixed-noise GP support"
             git push origin HEAD:feat/material-train-yvar-phase1

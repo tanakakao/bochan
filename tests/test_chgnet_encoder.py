@@ -4,6 +4,7 @@ import subprocess
 import sys
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 import pytest
 import torch
@@ -31,9 +32,9 @@ def _si_structure() -> dict[str, object]:
 
 
 class FakeCrystalGraph:
-    def __init__(self, structure: object) -> None:
-        lattice = getattr(structure, "lattice")
-        frac_coords = getattr(structure, "frac_coords")
+    def __init__(self, structure: Any) -> None:
+        lattice = structure.lattice
+        frac_coords = structure.frac_coords
         self.lattice = torch.tensor(lattice.matrix, dtype=torch.float32)
         self.atom_frac_coord = torch.tensor(frac_coords, dtype=torch.float32)
         self.neighbor_image = torch.zeros((1, 3), dtype=torch.float32)

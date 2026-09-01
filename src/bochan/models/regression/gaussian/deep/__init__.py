@@ -42,6 +42,7 @@ from .m3gnet_multitask import (
     M3GNetMultiTaskDKLModel,
     M3GNetMultiTaskGPModel,
 )
+from .mace import MACEDKLModel, MACEGPModel
 from .material import CompositionMaterialInputTransform, MaterialGPFeatureExtractor
 from .roost import RoostDKLModel, RoostGPModel
 
@@ -85,6 +86,8 @@ __all__ = [
     "M3GNetMixedMultiTaskGPModel",
     "M3GNetMultiTaskDKLModel",
     "M3GNetMultiTaskGPModel",
+    "MACEDKLModel",
+    "MACEGPModel",
     "MaterialGPFeatureExtractor",
     "RoostDKLModel",
     "RoostGPModel",

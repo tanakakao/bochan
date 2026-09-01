@@ -9,6 +9,7 @@ from . import (
     alignn_tabular,
     artifacts,
     candidates,
+    chgnet_tabular,
     health,
     models,
     predictions,
@@ -26,6 +27,7 @@ def create_api_router(*, prefix: str = "") -> APIRouter:
     router.include_router(models.router)
     router.include_router(tabular.router)
     router.include_router(alignn_tabular.router)
+    router.include_router(chgnet_tabular.router)
     router.include_router(tabular_artifacts.router)
     router.include_router(studies.router)
     router.include_router(suggestions.router)

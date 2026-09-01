@@ -27,12 +27,14 @@ def _mapping_value(mapping: Mapping[Any, Any] | None, key: Any) -> Any | None:
 
 
 class StructureTabularAdapter:
-    """Own a structure catalog and its discrete ALIGNN model coordinate.
+    """Own a structure catalog and its canonical discrete model coordinate.
 
     User-facing structure IDs are encoded through the existing tabular category
-    map machinery. The resulting integer coordinate indexes an ordered
-    ``structure_graphs`` bank. Candidate generation must enumerate this index
-    rather than relax it into a continuous variable.
+    map machinery. The resulting integer coordinate indexes an ordered raw
+    ``structures`` bank. Backends that need another representation, such as
+    ALIGNN graphs, derive and cache it from that same canonical ordering.
+    Candidate generation must enumerate the structure index rather than relax it
+    into a continuous variable.
     """
 
     def __init__(
@@ -57,6 +59,7 @@ class StructureTabularAdapter:
         self.graph_builder = graph_builder
         self._ids = tuple(self.catalog)
         self._id_to_index = {value: index for index, value in enumerate(self._ids)}
+        self._structures = tuple(self.catalog[value] for value in self._ids)
         self._structure_graphs: tuple[Any, ...] | None = None
 
     @property
@@ -66,6 +69,14 @@ class StructureTabularAdapter:
     @property
     def structure_ids(self) -> tuple[Any, ...]:
         return self._ids
+
+    @property
+    def structures(self) -> tuple[Any, ...]:
+        """Return raw structures in the canonical structure-index order."""
+
+        if not self.enabled:
+            raise RuntimeError("No tabular structure catalog is configured.")
+        return self._structures
 
     @property
     def num_structures(self) -> int:
@@ -79,11 +90,13 @@ class StructureTabularAdapter:
 
     @property
     def structure_graphs(self) -> tuple[Any, ...]:
+        """Return the ALIGNN graph bank derived from the canonical raw structures."""
+
         if not self.enabled:
             raise RuntimeError("No tabular structure catalog is configured.")
         if self._structure_graphs is None:
             builder = self.graph_builder or ALIGNNGraphBuilder()
-            graphs = builder.build_many(tuple(self.catalog[value] for value in self._ids))
+            graphs = builder.build_many(self.structures)
             if not isinstance(graphs, Sequence) or isinstance(graphs, (str, bytes)):
                 raise TypeError("structure_graph_builder.build_many() must return a sequence.")
             if len(graphs) != self.num_structures:
@@ -95,7 +108,7 @@ class StructureTabularAdapter:
         return self._structure_graphs
 
     def replace_input_cols(self, input_cols: Sequence[Any] | Any | None) -> list[Any] | None:
-        """Place the structure selector first, matching the ALIGNN model contract."""
+        """Place the structure selector first, matching structure-model contracts."""
 
         if input_cols is None:
             return None
@@ -104,7 +117,7 @@ class StructureTabularAdapter:
             return values
         if self.column not in values:
             raise ValueError(
-                f"structure_col={self.column!r} must be included in input_cols for ALIGNN models."
+                f"structure_col={self.column!r} must be included in input_cols for structure-aware models."
             )
         return [self.column, *(value for value in values if value != self.column)]
 
@@ -172,7 +185,7 @@ class StructureTabularAdapter:
             import pandas as pd
         except ImportError as error:
             raise ImportError(
-                "pandas is required to infer categorical process bounds for tabular ALIGNN."
+                "pandas is required to infer categorical process bounds for tabular structure models."
             ) from error
         if not isinstance(data, pd.DataFrame):
             missing = [

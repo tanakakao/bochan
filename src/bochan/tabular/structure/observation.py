@@ -1,4 +1,4 @@
-"""Lifecycle hook that keeps tabular ALIGNN structure config canonical."""
+"""Lifecycle hooks for canonical tabular structure-model configuration."""
 
 from __future__ import annotations
 
@@ -13,13 +13,13 @@ from ..observation import ObservationAdapter
 
 
 class StructureAwareObservationAdapter(ObservationAdapter):
-    """Resolve observation config and reapply the ALIGNN structure contract.
+    """Resolve observation config and reapply the structure-model contract.
 
     ``TabularBayesianOptimizer.fit`` supports fit-time ``data_config`` and
     ``model_config`` overrides. Those overrides are resolved before this adapter
     is called, so this is the common lifecycle point where structure column
-    ordering, category maps, graph-bank coupling, and ALIGNN model policy can be
-    validated again without duplicating the core fitter.
+    ordering, category maps, backend-specific structure banks, and model policy
+    can be validated again without duplicating the core fitter.
     """
 
     def __init__(
@@ -45,9 +45,12 @@ class StructureAwareObservationAdapter(ObservationAdapter):
         self.owner.source_data_config = resolved
         self.owner.data_config = resolved
 
-        from .fitting import configure_tabular_alignn
+        from .chgnet import configure_tabular_chgnet
 
-        configure_tabular_alignn(self.owner)
+        if not configure_tabular_chgnet(self.owner):
+            from .fitting import configure_tabular_alignn
+
+            configure_tabular_alignn(self.owner)
         return self.owner.source_data_config
 
     def to_dataset(
@@ -60,7 +63,7 @@ class StructureAwareObservationAdapter(ObservationAdapter):
         target_names: Any = None,
         default_converter: Callable[..., Any],
     ) -> Any:
-        """Complete mixed metadata and finalize the fitted ALIGNN output width."""
+        """Complete mixed metadata and finalize fitted structure-model outputs."""
 
         if self.owner.structure.enabled:
             completed_bounds = self.owner.structure.complete_categorical_bounds(
@@ -85,8 +88,10 @@ class StructureAwareObservationAdapter(ObservationAdapter):
             learned_maps.update(dataset.category_maps)
             self.owner.data_config = replace(config, category_maps=learned_maps)
 
+        from .chgnet import validate_chgnet_outputs_from_dataset
         from .multioutput import configure_alignn_outputs_from_dataset
 
+        validate_chgnet_outputs_from_dataset(self.owner, dataset)
         configure_alignn_outputs_from_dataset(self.owner, dataset)
         return dataset
 

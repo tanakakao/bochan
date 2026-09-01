@@ -1,4 +1,4 @@
-"""Structure-aware candidate generation for tabular ALIGNN models."""
+"""Structure-aware candidate generation for tabular atomistic models."""
 
 from __future__ import annotations
 
@@ -12,6 +12,8 @@ from .scaling import optimize_alignn_structure_alternating
 _ALIGNN_MODEL_TYPES = frozenset(
     {"alignn_gp", "alignn_dkl", "alignn_multitask", "alignn_multitask_dkl"}
 )
+_CHGNET_MODEL_TYPES = frozenset({"chgnet_gp", "chgnet_dkl"})
+_STRUCTURE_MODEL_TYPES = _ALIGNN_MODEL_TYPES | _CHGNET_MODEL_TYPES
 _ALTERNATING_STRUCTURE_THRESHOLD = 10
 _ALTERNATING_OPTION_KEYS = frozenset(
     {
@@ -32,7 +34,7 @@ _ALTERNATING_OPTIMIZER_KWARGS = frozenset({"options", "alternating_options"})
 
 
 def _process_category_fixed_features(owner: Any) -> list[dict[int, float]]:
-    """Return current joint process-category assignments for mixed ALIGNN."""
+    """Return current joint process-category assignments for mixed structure models."""
 
     if owner.bo.bundle is None:
         return [{}]
@@ -41,13 +43,13 @@ def _process_category_fixed_features(owner: Any) -> list[dict[int, float]]:
         return [{}]
     if 0 in cat_dims:
         raise RuntimeError(
-            "ALIGNN model cat_dims must contain process categories only; "
+            "Structure-model cat_dims must contain process categories only; "
             "structure feature 0 is enumerated separately."
         )
 
     train_X = owner.bo.train_X
     if train_X is None:
-        raise RuntimeError("No current ALIGNN training inputs are available for optimization.")
+        raise RuntimeError("No current structure-model training inputs are available for optimization.")
 
     import torch
 
@@ -89,7 +91,7 @@ def _use_alternating_structure_search(
     *,
     structure_count: int,
 ) -> bool:
-    """Return whether Phase-6 structure scaling should replace full enumeration."""
+    """Return whether scalable structure search should replace full enumeration."""
 
     if structure_count <= _ALTERNATING_STRUCTURE_THRESHOLD:
         return False
@@ -104,7 +106,7 @@ def _use_alternating_structure_search(
 
 
 class StructureAwareCandidateService(CandidateService):
-    """Extend the canonical candidate service with scalable structure search."""
+    """Extend the canonical candidate service with discrete structure search."""
 
     def __init__(self, *, structure: Any, **kwargs: Any) -> None:
         self.structure = structure
@@ -126,25 +128,27 @@ class StructureAwareCandidateService(CandidateService):
         )
 
         model_type = str(owner.model_config.model_type).lower()
-        if model_type not in _ALIGNN_MODEL_TYPES:
+        if model_type not in _STRUCTURE_MODEL_TYPES:
             if structure_ids is not None:
-                raise ValueError("structure_ids is only supported for tabular ALIGNN models.")
+                raise ValueError(
+                    "structure_ids is only supported for tabular structure-aware models."
+                )
             return acq_config, resolved_opt
         if not self.structure.enabled:
             raise ValueError(
                 f"model_type={model_type!r} requires structure_col and structure_catalog."
             )
         if owner.dataset is None:
-            raise RuntimeError("Call fit() before generating ALIGNN candidates.")
+            raise RuntimeError("Call fit() before generating structure-aware candidates.")
         try:
             structure_index = owner.dataset.feature_names.index(self.structure.column)
         except ValueError as error:
             raise RuntimeError("The fitted dataset does not contain the structure selector.") from error
         if structure_index != 0:
-            raise RuntimeError("The ALIGNN structure selector must be feature index 0.")
+            raise RuntimeError("The structure selector must be feature index 0.")
         if resolved_opt.fixed_features_list is not None:
             raise ValueError(
-                "Tabular ALIGNN derives fixed_features_list from structure_catalog and "
+                "Tabular structure models derive fixed_features_list from structure_catalog and "
                 "categorical process columns; use structure_ids to select a structure "
                 "subset instead of supplying fixed_features_list."
             )

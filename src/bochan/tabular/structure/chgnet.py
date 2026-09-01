@@ -1,0 +1,328 @@
+"""Tabular routing for CHGNet structure/process GP and DKL models."""
+
+from __future__ import annotations
+
+from collections.abc import Mapping, Sequence
+from dataclasses import replace
+from typing import Any
+
+_CHGNET_MODEL_TYPES = frozenset({"chgnet_gp", "chgnet_dkl"})
+_DERIVED_CHGNET_MODEL_CLASSES = frozenset(
+    {
+        "CHGNetGPModel",
+        "CHGNetDKLModel",
+        "CHGNetMixedGPModel",
+        "CHGNetMixedDKLModel",
+    }
+)
+
+
+def _target_names(target_cols: Any) -> list[Any] | None:
+    if target_cols is None:
+        return None
+    if isinstance(target_cols, (str, bytes, int)):
+        return [target_cols]
+    if isinstance(target_cols, Sequence):
+        return list(target_cols)
+    return [target_cols]
+
+
+def _target_count(target_cols: Any) -> int | None:
+    names = _target_names(target_cols)
+    return None if names is None else len(names)
+
+
+def _has_mapping_key(mapping: Mapping[Any, Any], key: Any) -> bool:
+    return key in mapping or str(key) in mapping
+
+
+def _has_derived_chgnet_model_cls(model_cls: Any) -> bool:
+    if model_cls is None:
+        return False
+    return (
+        getattr(model_cls, "__name__", None) in _DERIVED_CHGNET_MODEL_CLASSES
+        and str(getattr(model_cls, "__module__", "")).startswith(
+            "bochan.models.regression.gaussian.deep"
+        )
+    )
+
+
+def _validate_model_config(
+    config: Any,
+    *,
+    structures: tuple[Any, ...],
+    process_cat_dims: list[int],
+    expected_input_type: str,
+) -> tuple[bool, dict[str, Any], Any | None]:
+    """Validate one canonical single-output tabular CHGNet configuration."""
+
+    is_mixed = bool(process_cat_dims)
+    derived_config = _has_derived_chgnet_model_cls(config.model_cls)
+    if not derived_config and config.input_type not in (None, expected_input_type):
+        raise ValueError(
+            f"Tabular CHGNet with the configured process columns requires "
+            f"input_type={expected_input_type!r}."
+        )
+    configured_cat_dims = [] if config.cat_dims is None else list(config.cat_dims)
+    if not derived_config and configured_cat_dims:
+        raise ValueError(
+            "Tabular CHGNet derives cat_dims from categorical process columns; "
+            "do not pass cat_dims explicitly."
+        )
+    if config.input_transform is not None:
+        raise ValueError(
+            "Tabular CHGNet derives process-only normalization automatically; "
+            "do not pass input_transform explicitly."
+        )
+    transform_config = config.input_transform_config
+    if transform_config is not None:
+        if bool(transform_config.perturbation):
+            raise ValueError("Tabular CHGNet does not support input perturbation.")
+        if not bool(transform_config.normalize):
+            raise ValueError("Tabular CHGNet currently requires process normalization.")
+        if transform_config.bounds is not None:
+            raise ValueError(
+                "Tabular CHGNet derives process normalization from tabular bounds; "
+                "do not pass InputTransformConfig.bounds."
+            )
+
+    model_kwargs = dict(config.model_kwargs)
+    existing_structures = model_kwargs.pop("structures", None)
+    if existing_structures is not None and existing_structures is not structures:
+        raise ValueError(
+            "Tabular CHGNet derives structures from structure_catalog; "
+            "do not override the derived structure bank in model_kwargs."
+        )
+    encoder_training = model_kwargs.pop("encoder_training", None)
+    return is_mixed, model_kwargs, encoder_training
+
+
+def _apply_encoder_training_policy(
+    model_kwargs: dict[str, Any],
+    encoder_training: Any | None,
+    *,
+    dkl: bool,
+) -> None:
+    if not dkl:
+        if encoder_training is not None or "trainable_encoder_layers" in model_kwargs:
+            raise ValueError(
+                "chgnet_gp freezes the CHGNet structure encoder. Use "
+                "model_type='chgnet_dkl' for partial or full fine-tuning."
+            )
+        return
+    if encoder_training is None:
+        return
+    if "trainable_encoder_layers" in model_kwargs:
+        raise ValueError(
+            "Specify either encoder_training or trainable_encoder_layers, not both."
+        )
+    normalized = str(encoder_training).lower()
+    if normalized == "partial":
+        model_kwargs["trainable_encoder_layers"] = 1
+    elif normalized == "full":
+        model_kwargs["trainable_encoder_layers"] = "all"
+    else:
+        raise ValueError(
+            "encoder_training must be 'partial' or 'full' for chgnet_dkl."
+        )
+
+
+def _configure_single_model(
+    config: Any,
+    *,
+    model_type: str,
+    structures: tuple[Any, ...],
+    process_cat_dims: list[int],
+    expected_input_type: str,
+) -> Any:
+    if model_type not in _CHGNET_MODEL_TYPES:
+        raise ValueError(f"Unsupported CHGNet model_type={model_type!r}.")
+    is_mixed, model_kwargs, encoder_training = _validate_model_config(
+        config,
+        structures=structures,
+        process_cat_dims=process_cat_dims,
+        expected_input_type=expected_input_type,
+    )
+    dkl = model_type == "chgnet_dkl"
+    _apply_encoder_training_policy(
+        model_kwargs,
+        encoder_training,
+        dkl=dkl,
+    )
+
+    if dkl:
+        if is_mixed:
+            from bochan.models.regression.gaussian.deep import CHGNetMixedDKLModel
+
+            model_cls = CHGNetMixedDKLModel
+        else:
+            from bochan.models.regression.gaussian.deep import CHGNetDKLModel
+
+            model_cls = CHGNetDKLModel
+    elif is_mixed:
+        from bochan.models.regression.gaussian.deep import CHGNetMixedGPModel
+
+        model_cls = CHGNetMixedGPModel
+    else:
+        from bochan.models.regression.gaussian.deep import CHGNetGPModel
+
+        model_cls = CHGNetGPModel
+
+    model_kwargs["structures"] = structures
+    return replace(
+        config,
+        task_type="regression",
+        model_cls=model_cls,
+        model_factory=None,
+        input_type=expected_input_type,
+        cat_dims=process_cat_dims,
+        input_transform=None,
+        input_transform_config=None,
+        pass_cat_dims=is_mixed,
+        pass_input_transform=False,
+        model_kwargs=model_kwargs,
+        multi_output_config=None,
+    )
+
+
+def configure_tabular_chgnet(owner: Any) -> bool:
+    """Configure CHGNet tabular structure/process routing when requested.
+
+    Returns:
+        ``True`` when the current model is a CHGNet structure model and the
+        configuration was handled here. ``False`` otherwise.
+    """
+
+    model_type = str(owner.model_config.model_type).lower()
+    if model_type not in _CHGNET_MODEL_TYPES:
+        return False
+
+    config = owner.model_config
+    if str(config.task_type) not in {"regression", "multi_objective"}:
+        raise ValueError("Tabular CHGNet currently supports regression only.")
+    if config.multi_output_config is not None:
+        raise ValueError(
+            "Tabular CHGNet Phase 5 is single-output; do not provide multi_output_config."
+        )
+    target_count = _target_count(owner.source_data_config.target_cols)
+    if target_count == 0:
+        raise ValueError("Tabular CHGNet requires at least one target column.")
+    if target_count is not None and target_count > 1:
+        raise ValueError(
+            "Tabular CHGNet Phase 5 supports one target column. "
+            "Multi-output and correlated multitask support are handled in the next phase."
+        )
+    if owner.composition.enabled:
+        raise ValueError(
+            "Tabular CHGNet accepts crystal structure plus process variables; "
+            "composition_sites cannot be combined with CHGNet yet."
+        )
+    if not owner.structure.enabled:
+        raise ValueError(
+            f"model_type={model_type!r} requires structure_col and structure_catalog."
+        )
+    if owner.structure.graph_builder is not None:
+        raise ValueError(
+            "structure_graph_builder is ALIGNN-specific and must be omitted for CHGNet."
+        )
+
+    source = owner.source_data_config
+    if source.input_cols is None:
+        raise ValueError(
+            "Tabular CHGNet requires explicit input_cols so structure_col can be placed "
+            "at model feature index 0."
+        )
+    input_cols = owner.structure.replace_input_cols(source.input_cols)
+    categorical_cols = owner.structure.resolve_categorical_cols(source.categorical_cols)
+    process_categorical_cols = [
+        column for column in categorical_cols if column != owner.structure.column
+    ]
+    process_categorical_set = set(process_categorical_cols)
+    continuous_process_cols = [
+        column
+        for column in input_cols
+        if column != owner.structure.column and column not in process_categorical_set
+    ]
+
+    if source.bounds is not None and not isinstance(source.bounds, Mapping):
+        raise ValueError(
+            "Tabular CHGNet requires column-addressed bounds when bounds are supplied."
+        )
+    if continuous_process_cols and source.bounds is None:
+        raise ValueError(
+            "Tabular CHGNet requires column-addressed bounds for every continuous process variable."
+        )
+    bounds_mapping = source.bounds or {}
+    missing_bounds = [
+        column
+        for column in continuous_process_cols
+        if not _has_mapping_key(bounds_mapping, column)
+    ]
+    if missing_bounds:
+        raise ValueError(
+            "Tabular CHGNet requires bounds for every continuous process variable; "
+            f"missing bounds for {missing_bounds!r}."
+        )
+
+    category_maps = owner.structure.merge_category_maps(source.category_maps)
+    bounds = owner.structure.expanded_bounds(source.bounds)
+    resolved_source = replace(
+        source,
+        input_cols=input_cols,
+        categorical_cols=categorical_cols,
+        category_maps=category_maps,
+        bounds=bounds,
+    )
+    owner.source_data_config = resolved_source
+    owner.data_config = resolved_source
+
+    process_cat_dims = [input_cols.index(column) for column in process_categorical_cols]
+    expected_input_type = "mixed" if process_cat_dims else "normal"
+    owner.model_config = _configure_single_model(
+        replace(config, task_type="regression", multi_output_config=None),
+        model_type=model_type,
+        structures=owner.structure.structures,
+        process_cat_dims=process_cat_dims,
+        expected_input_type=expected_input_type,
+    )
+
+    from bochan.api import FitConfig
+    from bochan.fit import fit_deepkernel_mll
+
+    if owner.fit_config is None:
+        owner.fit_config = FitConfig(fit_func=fit_deepkernel_mll)
+    elif owner.fit_config.fit_func is None:
+        owner.fit_config = replace(owner.fit_config, fit_func=fit_deepkernel_mll)
+    return True
+
+
+def validate_chgnet_outputs_from_dataset(owner: Any, dataset: Any) -> None:
+    """Enforce the Phase-5 single-output contract for array-based fitting."""
+
+    model_type = str(owner.model_config.model_type).lower()
+    if model_type not in _CHGNET_MODEL_TYPES:
+        return
+    Y = getattr(dataset, "Y", None)
+    if Y is None:
+        return
+    if Y.ndim == 1:
+        n_outputs = 1
+    elif Y.ndim == 2:
+        n_outputs = int(Y.shape[-1])
+    else:
+        raise ValueError(
+            "Tabular CHGNet targets must have shape [n] or [n, 1] in Phase 5; "
+            f"got {tuple(Y.shape)}."
+        )
+    if n_outputs != 1:
+        raise ValueError(
+            "Tabular CHGNet Phase 5 supports exactly one target output; "
+            f"got {n_outputs}."
+        )
+
+
+__all__ = [
+    "_CHGNET_MODEL_TYPES",
+    "configure_tabular_chgnet",
+    "validate_chgnet_outputs_from_dataset",
+]

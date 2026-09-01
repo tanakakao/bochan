@@ -348,7 +348,7 @@ class MACEEncoder(MaterialEncoder):
                 heads=list(self.available_heads),
             )
         batch = batch_class.from_data_list([graph]).to(device)
-        for key in batch.keys:
+        for key in batch.keys():
             value = batch[key]
             if torch.is_tensor(value) and value.is_floating_point():
                 batch[key] = value.to(device=device, dtype=dtype)
@@ -388,7 +388,12 @@ class MACEEncoder(MaterialEncoder):
         return invariant
 
     def _representation_one(self, structure: Any) -> Tensor:
-        output = self.encoder(self._build_batch(structure), compute_force=False)
+        output = self.encoder(
+            self._build_batch(structure),
+            compute_force=False,
+            compute_virials=False,
+            compute_stress=False,
+        )
         if not isinstance(output, Mapping):
             raise TypeError("Raw MACE forward must return a mapping.")
         node_features = output.get("node_feats")

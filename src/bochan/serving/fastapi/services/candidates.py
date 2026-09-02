@@ -68,11 +68,20 @@ def generate_candidate_result(
     request: Any,
     *,
     use_ask: bool = False,
-) -> tuple[Any, Any]:
-    """Generate candidates through the canonical optimizer API."""
+    return_result: bool = False,
+) -> Any:
+    """Generate candidates through the canonical optimizer API.
+
+    The historical tuple return remains the default. Serving routes can request
+    the canonical ``CandidateResult`` so diagnostics are read from the exact
+    acquisition call rather than mutable optimizer-level state.
+    """
 
     method = optimizer.ask if use_ask else optimizer.candidate
-    return method(**_candidate_call_args(optimizer, request))
+    call_args = _candidate_call_args(optimizer, request)
+    if return_result:
+        call_args["return_result"] = True
+    return method(**call_args)
 
 
 def compare_candidate_results(

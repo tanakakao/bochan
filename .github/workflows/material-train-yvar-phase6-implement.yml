@@ -7,6 +7,7 @@ on:
     paths:
       - .github/scripts/material_train_yvar_phase6_patch.py
       - .github/scripts/material_train_yvar_phase6_fix1.py
+      - .github/scripts/material_train_yvar_phase6_fix2.py
       - .github/workflows/material-train-yvar-phase6-implement.yml
 
 permissions:
@@ -28,6 +29,7 @@ jobs:
         run: |
           python .github/scripts/material_train_yvar_phase6_patch.py
           python .github/scripts/material_train_yvar_phase6_fix1.py
+          python .github/scripts/material_train_yvar_phase6_fix2.py
       - name: Install
         run: |
           python -m pip install -e ".[test,tabular,api]"

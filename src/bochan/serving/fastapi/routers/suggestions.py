@@ -41,6 +41,11 @@ def suggest(request: SuggestRequest) -> CandidateResponse:
             options,
             metadata=category_metadata,
         )
+        train_Yvar = (
+            to_tensor(request.train_Yvar, options)
+            if request.train_Yvar is not None
+            else None
+        )
         fit_config = to_fit_config(request.fit_config)
         data_context = (
             to_data_context(request.data_context, options)
@@ -55,7 +60,7 @@ def suggest(request: SuggestRequest) -> CandidateResponse:
             bounds=bounds,
             data_context=data_context,
         )
-        optimizer.fit(train_X, train_Y)
+        optimizer.fit(train_X, train_Y, train_Yvar)
         bind_category_metadata(optimizer, category_metadata)
         acq_config = to_acquisition_config(
             request.acquisition_config,

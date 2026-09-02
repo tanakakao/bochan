@@ -66,6 +66,7 @@ class BayesianOptimizer:
 
         self.train_X: Any | None = None
         self.train_Y: Any | None = None
+        self.train_Yvar: Any | None = None
 
         self.history: list[CandidateResult] = []
 
@@ -76,7 +77,7 @@ class BayesianOptimizer:
         llm_config: Any | None = None,
         llm_context: Any | None = None,
         **settings_kwargs: Any,
-    ) -> "BayesianOptimizer":
+    ) -> BayesianOptimizer:
         """LLM planner / candidate generator の共通設定を登録する。
 
         ``ModelConfig(model_type="llm_selected")`` と
@@ -154,10 +155,11 @@ class BayesianOptimizer:
         self,
         train_X: Any,
         train_Y: Any,
+        train_Yvar: Any | None = None,
         *,
         model_config: ModelConfig | None = None,
         fit_config: FitConfig | None = None,
-    ) -> "BayesianOptimizer":
+    ) -> BayesianOptimizer:
         """モデルを生成し、必要なら学習する。"""
         if model_config is not None:
             self.model_config = self._merge_llm_settings_into_model_config(model_config)
@@ -166,6 +168,7 @@ class BayesianOptimizer:
 
         self.train_X = train_X
         self.train_Y = train_Y
+        self.train_Yvar = train_Yvar
 
         if self.bounds is None:
             self.bounds = _infer_bounds_from_train_X(train_X)
@@ -175,6 +178,7 @@ class BayesianOptimizer:
         self.bundle = build_model(
             train_X=train_X,
             train_Y=train_Y,
+            train_Yvar=train_Yvar,
             config=self.model_config,
             model_registry=self.model_registry,
         )
@@ -184,16 +188,22 @@ class BayesianOptimizer:
         self.mll = self.bundle.mll
         return self
 
-    def refit(self, *, fit_config: FitConfig | None = None) -> "BayesianOptimizer":
+    def refit(self, *, fit_config: FitConfig | None = None) -> BayesianOptimizer:
         """保持している train_X / train_Y で再学習する。"""
         if self.train_X is None or self.train_Y is None:
             raise RuntimeError("No training data found. Call fit() first.")
-        return self.fit(self.train_X, self.train_Y, fit_config=fit_config or self.fit_config)
+        return self.fit(
+            self.train_X,
+            self.train_Y,
+            self.train_Yvar,
+            fit_config=fit_config or self.fit_config,
+        )
 
     def cross_validate(
         self,
         train_X: Any,
         train_Y: Any,
+        train_Yvar: Any | None = None,
         *,
         model_config: ModelConfig | None = None,
         fit_config: FitConfig | None = None,
@@ -217,6 +227,7 @@ class BayesianOptimizer:
             self,
             train_X,
             train_Y,
+            train_Yvar,
             model_config=model_config,
             fit_config=fit_config,
             cv_config=cv_config,
@@ -476,24 +487,41 @@ class BayesianOptimizer:
         self,
         new_X: Any,
         new_Y: Any,
+        new_Yvar: Any | None = None,
         *,
         refit: bool = True,
         fit_config: FitConfig | None = None,
-    ) -> "BayesianOptimizer":
+    ) -> BayesianOptimizer:
         """新しい観測データを追加し、必要なら再学習する。"""
-        self.update_data(new_X, new_Y)
+        self.update_data(new_X, new_Y, new_Yvar)
         if refit:
             self.refit(fit_config=fit_config or self.fit_config)
         return self
 
-    def update_data(self, new_X: Any, new_Y: Any) -> "BayesianOptimizer":
+    def update_data(
+        self,
+        new_X: Any,
+        new_Y: Any,
+        new_Yvar: Any | None = None,
+    ) -> BayesianOptimizer:
         """保持している訓練データに新しい観測を追加する。"""
         if self.train_X is None or self.train_Y is None:
             self.train_X = new_X
             self.train_Y = new_Y
+            self.train_Yvar = new_Yvar
             return self
+        if self.train_Yvar is not None and new_Yvar is None:
+            raise ValueError(
+                "new_Yvar is required because the fitted optimizer uses known observation variance."
+            )
+        if self.train_Yvar is None and new_Yvar is not None:
+            raise ValueError(
+                "new_Yvar cannot be added to an optimizer whose existing observations have no train_Yvar."
+            )
         self.train_X = _concat_rows(self.train_X, new_X)
         self.train_Y = _concat_rows(self.train_Y, new_Y)
+        if self.train_Yvar is not None:
+            self.train_Yvar = _concat_rows(self.train_Yvar, new_Yvar)
         return self
 
     def compare_acquisitions(
@@ -517,7 +545,7 @@ class BayesianOptimizer:
             results[acq_config.name] = result
         return results
 
-    def set_bounds(self, bounds: Any) -> "BayesianOptimizer":
+    def set_bounds(self, bounds: Any) -> BayesianOptimizer:
         """探索範囲を更新する。"""
         self.bounds = bounds
         if self.data_context is not None:
@@ -690,7 +718,7 @@ def _fixed_features_list_from_category_rows(
 ) -> list[dict[int, float]]:
     fixed_features_list: list[dict[int, float]] = []
     for row in rows:
-        fixed_features_list.append({int(dim): float(value) for dim, value in zip(cat_dims, row)})
+        fixed_features_list.append({int(dim): float(value) for dim, value in zip(cat_dims, row, strict=True)})
     return fixed_features_list
 
 

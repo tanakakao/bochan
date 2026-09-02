@@ -448,6 +448,7 @@ def cross_validate_optimizer(
     optimizer: Any,
     train_X: Any,
     train_Y: Any,
+    train_Yvar: Any | None = None,
     *,
     model_config: ModelConfig | None = None,
     fit_config: FitConfig | None = None,
@@ -468,8 +469,14 @@ def cross_validate_optimizer(
     """
     config = cv_config or CrossValidationConfig()
     X, Y = torch.as_tensor(train_X), _as_2d(train_Y)
+    Yvar = None if train_Yvar is None else _as_2d(train_Yvar)
     if X.shape[0] != Y.shape[0]:
         raise ValueError("train_X and train_Y must contain the same number of rows.")
+    if Yvar is not None and Yvar.shape != Y.shape:
+        raise ValueError(
+            "train_Yvar must match train_Y shape for cross-validation; "
+            f"got train_Y={tuple(Y.shape)!r}, train_Yvar={tuple(Yvar.shape)!r}."
+        )
     base_model = model_config or optimizer.model_config
     base_fit = fit_config if fit_config is not None else optimizer.fit_config
     names, tasks = _output_layout(base_model, Y)
@@ -504,7 +511,11 @@ def cross_validate_optimizer(
             model_registry=optimizer.model_registry,
             acquisition_registry=optimizer.acquisition_registry,
         )
-        fold_optimizer.fit(X[train_idx], Y[train_idx])
+        fold_optimizer.fit(
+            X[train_idx],
+            Y[train_idx],
+            None if Yvar is None else Yvar[train_idx],
+        )
         fold_importance = None
         if config.feature_importance_config is not None:
             importance_config = copy.deepcopy(config.feature_importance_config)

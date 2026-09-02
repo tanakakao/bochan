@@ -108,11 +108,23 @@ def _build_input_transform_from_config(
     )
 
 
-def _build_model_kwargs(train_X: Any, train_Y: Any, config: ModelConfig, cat_dims: list[int]) -> dict[str, Any]:
+def _build_model_kwargs(
+    train_X: Any,
+    train_Y: Any,
+    train_Yvar: Any | None,
+    config: ModelConfig,
+    cat_dims: list[int],
+) -> dict[str, Any]:
     kwargs: dict[str, Any] = {}
     if config.pass_train_data:
         kwargs[config.train_x_name] = train_X
         kwargs[config.train_y_name] = train_Y
+        if train_Yvar is not None:
+            if "train_Yvar" in config.model_kwargs:
+                raise ValueError(
+                    "train_Yvar was supplied both as training data and model_kwargs."
+                )
+            kwargs["train_Yvar"] = train_Yvar
 
     pass_cat_dims = config.pass_cat_dims
     if pass_cat_dims is None:
@@ -232,11 +244,12 @@ def _build_single_model(
     train_Y: Any,
     config: ModelConfig,
     *,
+    train_Yvar: Any | None = None,
     model_registry: Mapping[Any, Any] | None = None,
 ) -> ModelBundle:
     cat_dims = _as_cat_dims(config.cat_dims)
     input_type = config.input_type or infer_input_type(cat_dims)
-    kwargs = _build_model_kwargs(train_X, train_Y, config, cat_dims)
+    kwargs = _build_model_kwargs(train_X, train_Y, train_Yvar, config, cat_dims)
 
     if config.model_factory is not None:
         model = config.model_factory(**kwargs)
@@ -356,7 +369,14 @@ def _is_non_gaussian_regression_model(model: Any) -> bool:
     ) or bool(getattr(model, "is_non_gaussian_model", False))
 
 
-def build_multi_output_model(train_X: Any, train_Y: Any, config: ModelConfig, *, model_registry: Mapping[Any, Any] | None = None) -> ModelBundle:
+def build_multi_output_model(
+    train_X: Any,
+    train_Y: Any,
+    config: ModelConfig,
+    *,
+    train_Yvar: Any | None = None,
+    model_registry: Mapping[Any, Any] | None = None,
+) -> ModelBundle:
     mo_config = config.multi_output_config
     if mo_config is None:
         raise RuntimeError("multi_output_config is required.")
@@ -365,7 +385,20 @@ def build_multi_output_model(train_X: Any, train_Y: Any, config: ModelConfig, *,
     sub_bundles: list[ModelBundle] = []
     for i, output_config in enumerate(output_configs):
         output_train_Y = _slice_output_y(train_Y, i, dim=mo_config.train_y_slice_dim)
-        sub_bundles.append(_build_single_model(train_X=train_X, train_Y=output_train_Y, config=output_config, model_registry=model_registry))
+        output_train_Yvar = (
+            None
+            if train_Yvar is None
+            else _slice_output_y(train_Yvar, i, dim=mo_config.train_y_slice_dim)
+        )
+        sub_bundles.append(
+            _build_single_model(
+                train_X=train_X,
+                train_Y=output_train_Y,
+                train_Yvar=output_train_Yvar,
+                config=output_config,
+                model_registry=model_registry,
+            )
+        )
     model = _build_wrapper_from_submodels([b.model for b in sub_bundles], output_configs, mo_config, output_names=output_names, output_spec_kwargs=inline_spec_kwargs)
     bundle_train_X = getattr(model, "train_X", None)
     if bundle_train_X is None and hasattr(model, "train_inputs"):
@@ -400,8 +433,46 @@ def build_multi_output_model(train_X: Any, train_Y: Any, config: ModelConfig, *,
     )
 
 
-def build_model(train_X: Any, train_Y: Any, config: ModelConfig, *, model_registry: Mapping[Any, Any] | None = None) -> ModelBundle:
+def _validate_train_yvar_shape(train_Y: Any, train_Yvar: Any | None) -> None:
+    if train_Yvar is None:
+        return
+    if not hasattr(train_Y, "shape") or not hasattr(train_Yvar, "shape"):
+        raise TypeError("train_Y and train_Yvar must expose shape attributes.")
+    y_shape = tuple(train_Y.shape)
+    yvar_shape = tuple(train_Yvar.shape)
+    if len(y_shape) == 1:
+        y_shape = (y_shape[0], 1)
+    if len(yvar_shape) == 1:
+        yvar_shape = (yvar_shape[0], 1)
+    if y_shape != yvar_shape:
+        raise ValueError(
+            "train_Yvar must match train_Y shape; "
+            f"got train_Y={tuple(train_Y.shape)!r}, train_Yvar={tuple(train_Yvar.shape)!r}."
+        )
+
+
+def build_model(
+    train_X: Any,
+    train_Y: Any,
+    config: ModelConfig,
+    *,
+    train_Yvar: Any | None = None,
+    model_registry: Mapping[Any, Any] | None = None,
+) -> ModelBundle:
+    _validate_train_yvar_shape(train_Y, train_Yvar)
     if config.multi_output_config is not None:
-        return build_multi_output_model(train_X, train_Y, config, model_registry=model_registry)
-    return _build_single_model(train_X, train_Y, config, model_registry=model_registry)
+        return build_multi_output_model(
+            train_X,
+            train_Y,
+            config,
+            train_Yvar=train_Yvar,
+            model_registry=model_registry,
+        )
+    return _build_single_model(
+        train_X,
+        train_Y,
+        config,
+        train_Yvar=train_Yvar,
+        model_registry=model_registry,
+    )
 

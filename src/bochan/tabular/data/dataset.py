@@ -17,6 +17,7 @@ class TabularDataset:
     feature_names: list[ColumnKey]
     target_names: list[ColumnKey]
     cat_dims: list[int]
+    Yvar: Any | None = None
     bounds: Any | None = None
     category_maps: dict[ColumnKey, dict[Any, int]] | None = None
     inverse_category_maps: dict[ColumnKey, dict[int, Any]] | None = None

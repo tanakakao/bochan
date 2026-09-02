@@ -204,6 +204,7 @@ class TabularFitModelRequest(APIRequest):
     alpha: float | None = Field(default=None, gt=0.0)
     input_cols: list[str]
     target_cols: list[str] | str
+    target_variance_cols: list[str] | str | None = None
     categorical_cols: list[str] = Field(default_factory=list)
     target_categorical_cols: list[str] | None = None
     bounds: Any | None = None
@@ -257,11 +258,39 @@ class TabularFitModelRequest(APIRequest):
             if isinstance(self.target_cols, list)
             else [self.target_cols]
         )
+        variance_cols = (
+            []
+            if self.target_variance_cols is None
+            else list(self.target_variance_cols)
+            if isinstance(self.target_variance_cols, list)
+            else [self.target_variance_cols]
+        )
+        if variance_cols:
+            if len(variance_cols) != len(targets):
+                raise ValueError(
+                    "target_variance_cols must contain exactly one variance column per target column."
+                )
+            overlap = sorted(set(variance_cols).intersection(targets))
+            if overlap:
+                raise ValueError(
+                    "target_variance_cols must be distinct from target_cols; "
+                    f"overlap={overlap!r}."
+                )
+            input_overlap = sorted(set(variance_cols).intersection(self.input_cols))
+            if input_overlap:
+                raise ValueError(
+                    "target_variance_cols must not be included in input_cols; "
+                    f"overlap={input_overlap!r}."
+                )
         if status is not None:
             if status in self.input_cols:
                 raise ValueError("experiment_status_col must not be included in input_cols.")
             if status in targets:
                 raise ValueError("experiment_status_col must not be included in target_cols.")
+            if status in variance_cols:
+                raise ValueError(
+                    "experiment_status_col must not be included in target_variance_cols."
+                )
         if self.experiment_failure is not None and status is None:
             raise ValueError(
                 "experiment_failure requires experiment_status_col so success/failure "

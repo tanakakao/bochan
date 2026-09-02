@@ -116,6 +116,7 @@ def fit_mace_tabular_optimizer(
         fit_config=_schema_dict(request.fit_config),
         input_cols=request.input_cols,
         target_cols=request.target_cols,
+        target_variance_cols=request.target_variance_cols,
         categorical_cols=request.categorical_cols,
         target_categorical_cols=request.target_categorical_cols,
         bounds=request.bounds,

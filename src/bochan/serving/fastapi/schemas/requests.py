@@ -56,6 +56,7 @@ class FitModelRequest(APIRequest):
     bo_model_config: ModelConfigSchema = Field(alias="model_config")
     train_X: Any
     train_Y: Any
+    train_Yvar: Any | None = None
     bounds: Any | None = None
     fit_config: FitConfigSchema | None = None
     data_context: DataContextSchema | None = None
@@ -86,6 +87,7 @@ class AutoCandidateRequest(APIRequest):
     goal: str
     train_X: Any
     train_Y: Any
+    train_Yvar: Any | None = None
     bounds: Any | None = None
     llm_config: LLMConfigSchema | None = None
     llm_context: LLMContextSchema | None = None
@@ -109,6 +111,7 @@ class TellRequest(APIRequest):
 
     new_X: Any
     new_Y: Any
+    new_Yvar: Any | None = None
     refit: bool = True
     fit_config: FitConfigSchema | None = None
     tensor_options: TensorOptionsSchema = Field(default_factory=TensorOptionsSchema)
@@ -152,6 +155,7 @@ class SuggestRequest(APIRequest):
     bo_model_config: ModelConfigSchema = Field(default_factory=ModelConfigSchema, alias="model_config")
     train_X: Any
     train_Y: Any
+    train_Yvar: Any | None = None
     bounds: Any
     fit_config: FitConfigSchema | None = None
     acquisition_config: AcquisitionConfigSchema

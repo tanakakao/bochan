@@ -48,6 +48,7 @@ class TabularDataConfig:
 
     input_cols: Sequence[ColumnKey] | None = None
     target_cols: Sequence[ColumnKey] | ColumnKey | None = None
+    target_variance_cols: Sequence[ColumnKey] | ColumnKey | None = None
     categorical_cols: Sequence[ColumnKey] = field(default_factory=list)
     target_categorical_cols: Sequence[ColumnKey] | None = None
     experiment_status_col: ColumnKey | None = None

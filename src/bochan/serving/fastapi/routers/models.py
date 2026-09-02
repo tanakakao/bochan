@@ -151,6 +151,11 @@ def fit_model(
             options,
             metadata=category_metadata,
         )
+        train_Yvar = (
+            to_tensor(request.train_Yvar, options)
+            if request.train_Yvar is not None
+            else None
+        )
         fit_config = to_fit_config(request.fit_config)
         data_context = (
             to_data_context(request.data_context, options)
@@ -164,7 +169,7 @@ def fit_model(
             bounds=bounds,
             data_context=data_context,
         )
-        optimizer.fit(train_X, train_Y)
+        optimizer.fit(train_X, train_Y, train_Yvar)
         bind_category_metadata(optimizer, category_metadata)
         model_id = store.add(optimizer)
         return _model_fit_response(model_id, optimizer)
@@ -232,6 +237,11 @@ def auto_candidates(
             if explicit_model_config is not None
             else to_tensor(request.train_Y, options)
         )
+        train_Yvar = (
+            to_tensor(request.train_Yvar, options)
+            if request.train_Yvar is not None
+            else None
+        )
         plan = _plan_from_request(request, train_X, train_Y, bounds)
 
         if explicit_model_config is not None:
@@ -255,7 +265,7 @@ def auto_candidates(
             bounds=bounds,
             data_context=data_context,
         )
-        optimizer.fit(train_X, train_Y)
+        optimizer.fit(train_X, train_Y, train_Yvar)
         bind_category_metadata(optimizer, category_metadata)
         model_id = store.add(optimizer)
 
@@ -332,6 +342,11 @@ def tell_model(
             options,
             optimizer=optimizer,
         )
+        new_Yvar = (
+            to_tensor(request.new_Yvar, options)
+            if request.new_Yvar is not None
+            else None
+        )
         fit_config = (
             to_fit_config(request.fit_config)
             if request.fit_config is not None
@@ -340,6 +355,7 @@ def tell_model(
         optimizer.tell(
             new_X,
             new_Y,
+            new_Yvar,
             refit=request.refit,
             fit_config=fit_config,
         )

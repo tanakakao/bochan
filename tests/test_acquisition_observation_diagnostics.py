@@ -16,11 +16,10 @@ from bochan.api.configs import (
 
 
 def _bundle(train_x, train_y, *, output_names=None, train_yvar=None):
-    return ModelBundle(
+    bundle = ModelBundle(
         model=SimpleNamespace(output_names=output_names),
         train_X=train_x,
         train_Y=train_y,
-        train_Yvar=train_yvar,
         model_config=ModelConfig(
             task_type="regression",
             model_type="base",
@@ -28,6 +27,9 @@ def _bundle(train_x, train_y, *, output_names=None, train_yvar=None):
         ),
         metadata={},
     )
+    if train_yvar is not None:
+        bundle.train_Yvar = train_yvar
+    return bundle
 
 
 def test_diagnostics_report_filtered_partial_scalar_baseline_and_status_counts():

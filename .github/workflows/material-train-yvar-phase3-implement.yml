@@ -1,0 +1,668 @@
+name: Material train Yvar Phase 3 implementation helper
+
+on:
+  push:
+    branches:
+      - feat/material-train-yvar-phase3
+    paths:
+      - .github/workflows/material-train-yvar-phase3-implement.yml
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/material-train-yvar-phase3
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Apply Phase 3 patch
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text(encoding="utf-8")
+              if old not in text:
+                  raise RuntimeError(f"Expected text not found in {path}: {old[:120]!r}")
+              file.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          # Canonical tabular config and dataset.
+          replace_once(
+              "src/bochan/tabular/config/data.py",
+              "    target_cols: Sequence[ColumnKey] | ColumnKey | None = None\n    categorical_cols: Sequence[ColumnKey] = field(default_factory=list)\n",
+              "    target_cols: Sequence[ColumnKey] | ColumnKey | None = None\n    target_variance_cols: Sequence[ColumnKey] | ColumnKey | None = None\n    categorical_cols: Sequence[ColumnKey] = field(default_factory=list)\n",
+          )
+          replace_once(
+              "src/bochan/tabular/data/dataset.py",
+              "    target_names: list[ColumnKey]\n    cat_dims: list[int]\n    bounds: Any | None = None\n",
+              "    target_names: list[ColumnKey]\n    cat_dims: list[int]\n    Yvar: Any | None = None\n    bounds: Any | None = None\n",
+          )
+
+          # DataFrame variance-column extraction. Variance columns are metadata, never features.
+          replace_once(
+              "src/bochan/tabular/data/conversion.py",
+              '''    target_cols = _as_list(config.target_cols)\n    input_cols = (\n        [column for column in data.columns if column not in target_cols]\n        if config.input_cols is None\n        else _as_list(config.input_cols)\n    )\n    if not input_cols:\n        raise ValueError("input_cols could not be inferred. Pass TabularDataConfig.input_cols.")\n\n    selected_cols = list(dict.fromkeys(input_cols + target_cols))\n''',
+              '''    target_cols = _as_list(config.target_cols)\n    target_variance_cols = _as_list(config.target_variance_cols)\n    if target_variance_cols and not target_cols:\n        raise ValueError("target_variance_cols requires target_cols.")\n    if target_variance_cols and len(target_variance_cols) != len(target_cols):\n        raise ValueError(\n            "target_variance_cols must contain exactly one variance column per target column."\n        )\n    overlap = sorted(set(target_cols).intersection(target_variance_cols), key=str)\n    if overlap:\n        raise ValueError(\n            "target_variance_cols must be distinct from target_cols; "\n            f"overlap={overlap!r}."\n        )\n    excluded = set(target_cols) | set(target_variance_cols)\n    input_cols = (\n        [column for column in data.columns if column not in excluded]\n        if config.input_cols is None\n        else _as_list(config.input_cols)\n    )\n    variance_inputs = sorted(set(input_cols).intersection(target_variance_cols), key=str)\n    if variance_inputs:\n        raise ValueError(\n            "target_variance_cols must not be included in input_cols; "\n            f"overlap={variance_inputs!r}."\n        )\n    if not input_cols:\n        raise ValueError("input_cols could not be inferred. Pass TabularDataConfig.input_cols.")\n\n    selected_cols = list(dict.fromkeys(input_cols + target_cols + target_variance_cols))\n''',
+          )
+          replace_once(
+              "src/bochan/tabular/data/conversion.py",
+              '''    X_df = work.loc[:, input_cols].copy()\n    Y_df = work.loc[:, target_cols].copy() if target_cols else None\n\n    category_maps, inverse_maps = _encode_dataframe_category_columns(\n''',
+              '''    X_df = work.loc[:, input_cols].copy()\n    Y_df = work.loc[:, target_cols].copy() if target_cols else None\n    Yvar_df = (\n        work.loc[:, target_variance_cols].copy()\n        if target_variance_cols\n        else None\n    )\n\n    category_maps, inverse_maps = _encode_dataframe_category_columns(\n''',
+          )
+          replace_once(
+              "src/bochan/tabular/data/conversion.py",
+              '''    Y = None\n    if Y_df is not None:\n        Y = _to_tensor(Y_df.to_numpy(dtype=float), dtype=dtype, device=config.device)\n        if Y.ndim == 1:\n            Y = Y.reshape(-1, 1)\n\n    feature_names = list(input_cols)\n    return TabularDataset(\n        X=X,\n        Y=Y,\n''',
+              '''    Y = None\n    if Y_df is not None:\n        Y = _to_tensor(Y_df.to_numpy(dtype=float), dtype=dtype, device=config.device)\n        if Y.ndim == 1:\n            Y = Y.reshape(-1, 1)\n\n    Yvar = None\n    if Yvar_df is not None:\n        non_numeric = [\n            column\n            for column in target_variance_cols\n            if not pd.api.types.is_numeric_dtype(Yvar_df.loc[:, column])\n        ]\n        if non_numeric:\n            raise TypeError(\n                "target_variance_cols must be numeric variance columns; "\n                f"non_numeric={non_numeric!r}."\n            )\n        variance_values = Yvar_df.to_numpy(dtype=float)\n        np = _numpy()\n        if not np.isfinite(variance_values).all():\n            raise ValueError("target variance values must be finite.")\n        if (variance_values <= 0.0).any():\n            raise ValueError("target variance values must be strictly positive.")\n        Yvar = _to_tensor(variance_values, dtype=dtype, device=config.device)\n        if Yvar.ndim == 1:\n            Yvar = Yvar.reshape(-1, 1)\n        if Y is None or Yvar.shape != Y.shape:\n            raise ValueError(\n                "Target variance shape must match target shape after tabular conversion."\n            )\n\n    feature_names = list(input_cols)\n    return TabularDataset(\n        X=X,\n        Y=Y,\n        Yvar=Yvar,\n''',
+          )
+
+          # Generic model builder: forward scalar/wide Yvar and slice independent outputs.
+          p = "src/bochan/api/modeling/build.py"
+          replace_once(
+              p,
+              "def _build_model_kwargs(train_X: Any, train_Y: Any, config: ModelConfig, cat_dims: list[int]) -> dict[str, Any]:\n",
+              "def _build_model_kwargs(\n    train_X: Any,\n    train_Y: Any,\n    train_Yvar: Any | None,\n    config: ModelConfig,\n    cat_dims: list[int],\n) -> dict[str, Any]:\n",
+          )
+          replace_once(
+              p,
+              '''    if config.pass_train_data:\n        kwargs[config.train_x_name] = train_X\n        kwargs[config.train_y_name] = train_Y\n\n    pass_cat_dims = config.pass_cat_dims\n''',
+              '''    if config.pass_train_data:\n        kwargs[config.train_x_name] = train_X\n        kwargs[config.train_y_name] = train_Y\n        if train_Yvar is not None:\n            if "train_Yvar" in config.model_kwargs:\n                raise ValueError(\n                    "train_Yvar was supplied both as training data and model_kwargs."\n                )\n            kwargs["train_Yvar"] = train_Yvar\n\n    pass_cat_dims = config.pass_cat_dims\n''',
+          )
+          replace_once(
+              p,
+              '''def _build_single_model(\n    train_X: Any,\n    train_Y: Any,\n    config: ModelConfig,\n''',
+              '''def _build_single_model(\n    train_X: Any,\n    train_Y: Any,\n    train_Yvar: Any | None,\n    config: ModelConfig,\n''',
+          )
+          replace_once(
+              p,
+              "    kwargs = _build_model_kwargs(train_X, train_Y, config, cat_dims)\n",
+              "    kwargs = _build_model_kwargs(train_X, train_Y, train_Yvar, config, cat_dims)\n",
+          )
+          replace_once(
+              p,
+              "def build_multi_output_model(train_X: Any, train_Y: Any, config: ModelConfig, *, model_registry: Mapping[Any, Any] | None = None) -> ModelBundle:\n",
+              "def build_multi_output_model(\n    train_X: Any,\n    train_Y: Any,\n    train_Yvar: Any | None,\n    config: ModelConfig,\n    *,\n    model_registry: Mapping[Any, Any] | None = None,\n) -> ModelBundle:\n",
+          )
+          replace_once(
+              p,
+              '''    for i, output_config in enumerate(output_configs):\n        output_train_Y = _slice_output_y(train_Y, i, dim=mo_config.train_y_slice_dim)\n        sub_bundles.append(_build_single_model(train_X=train_X, train_Y=output_train_Y, config=output_config, model_registry=model_registry))\n''',
+              '''    for i, output_config in enumerate(output_configs):\n        output_train_Y = _slice_output_y(train_Y, i, dim=mo_config.train_y_slice_dim)\n        output_train_Yvar = (\n            None\n            if train_Yvar is None\n            else _slice_output_y(train_Yvar, i, dim=mo_config.train_y_slice_dim)\n        )\n        sub_bundles.append(\n            _build_single_model(\n                train_X=train_X,\n                train_Y=output_train_Y,\n                train_Yvar=output_train_Yvar,\n                config=output_config,\n                model_registry=model_registry,\n            )\n        )\n''',
+          )
+          replace_once(
+              p,
+              '''def build_model(train_X: Any, train_Y: Any, config: ModelConfig, *, model_registry: Mapping[Any, Any] | None = None) -> ModelBundle:\n    if config.multi_output_config is not None:\n        return build_multi_output_model(train_X, train_Y, config, model_registry=model_registry)\n    return _build_single_model(train_X, train_Y, config, model_registry=model_registry)\n''',
+              '''def _validate_train_yvar_shape(train_Y: Any, train_Yvar: Any | None) -> None:\n    if train_Yvar is None:\n        return\n    if not hasattr(train_Y, "shape") or not hasattr(train_Yvar, "shape"):\n        raise TypeError("train_Y and train_Yvar must expose shape attributes.")\n    y_shape = tuple(train_Y.shape)\n    yvar_shape = tuple(train_Yvar.shape)\n    if len(y_shape) == 1:\n        y_shape = (y_shape[0], 1)\n    if len(yvar_shape) == 1:\n        yvar_shape = (yvar_shape[0], 1)\n    if y_shape != yvar_shape:\n        raise ValueError(\n            "train_Yvar must match train_Y shape; "\n            f"got train_Y={tuple(train_Y.shape)!r}, train_Yvar={tuple(train_Yvar.shape)!r}."\n        )\n\n\ndef build_model(\n    train_X: Any,\n    train_Y: Any,\n    config: ModelConfig,\n    *,\n    train_Yvar: Any | None = None,\n    model_registry: Mapping[Any, Any] | None = None,\n) -> ModelBundle:\n    _validate_train_yvar_shape(train_Y, train_Yvar)\n    if config.multi_output_config is not None:\n        return build_multi_output_model(\n            train_X,\n            train_Y,\n            train_Yvar,\n            config,\n            model_registry=model_registry,\n        )\n    return _build_single_model(\n        train_X,\n        train_Y,\n        train_Yvar,\n        config,\n        model_registry=model_registry,\n    )\n''',
+          )
+          # Internal callers of _build_single_model / build_multi_output_model are only above;
+          # build_model stays backward compatible because train_Yvar is keyword-only.
+
+          # High-level BayesianOptimizer lifecycle.
+          p = "src/bochan/api/optimizer/core.py"
+          replace_once(
+              p,
+              "        self.train_X: Any | None = None\n        self.train_Y: Any | None = None\n",
+              "        self.train_X: Any | None = None\n        self.train_Y: Any | None = None\n        self.train_Yvar: Any | None = None\n",
+          )
+          replace_once(
+              p,
+              '''    def fit(\n        self,\n        train_X: Any,\n        train_Y: Any,\n        *,\n''',
+              '''    def fit(\n        self,\n        train_X: Any,\n        train_Y: Any,\n        train_Yvar: Any | None = None,\n        *,\n''',
+          )
+          replace_once(
+              p,
+              "        self.train_X = train_X\n        self.train_Y = train_Y\n",
+              "        self.train_X = train_X\n        self.train_Y = train_Y\n        self.train_Yvar = train_Yvar\n",
+          )
+          replace_once(
+              p,
+              '''        self.bundle = build_model(\n            train_X=train_X,\n            train_Y=train_Y,\n            config=self.model_config,\n''',
+              '''        self.bundle = build_model(\n            train_X=train_X,\n            train_Y=train_Y,\n            train_Yvar=train_Yvar,\n            config=self.model_config,\n''',
+          )
+          replace_once(
+              p,
+              "        return self.fit(self.train_X, self.train_Y, fit_config=fit_config or self.fit_config)\n",
+              "        return self.fit(\n            self.train_X,\n            self.train_Y,\n            self.train_Yvar,\n            fit_config=fit_config or self.fit_config,\n        )\n",
+          )
+          replace_once(
+              p,
+              '''    def cross_validate(\n        self,\n        train_X: Any,\n        train_Y: Any,\n        *,\n''',
+              '''    def cross_validate(\n        self,\n        train_X: Any,\n        train_Y: Any,\n        train_Yvar: Any | None = None,\n        *,\n''',
+          )
+          replace_once(
+              p,
+              '''            train_X,\n            train_Y,\n            model_config=model_config,\n''',
+              '''            train_X,\n            train_Y,\n            train_Yvar,\n            model_config=model_config,\n''',
+          )
+          replace_once(
+              p,
+              '''    def tell(\n        self,\n        new_X: Any,\n        new_Y: Any,\n        *,\n        refit: bool = True,\n        fit_config: FitConfig | None = None,\n    ) -> "BayesianOptimizer":\n        """新しい観測データを追加し、必要なら再学習する。"""\n        self.update_data(new_X, new_Y)\n''',
+              '''    def tell(\n        self,\n        new_X: Any,\n        new_Y: Any,\n        new_Yvar: Any | None = None,\n        *,\n        refit: bool = True,\n        fit_config: FitConfig | None = None,\n    ) -> "BayesianOptimizer":\n        """新しい観測データを追加し、必要なら再学習する。"""\n        self.update_data(new_X, new_Y, new_Yvar)\n''',
+          )
+          replace_once(
+              p,
+              '''    def update_data(self, new_X: Any, new_Y: Any) -> "BayesianOptimizer":\n        """保持している訓練データに新しい観測を追加する。"""\n        if self.train_X is None or self.train_Y is None:\n            self.train_X = new_X\n            self.train_Y = new_Y\n            return self\n        self.train_X = _concat_rows(self.train_X, new_X)\n        self.train_Y = _concat_rows(self.train_Y, new_Y)\n        return self\n''',
+              '''    def update_data(\n        self,\n        new_X: Any,\n        new_Y: Any,\n        new_Yvar: Any | None = None,\n    ) -> "BayesianOptimizer":\n        """保持している訓練データに新しい観測を追加する。"""\n        if self.train_X is None or self.train_Y is None:\n            self.train_X = new_X\n            self.train_Y = new_Y\n            self.train_Yvar = new_Yvar\n            return self\n        if self.train_Yvar is not None and new_Yvar is None:\n            raise ValueError(\n                "new_Yvar is required because the fitted optimizer uses known observation variance."\n            )\n        if self.train_Yvar is None and new_Yvar is not None:\n            raise ValueError(\n                "new_Yvar cannot be added to an optimizer whose existing observations have no train_Yvar."\n            )\n        self.train_X = _concat_rows(self.train_X, new_X)\n        self.train_Y = _concat_rows(self.train_Y, new_Y)\n        if self.train_Yvar is not None:\n            self.train_Yvar = _concat_rows(self.train_Yvar, new_Yvar)\n        return self\n''',
+          )
+
+          # CV fold models must receive the matching variance rows.
+          p = "src/bochan/api/evaluation/cross_validation.py"
+          replace_once(
+              p,
+              '''def cross_validate_optimizer(\n    optimizer: Any,\n    train_X: Any,\n    train_Y: Any,\n    *,\n''',
+              '''def cross_validate_optimizer(\n    optimizer: Any,\n    train_X: Any,\n    train_Y: Any,\n    train_Yvar: Any | None = None,\n    *,\n''',
+          )
+          replace_once(
+              p,
+              '''    X, Y = torch.as_tensor(train_X), _as_2d(train_Y)\n    if X.shape[0] != Y.shape[0]:\n        raise ValueError("train_X and train_Y must contain the same number of rows.")\n''',
+              '''    X, Y = torch.as_tensor(train_X), _as_2d(train_Y)\n    Yvar = None if train_Yvar is None else _as_2d(train_Yvar)\n    if X.shape[0] != Y.shape[0]:\n        raise ValueError("train_X and train_Y must contain the same number of rows.")\n    if Yvar is not None and Yvar.shape != Y.shape:\n        raise ValueError(\n            "train_Yvar must match train_Y shape for cross-validation; "\n            f"got train_Y={tuple(Y.shape)!r}, train_Yvar={tuple(Yvar.shape)!r}."\n        )\n''',
+          )
+          replace_once(
+              p,
+              "        fold_optimizer.fit(X[train_idx], Y[train_idx])\n",
+              "        fold_optimizer.fit(\n            X[train_idx],\n            Y[train_idx],\n            None if Yvar is None else Yvar[train_idx],\n        )\n",
+          )
+
+          # Tabular facade: reject ambiguous alpha/likelihood and pass Dataset.Yvar.
+          p = "src/bochan/tabular/optimizer/fitting.py"
+          replace_once(
+              p,
+              '''def model_config_for_dataset(owner: Any, dataset: Any) -> Any:\n    config = _configure_tabular_crabnet_model(\n''',
+              '''def model_config_for_dataset(owner: Any, dataset: Any) -> Any:\n    config = _configure_tabular_crabnet_model(\n''',
+          )
+          replace_once(
+              p,
+              '''    if config.cat_dims is None and dataset.cat_dims:\n        config = replace(config, cat_dims=dataset.cat_dims)\n    return apply_alpha_to_model_config(\n''',
+              '''    if config.cat_dims is None and dataset.cat_dims:\n        config = replace(config, cat_dims=dataset.cat_dims)\n    if dataset.Yvar is not None:\n        model_kwargs = dict(config.model_kwargs or {})\n        if owner.alpha is not None or "_tabular_noise_alpha" in model_kwargs:\n            raise ValueError(\n                "target_variance_cols cannot be combined with alpha; known per-row "\n                "observation variance already defines the Gaussian noise."\n            )\n        if "likelihood" in model_kwargs:\n            raise ValueError(\n                "target_variance_cols cannot be combined with model_kwargs['likelihood']; "\n                "remove the explicit likelihood to use fixed known observation variance."\n            )\n    return apply_alpha_to_model_config(\n''',
+          )
+          replace_once(
+              p,
+              '''    if owner.observation.uses_observation_conversion(resolved) and run_cv:\n        raise ValueError(\n            "Cross-validation requires an observation-aware validation protocol."\n        )\n    dataset = to_dataset(owner, fit_data, y, data_config=resolved)\n''',
+              '''    if owner.observation.uses_observation_conversion(resolved) and run_cv:\n        raise ValueError(\n            "Cross-validation requires an observation-aware validation protocol."\n        )\n    if (\n        owner.observation.uses_observation_conversion(resolved)\n        and resolved.target_variance_cols is not None\n    ):\n        raise ValueError(\n            "target_variance_cols is not yet supported with "\n            "target_missing_strategy='keep' or experiment_status_col."\n        )\n    dataset = to_dataset(owner, fit_data, y, data_config=resolved)\n''',
+          )
+          replace_once(
+              p,
+              '''        owner.cross_validation_result_ = owner.bo.cross_validate(\n            dataset.X,\n            dataset.Y,\n            model_config=model_config,\n''',
+              '''        owner.cross_validation_result_ = owner.bo.cross_validate(\n            dataset.X,\n            dataset.Y,\n            dataset.Yvar,\n            model_config=model_config,\n''',
+          )
+          replace_once(
+              p,
+              '''    owner.bo.fit(\n        dataset.X,\n        dataset.Y,\n        model_config=model_config,\n''',
+              '''    owner.bo.fit(\n        dataset.X,\n        dataset.Y,\n        dataset.Yvar,\n        model_config=model_config,\n''',
+          )
+          replace_once(
+              p,
+              '''    metadata["feature_cols"] = list(owner.dataset.feature_names)\n    metadata["target_cols"] = list(owner.dataset.target_names)\n''',
+              '''    metadata["feature_cols"] = list(owner.dataset.feature_names)\n    metadata["target_cols"] = list(owner.dataset.target_names)\n    metadata["known_observation_variance"] = owner.dataset.Yvar is not None\n    if owner.data_config.target_variance_cols is not None:\n        metadata["target_variance_cols"] = list(\n            _as_list(owner.data_config.target_variance_cols)\n        )\n''',
+          )
+          # fitting.py already imports torch, add _as_list import from columns.
+          replace_once(
+              p,
+              "from ..data import dataframe_to_tensors, numpy_to_tensors\n",
+              "from ..data import dataframe_to_tensors, numpy_to_tensors\nfrom ..data.columns import _as_list\n",
+          )
+
+          # Direct FastAPI tensor schemas.
+          p = "src/bochan/serving/fastapi/schemas/requests.py"
+          replace_once(p, "    train_Y: Any\n    bounds: Any | None = None\n", "    train_Y: Any\n    train_Yvar: Any | None = None\n    bounds: Any | None = None\n")
+          replace_once(
+              p,
+              '''class AutoCandidateRequest(APIRequest):\n    """Plan model settings, fit a model, and generate candidates in one request."""\n\n    goal: str\n    train_X: Any\n    train_Y: Any\n    bounds: Any | None = None\n''',
+              '''class AutoCandidateRequest(APIRequest):\n    """Plan model settings, fit a model, and generate candidates in one request."""\n\n    goal: str\n    train_X: Any\n    train_Y: Any\n    train_Yvar: Any | None = None\n    bounds: Any | None = None\n''',
+          )
+          replace_once(p, "    new_Y: Any\n    refit: bool = True\n", "    new_Y: Any\n    new_Yvar: Any | None = None\n    refit: bool = True\n")
+          replace_once(
+              p,
+              '''class SuggestRequest(APIRequest):\n    """Stateless fit-and-candidate request.\n\n    The endpoint fits a temporary optimizer from the supplied training data and\n    immediately returns candidates without registering model state.\n    """\n\n    bo_model_config: ModelConfigSchema = Field(default_factory=ModelConfigSchema, alias="model_config")\n    train_X: Any\n    train_Y: Any\n    bounds: Any\n''',
+              '''class SuggestRequest(APIRequest):\n    """Stateless fit-and-candidate request.\n\n    The endpoint fits a temporary optimizer from the supplied training data and\n    immediately returns candidates without registering model state.\n    """\n\n    bo_model_config: ModelConfigSchema = Field(default_factory=ModelConfigSchema, alias="model_config")\n    train_X: Any\n    train_Y: Any\n    train_Yvar: Any | None = None\n    bounds: Any\n''',
+          )
+
+          # Direct FastAPI router forwarding.
+          p = "src/bochan/serving/fastapi/routers/models.py"
+          replace_once(
+              p,
+              '''        train_Y = to_target_tensor(\n            request.train_Y,\n            options,\n            metadata=category_metadata,\n        )\n        fit_config = to_fit_config(request.fit_config)\n''',
+              '''        train_Y = to_target_tensor(\n            request.train_Y,\n            options,\n            metadata=category_metadata,\n        )\n        train_Yvar = (\n            to_tensor(request.train_Yvar, options)\n            if request.train_Yvar is not None\n            else None\n        )\n        fit_config = to_fit_config(request.fit_config)\n''',
+          )
+          replace_once(p, "        optimizer.fit(train_X, train_Y)\n", "        optimizer.fit(train_X, train_Y, train_Yvar)\n")
+          replace_once(
+              p,
+              '''        train_Y = (\n            to_target_tensor(\n                request.train_Y,\n                options,\n                metadata=category_metadata,\n            )\n            if explicit_model_config is not None\n            else to_tensor(request.train_Y, options)\n        )\n        plan = _plan_from_request(request, train_X, train_Y, bounds)\n''',
+              '''        train_Y = (\n            to_target_tensor(\n                request.train_Y,\n                options,\n                metadata=category_metadata,\n            )\n            if explicit_model_config is not None\n            else to_tensor(request.train_Y, options)\n        )\n        train_Yvar = (\n            to_tensor(request.train_Yvar, options)\n            if request.train_Yvar is not None\n            else None\n        )\n        plan = _plan_from_request(request, train_X, train_Y, bounds)\n''',
+          )
+          # second optimizer.fit occurrence in auto-candidates
+          replace_once(p, "        optimizer.fit(train_X, train_Y)\n", "        optimizer.fit(train_X, train_Y, train_Yvar)\n")
+          replace_once(
+              p,
+              '''        new_Y = to_target_tensor(\n            request.new_Y,\n            options,\n            optimizer=optimizer,\n        )\n        fit_config = (\n''',
+              '''        new_Y = to_target_tensor(\n            request.new_Y,\n            options,\n            optimizer=optimizer,\n        )\n        new_Yvar = (\n            to_tensor(request.new_Yvar, options)\n            if request.new_Yvar is not None\n            else None\n        )\n        fit_config = (\n''',
+          )
+          replace_once(
+              p,
+              '''        optimizer.tell(\n            new_X,\n            new_Y,\n            refit=request.refit,\n''',
+              '''        optimizer.tell(\n            new_X,\n            new_Y,\n            new_Yvar,\n            refit=request.refit,\n''',
+          )
+
+          p = "src/bochan/serving/fastapi/routers/suggestions.py"
+          replace_once(
+              p,
+              '''        train_Y = to_target_tensor(\n            request.train_Y,\n            options,\n            metadata=category_metadata,\n        )\n        fit_config = to_fit_config(request.fit_config)\n''',
+              '''        train_Y = to_target_tensor(\n            request.train_Y,\n            options,\n            metadata=category_metadata,\n        )\n        train_Yvar = (\n            to_tensor(request.train_Yvar, options)\n            if request.train_Yvar is not None\n            else None\n        )\n        fit_config = to_fit_config(request.fit_config)\n''',
+          )
+          replace_once(p, "        optimizer.fit(train_X, train_Y)\n", "        optimizer.fit(train_X, train_Y, train_Yvar)\n")
+
+          # Tabular FastAPI schema and service.
+          p = "src/bochan/serving/fastapi/schemas/tabular.py"
+          replace_once(p, "    target_cols: list[str] | str\n    categorical_cols: list[str] = Field(default_factory=list)\n", "    target_cols: list[str] | str\n    target_variance_cols: list[str] | str | None = None\n    categorical_cols: list[str] = Field(default_factory=list)\n")
+          replace_once(
+              p,
+              '''        if status is not None:\n            if status in self.input_cols:\n                raise ValueError("experiment_status_col must not be included in input_cols.")\n            if status in targets:\n                raise ValueError("experiment_status_col must not be included in target_cols.")\n''',
+              '''        variance_cols = (\n            []\n            if self.target_variance_cols is None\n            else list(self.target_variance_cols)\n            if isinstance(self.target_variance_cols, list)\n            else [self.target_variance_cols]\n        )\n        if variance_cols:\n            if len(variance_cols) != len(targets):\n                raise ValueError(\n                    "target_variance_cols must contain exactly one variance column per target column."\n                )\n            overlap = sorted(set(variance_cols).intersection(targets))\n            if overlap:\n                raise ValueError(\n                    "target_variance_cols must be distinct from target_cols; "\n                    f"overlap={overlap!r}."\n                )\n            input_overlap = sorted(set(variance_cols).intersection(self.input_cols))\n            if input_overlap:\n                raise ValueError(\n                    "target_variance_cols must not be included in input_cols; "\n                    f"overlap={input_overlap!r}."\n                )\n        if status is not None:\n            if status in self.input_cols:\n                raise ValueError("experiment_status_col must not be included in input_cols.")\n            if status in targets:\n                raise ValueError("experiment_status_col must not be included in target_cols.")\n            if status in variance_cols:\n                raise ValueError(\n                    "experiment_status_col must not be included in target_variance_cols."\n                )\n''',
+          )
+
+          p = "src/bochan/serving/fastapi/services/tabular.py"
+          replace_once(p, "        target_cols=request.target_cols,\n        categorical_cols=request.categorical_cols,\n", "        target_cols=request.target_cols,\n        target_variance_cols=request.target_variance_cols,\n        categorical_cols=request.categorical_cols,\n")
+
+          for p in [
+              "src/bochan/serving/fastapi/services/mace_tabular.py",
+              "src/bochan/serving/fastapi/services/chgnet_tabular.py",
+              "src/bochan/serving/fastapi/services/m3gnet_tabular.py",
+              "src/bochan/serving/fastapi/services/alignn_tabular.py",
+          ]:
+              replace_once(
+                  p,
+                  "        target_cols=request.target_cols,\n        categorical_cols=request.categorical_cols,\n",
+                  "        target_cols=request.target_cols,\n        target_variance_cols=request.target_variance_cols,\n        categorical_cols=request.categorical_cols,\n",
+              )
+
+          # Focused tests: routing only, Phase 1/2 own the numerical likelihood tests.
+          Path("tests/test_material_train_yvar_phase3.py").write_text(r'''from __future__ import annotations
+
+from dataclasses import replace
+from typing import Any
+
+import pandas as pd
+import pytest
+import torch
+
+from bochan.api import BayesianOptimizer, ModelConfig, MultiOutputConfig
+from bochan.api.modeling.build import build_model
+from bochan.serving.fastapi.schemas.requests import FitModelRequest, TellRequest
+from bochan.serving.fastapi.schemas.tabular import TabularFitModelRequest
+from bochan.tabular import TabularDataConfig
+from bochan.tabular.data import dataframe_to_tensors
+
+
+class CaptureModel:
+    def __init__(self, train_X: Any, train_Y: Any, train_Yvar: Any | None = None, **_: Any) -> None:
+        self.train_X = train_X
+        self.train_Y = train_Y
+        self.train_Yvar = train_Yvar
+
+
+class CaptureWrapper:
+    def __init__(self, submodels: list[Any]) -> None:
+        self.models = submodels
+
+
+def _capture_wrapper(*, submodels: list[Any], **_: Any) -> CaptureWrapper:
+    return CaptureWrapper(submodels)
+
+
+def _capture_config() -> ModelConfig:
+    return ModelConfig(
+        task_type="regression",
+        model_type="capture",
+        model_factory=CaptureModel,
+    )
+
+
+def test_dataframe_target_variance_columns_are_not_features() -> None:
+    frame = pd.DataFrame(
+        {
+            "x": [0.0, 1.0, 2.0],
+            "y1": [1.0, 1.5, 2.0],
+            "y2": [2.0, 2.5, 3.0],
+            "y1_var": [0.01, 0.02, 0.03],
+            "y2_var": [0.04, 0.05, 0.06],
+        }
+    )
+    dataset = dataframe_to_tensors(
+        frame,
+        TabularDataConfig(
+            target_cols=["y1", "y2"],
+            target_variance_cols=["y1_var", "y2_var"],
+        ),
+    )
+
+    assert dataset.feature_names == ["x"]
+    assert dataset.Yvar is not None
+    assert dataset.Yvar.shape == dataset.Y.shape == torch.Size([3, 2])
+    torch.testing.assert_close(
+        dataset.Yvar,
+        torch.tensor(
+            [[0.01, 0.04], [0.02, 0.05], [0.03, 0.06]],
+            dtype=torch.double,
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    ("variance_values", "match"),
+    [
+        ([0.01, 0.0, 0.03], "strictly positive"),
+        ([0.01, float("inf"), 0.03], "finite"),
+    ],
+)
+def test_dataframe_target_variance_values_are_validated(
+    variance_values: list[float],
+    match: str,
+) -> None:
+    frame = pd.DataFrame({"x": [0.0, 1.0, 2.0], "y": [1.0, 2.0, 3.0], "y_var": variance_values})
+    with pytest.raises(ValueError, match=match):
+        dataframe_to_tensors(
+            frame,
+            TabularDataConfig(
+                input_cols=["x"],
+                target_cols="y",
+                target_variance_cols="y_var",
+            ),
+        )
+
+
+def test_dataframe_target_variance_column_contract_is_validated() -> None:
+    frame = pd.DataFrame(
+        {"x": [0.0, 1.0], "y1": [1.0, 2.0], "y2": [2.0, 3.0], "v": [0.01, 0.02]}
+    )
+    with pytest.raises(ValueError, match="exactly one variance column"):
+        dataframe_to_tensors(
+            frame,
+            TabularDataConfig(
+                input_cols=["x"],
+                target_cols=["y1", "y2"],
+                target_variance_cols=["v"],
+            ),
+        )
+    with pytest.raises(ValueError, match="must not be included in input_cols"):
+        dataframe_to_tensors(
+            frame,
+            TabularDataConfig(
+                input_cols=["x", "v"],
+                target_cols="y1",
+                target_variance_cols="v",
+            ),
+        )
+
+
+def test_build_model_forwards_scalar_and_wide_train_yvar() -> None:
+    X = torch.rand(4, 2, dtype=torch.double)
+    Y = torch.rand(4, 2, dtype=torch.double)
+    Yvar = torch.full_like(Y, 0.01)
+    model = build_model(
+        X,
+        Y,
+        _capture_config(),
+        train_Yvar=Yvar,
+    ).model
+
+    assert model.train_Yvar is Yvar
+    assert model.train_Y.shape == torch.Size([4, 2])
+
+
+def test_independent_multi_output_slices_train_yvar_per_output() -> None:
+    X = torch.rand(4, 2, dtype=torch.double)
+    Y = torch.rand(4, 2, dtype=torch.double)
+    Yvar = torch.tensor(
+        [[0.01, 0.02], [0.03, 0.04], [0.05, 0.06], [0.07, 0.08]],
+        dtype=torch.double,
+    )
+    output = _capture_config()
+    config = replace(
+        output,
+        task_type="multi_objective",
+        multi_output_config=MultiOutputConfig(
+            output_configs=[output, output],
+            wrapper_factory=_capture_wrapper,
+        ),
+    )
+    wrapper = build_model(X, Y, config, train_Yvar=Yvar).model
+
+    assert len(wrapper.models) == 2
+    torch.testing.assert_close(wrapper.models[0].train_Yvar, Yvar[:, :1])
+    torch.testing.assert_close(wrapper.models[1].train_Yvar, Yvar[:, 1:2])
+
+
+def test_bayesian_optimizer_update_requires_consistent_known_noise() -> None:
+    optimizer = BayesianOptimizer(_capture_config())
+    optimizer.train_X = torch.zeros(2, 1)
+    optimizer.train_Y = torch.zeros(2, 1)
+    optimizer.train_Yvar = torch.full((2, 1), 0.01)
+
+    with pytest.raises(ValueError, match="new_Yvar is required"):
+        optimizer.update_data(torch.ones(1, 1), torch.ones(1, 1))
+
+    optimizer.update_data(
+        torch.ones(1, 1),
+        torch.ones(1, 1),
+        torch.full((1, 1), 0.02),
+    )
+    assert optimizer.train_Yvar.shape == torch.Size([3, 1])
+    torch.testing.assert_close(optimizer.train_Yvar[-1], torch.tensor([0.02]))
+
+
+def test_fastapi_tensor_schemas_accept_known_variance() -> None:
+    request = FitModelRequest.model_validate(
+        {
+            "model_config": {"model_type": "base", "task_type": "regression"},
+            "train_X": [[0.0], [1.0]],
+            "train_Y": [[1.0], [2.0]],
+            "train_Yvar": [[0.01], [0.02]],
+        }
+    )
+    assert request.train_Yvar == [[0.01], [0.02]]
+    tell = TellRequest(new_X=[[2.0]], new_Y=[[3.0]], new_Yvar=[[0.03]])
+    assert tell.new_Yvar == [[0.03]]
+
+
+def test_tabular_fastapi_schema_validates_variance_columns() -> None:
+    payload = {
+        "data": [
+            {"x": 0.0, "y1": 1.0, "y2": 2.0, "v1": 0.01, "v2": 0.02},
+            {"x": 1.0, "y1": 1.5, "y2": 2.5, "v1": 0.02, "v2": 0.03},
+        ],
+        "model_config": {"model_type": "deepkernel", "task_type": "multi_objective"},
+        "input_cols": ["x"],
+        "target_cols": ["y1", "y2"],
+        "target_variance_cols": ["v1", "v2"],
+    }
+    request = TabularFitModelRequest.model_validate(payload)
+    assert request.target_variance_cols == ["v1", "v2"]
+
+    bad = dict(payload)
+    bad["target_variance_cols"] = ["v1"]
+    with pytest.raises(ValueError, match="exactly one variance column"):
+        TabularFitModelRequest.model_validate(bad)
+''', encoding="utf-8")
+
+          Path("docs/material_train_yvar_phase3.md").write_text(r'''# Material `train_Yvar` Phase 3
+
+Phase 3 exposes the fixed known-observation-variance support from Phases 1 and 2 through bochan's high-level tabular and FastAPI workflows.
+
+## Tabular column contract
+
+`TabularDataConfig.target_variance_cols` contains one **variance** column for each `target_cols` entry, in the same order. Values are variances, not standard deviations. They must be numeric, finite, and strictly positive.
+
+Variance columns are metadata: when `input_cols` is inferred they are excluded from `X`, and explicitly including a variance column in `input_cols` is rejected.
+
+```python
+optimizer = TabularBayesianOptimizer(
+    model_config={"model_type": "mace_multitask", "task_type": "multi_objective"},
+    input_cols=["structure_id", "temperature"],
+    target_cols=["strength", "ductility"],
+    target_variance_cols=["strength_var", "ductility_var"],
+    structure_col="structure_id",
+    structure_catalog=structures,
+    bounds={"temperature": [800.0, 1200.0]},
+)
+optimizer.fit(frame)
+```
+
+The resulting `TabularDataset.Yvar` is forwarded to `BayesianOptimizer.fit`. Correlated multitask models receive the full `[n, m]` tensor. Independent multi-output models receive the corresponding `[n, 1]` slice for each output.
+
+## Direct tensor API
+
+The core optimizer accepts known observation variance directly:
+
+```python
+optimizer.fit(train_X, train_Y, train_Yvar)
+```
+
+`refit()` preserves the stored variance. `tell(new_X, new_Y, new_Yvar)` appends it. Once an optimizer was fitted with known variance, every later observed row must also provide `new_Yvar`; partial known-noise histories are rejected.
+
+## FastAPI
+
+The direct tensor endpoints accept `train_Yvar`, and `/models/{model_id}/tell` accepts `new_Yvar`. Tabular fit requests accept `target_variance_cols` and material-specific tabular schemas inherit the same field.
+
+Example tabular fragment:
+
+```json
+{
+  "input_cols": ["structure_id", "temperature"],
+  "target_cols": ["strength", "ductility"],
+  "target_variance_cols": ["strength_var", "ductility_var"]
+}
+```
+
+## Noise-policy rules
+
+Known per-row variance and a global `alpha` / explicit tabular likelihood are different noise contracts. Phase 3 rejects `target_variance_cols` together with `alpha` or `model_kwargs.likelihood` instead of silently choosing one.
+
+When no variance is supplied, existing learned-noise behavior is unchanged.
+
+## Current boundary
+
+Observation-aware tabular conversion (`target_missing_strategy="keep"` or `experiment_status_col`) is intentionally rejected together with `target_variance_cols` in Phase 3. That path needs a separate contract for missing/pending rows whose objective variance is not yet observed.
+''', encoding="utf-8")
+
+          Path(".github/workflows/material-train-yvar-phase3-smoke.yml").write_text(r'''name: Material train Yvar Phase 3 smoke
+
+on:
+  pull_request:
+    paths:
+      - "src/bochan/api/evaluation/cross_validation.py"
+      - "src/bochan/api/modeling/build.py"
+      - "src/bochan/api/optimizer/core.py"
+      - "src/bochan/tabular/**"
+      - "src/bochan/serving/fastapi/**"
+      - "tests/test_material_train_yvar_phase3.py"
+      - ".github/workflows/material-train-yvar-phase3-smoke.yml"
+  push:
+    branches: [main]
+    paths:
+      - "src/bochan/api/evaluation/cross_validation.py"
+      - "src/bochan/api/modeling/build.py"
+      - "src/bochan/api/optimizer/core.py"
+      - "src/bochan/tabular/**"
+      - "src/bochan/serving/fastapi/**"
+      - "tests/test_material_train_yvar_phase3.py"
+      - ".github/workflows/material-train-yvar-phase3-smoke.yml"
+
+jobs:
+  high-level-known-noise:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install high-level test surface
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[test,tabular,api]"
+          python -m pip install ruff
+      - name: Phase 3 known-variance tests
+        run: python -m pytest tests/test_material_train_yvar_phase3.py -q
+      - name: Core API and tabular regressions
+        run: |
+          python -m pytest tests/test_api.py tests/test_tabular_api.py -q --maxfail=1
+      - name: Ruff
+        run: |
+          ruff check \
+            src/bochan/api/evaluation/cross_validation.py \
+            src/bochan/api/modeling/build.py \
+            src/bochan/api/optimizer/core.py \
+            src/bochan/tabular/config/data.py \
+            src/bochan/tabular/data/conversion.py \
+            src/bochan/tabular/data/dataset.py \
+            src/bochan/tabular/optimizer/fitting.py \
+            src/bochan/serving/fastapi/routers/models.py \
+            src/bochan/serving/fastapi/routers/suggestions.py \
+            src/bochan/serving/fastapi/schemas/requests.py \
+            src/bochan/serving/fastapi/schemas/tabular.py \
+            src/bochan/serving/fastapi/services/tabular.py \
+            src/bochan/serving/fastapi/services/mace_tabular.py \
+            src/bochan/serving/fastapi/services/chgnet_tabular.py \
+            src/bochan/serving/fastapi/services/m3gnet_tabular.py \
+            src/bochan/serving/fastapi/services/alignn_tabular.py \
+            tests/test_material_train_yvar_phase3.py
+''', encoding="utf-8")
+          PY
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[test,tabular,api]"
+          python -m pip install ruff
+      - name: Focused Phase 3 tests
+        run: python -m pytest tests/test_material_train_yvar_phase3.py -q
+      - name: Ruff
+        run: |
+          ruff check \
+            src/bochan/api/evaluation/cross_validation.py \
+            src/bochan/api/modeling/build.py \
+            src/bochan/api/optimizer/core.py \
+            src/bochan/tabular/config/data.py \
+            src/bochan/tabular/data/conversion.py \
+            src/bochan/tabular/data/dataset.py \
+            src/bochan/tabular/optimizer/fitting.py \
+            src/bochan/serving/fastapi/routers/models.py \
+            src/bochan/serving/fastapi/routers/suggestions.py \
+            src/bochan/serving/fastapi/schemas/requests.py \
+            src/bochan/serving/fastapi/schemas/tabular.py \
+            src/bochan/serving/fastapi/services/tabular.py \
+            src/bochan/serving/fastapi/services/mace_tabular.py \
+            src/bochan/serving/fastapi/services/chgnet_tabular.py \
+            src/bochan/serving/fastapi/services/m3gnet_tabular.py \
+            src/bochan/serving/fastapi/services/alignn_tabular.py \
+            tests/test_material_train_yvar_phase3.py
+      - name: Commit implementation
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            src/bochan/api/evaluation/cross_validation.py \
+            src/bochan/api/modeling/build.py \
+            src/bochan/api/optimizer/core.py \
+            src/bochan/tabular/config/data.py \
+            src/bochan/tabular/data/conversion.py \
+            src/bochan/tabular/data/dataset.py \
+            src/bochan/tabular/optimizer/fitting.py \
+            src/bochan/serving/fastapi/routers/models.py \
+            src/bochan/serving/fastapi/routers/suggestions.py \
+            src/bochan/serving/fastapi/schemas/requests.py \
+            src/bochan/serving/fastapi/schemas/tabular.py \
+            src/bochan/serving/fastapi/services/tabular.py \
+            src/bochan/serving/fastapi/services/mace_tabular.py \
+            src/bochan/serving/fastapi/services/chgnet_tabular.py \
+            src/bochan/serving/fastapi/services/m3gnet_tabular.py \
+            src/bochan/serving/fastapi/services/alignn_tabular.py \
+            tests/test_material_train_yvar_phase3.py \
+            docs/material_train_yvar_phase3.md \
+            .github/workflows/material-train-yvar-phase3-smoke.yml
+          git commit -m "feat: plumb known observation variance through high-level APIs"
+          git push origin HEAD:feat/material-train-yvar-phase3

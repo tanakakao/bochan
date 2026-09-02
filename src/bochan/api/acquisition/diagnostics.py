@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Any
 
 from ..configs import AcquisitionConfig, DataContext, ModelBundle
@@ -30,10 +31,11 @@ def build_acquisition_observation_diagnostics(
 ) -> dict[str, Any]:
     """Describe the observation state used for one acquisition call.
 
-    This function is intentionally read-only. It reports how many objective rows
-    are available, whether the automatic acquisition baseline was reduced by
-    partial observation semantics, and whether failed / pending experiments were
-    excluded before objective-model fitting.
+    Besides returning the latest optimizer-level diagnostics, the resolved
+    ``DataContext`` receives a private deep-copied snapshot. ``CandidateResult``
+    already retains that context in optimizer history, so each ask keeps the
+    exact observation/acquisition provenance that produced it without adding
+    diagnostic keys to acquisition-function kwargs.
     """
 
     import torch
@@ -115,6 +117,11 @@ def build_acquisition_observation_diagnostics(
             }
         )
 
+    object.__setattr__(
+        after_context,
+        "_acquisition_diagnostics_snapshot",
+        deepcopy(diagnostics),
+    )
     return diagnostics
 
 

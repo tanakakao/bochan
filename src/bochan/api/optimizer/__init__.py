@@ -83,6 +83,9 @@ class BayesianOptimizer(
 
         direct_known_noise = False
         if train_Yvar is not None and observation_data is None:
+            if train_X is None or train_Y is None:
+                raise ValueError("Provide both train_X and train_Y with train_Yvar.")
+
             import torch
 
             y_tensor = torch.as_tensor(train_Y)
@@ -98,9 +101,6 @@ class BayesianOptimizer(
             )
 
         if direct_known_noise:
-            if train_X is None or train_Y is None:
-                raise ValueError("Provide both train_X and train_Y with train_Yvar.")
-
             base_model_config = model_config or self.model_config
             base_fit_config = fit_config or self.fit_config
             base_model_config, base_fit_config, llm_plan = resolve_llm_selected_model_config(
@@ -191,13 +191,21 @@ class BayesianOptimizer(
         if self.data_context is not None:
             self._resolve_data_context(self.data_context)
 
-        self.bundle = build_objective_bundle(
-            train_X=objective_X,
-            train_Y=objective_Y,
-            train_Yvar=objective_Yvar,
-            config=self.model_config,
-            model_registry=self.model_registry,
-        )
+        if objective_Yvar is None:
+            self.bundle = build_objective_bundle(
+                train_X=objective_X,
+                train_Y=objective_Y,
+                config=self.model_config,
+                model_registry=self.model_registry,
+            )
+        else:
+            self.bundle = build_objective_bundle(
+                train_X=objective_X,
+                train_Y=objective_Y,
+                train_Yvar=objective_Yvar,
+                config=self.model_config,
+                model_registry=self.model_registry,
+            )
         self.bundle = fit_model(self.bundle, self.fit_config)
         self.model = self.bundle.model
         self.mll = self.bundle.mll

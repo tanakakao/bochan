@@ -9,13 +9,41 @@ from ...configs import AcquisitionConfig, DataContext, ModelBundle
 
 
 def _as_output_matrix(values: Any) -> Any | None:
-    """Return ``values`` as a 2-D tensor when outcome masking is meaningful."""
+    """Return ``values`` as a 2-D tensor when outcome masking is meaningful.
+
+    Multi-output wrappers may expose outcomes either as one ``[n, m]`` tensor or
+    as a sequence of per-output tensors. Normalize both representations without
+    forcing nested tensors through ``torch.as_tensor`` scalar conversion.
+    """
 
     import torch
 
     if values is None:
         return None
-    tensor = values if torch.is_tensor(values) else torch.as_tensor(values)
+
+    if torch.is_tensor(values):
+        tensor = values
+    elif isinstance(values, (list, tuple)) and values and all(torch.is_tensor(value) for value in values):
+        columns = []
+        n_rows = None
+        for value in values:
+            column = value
+            if column.ndim == 1:
+                column = column.unsqueeze(-1)
+            if column.ndim != 2:
+                return None
+            if n_rows is None:
+                n_rows = column.shape[0]
+            elif column.shape[0] != n_rows:
+                return None
+            columns.append(column)
+        tensor = torch.cat(columns, dim=-1)
+    else:
+        try:
+            tensor = torch.as_tensor(values)
+        except (TypeError, ValueError, RuntimeError):
+            return None
+
     if tensor.ndim == 1:
         tensor = tensor.unsqueeze(-1)
     if tensor.ndim != 2:
@@ -183,18 +211,23 @@ def resolve_observation_aware_baselines(
             f"objective outputs {indices} have no jointly observed rows."
         )
 
-    # Boolean indexing works for tensors and NumPy arrays. For other supported
-    # array-likes, fall back to integer row indices.
+    rows = torch.where(mask)[0].detach().cpu().tolist()
     try:
         x_baseline = train_X[mask]
     except (IndexError, TypeError):
-        rows = torch.where(mask)[0].detach().cpu().tolist()
         x_baseline = train_X[rows]
 
     if torch.is_tensor(train_Y_raw):
         y_baseline = train_Y_raw[mask]
+    elif isinstance(train_Y_raw, (list, tuple)) and train_Y_raw and all(
+        torch.is_tensor(value) for value in train_Y_raw
+    ):
+        masked_columns = [
+            value[mask.to(device=value.device)]
+            for value in train_Y_raw
+        ]
+        y_baseline = type(train_Y_raw)(masked_columns)
     else:
-        rows = torch.where(mask)[0].detach().cpu().tolist()
         try:
             y_baseline = train_Y_raw[mask.detach().cpu().numpy()]
         except (IndexError, TypeError, AttributeError):

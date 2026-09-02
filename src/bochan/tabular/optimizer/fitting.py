@@ -814,6 +814,7 @@ def fit_optimizer(
     owner.dataset = dataset
     model_config = model_config_for_dataset(owner, dataset)
     resolved_cv = resolve_cv_config(cv_config) if cv_config is not None else owner.cv_config
+    resolved_failure_config = owner.observation.resolve_failure_config(failure_config)
     owner.cross_validation_result_ = None
     if run_cv:
         if uses_observation_conversion:
@@ -822,6 +823,7 @@ def fit_optimizer(
                 model_config=model_config,
                 fit_config=owner.fit_config,
                 cv_config=resolved_cv or CrossValidationConfig(),
+                failure_config=resolved_failure_config,
             )
         else:
             owner.cross_validation_result_ = owner.bo.cross_validate(
@@ -832,7 +834,6 @@ def fit_optimizer(
                 fit_config=owner.fit_config,
                 cv_config=resolved_cv or CrossValidationConfig(),
             )
-    resolved_failure_config = owner.observation.resolve_failure_config(failure_config)
     if uses_observation_conversion:
         owner.bo.fit(
             observation_data=dataset.observation_data(),

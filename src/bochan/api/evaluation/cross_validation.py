@@ -129,6 +129,7 @@ class CrossValidationResult:
     metadata: dict[str, Any] = field(default_factory=dict)
     models: list[Any] | None = None
     feature_importance: Any | None = None
+    failure_model: OutputCrossValidationResult | None = None
 
     def _single(self) -> OutputCrossValidationResult:
         """Return the sole output or reject an ambiguous convenience access."""
@@ -670,6 +671,92 @@ def _metrics_for_output(
     return _classification_metrics(y_true, y_pred, task, config)
 
 
+def _failure_probability_metrics(
+    y_true: Tensor,
+    p_success: Tensor,
+    config: CrossValidationConfig,
+    warnings: list[str],
+    *,
+    context: str,
+) -> dict[str, float]:
+    """Score experiment-success probabilities on completed experiment rows."""
+
+    y = y_true.reshape(-1).to(dtype=torch.long)
+    probability = p_success.reshape(-1).double().clamp(1e-7, 1.0 - 1e-7)
+    prediction = (probability >= config.classification_threshold).to(dtype=y.dtype)
+    metrics = _classification_metrics(y, prediction, "binary", config)
+
+    try:
+        from sklearn.metrics import log_loss, roc_auc_score
+    except ImportError as exc:
+        raise ImportError(
+            "Failure-model cross-validation requires scikit-learn; install "
+            "bochan[tabular]."
+        ) from exc
+
+    y_numpy = y.detach().cpu().numpy()
+    probability_numpy = probability.detach().cpu().numpy()
+    if int(torch.unique(y).numel()) < 2:
+        roc_auc = math.nan
+        message = (
+            f"Failure-model ROC-AUC is NaN for {context} because the validation "
+            "targets contain only one class."
+        )
+        if message not in warnings:
+            warnings.append(message)
+    else:
+        roc_auc = float(roc_auc_score(y_numpy, probability_numpy))
+    metrics["roc_auc"] = roc_auc
+    metrics["log_loss"] = float(
+        log_loss(y_numpy, probability_numpy, labels=[0, 1])
+    )
+    return metrics
+
+
+def _failure_prediction(
+    model: Any,
+    X: Tensor,
+    y_true: Tensor,
+    indices: Tensor,
+    fold: int,
+    config: CrossValidationConfig,
+) -> CVPredictionResult:
+    """Return success-probability predictions using the binary model posterior."""
+
+    posterior = model.posterior(X)
+    mean, variance = _aggregate_expanded_moments(
+        posterior.mean,
+        getattr(posterior, "variance", None),
+        n_rows=len(X),
+    )
+    p_success = mean[..., 0].reshape(-1).clamp(0.0, 1.0)
+    predictive_std = (
+        variance[..., 0].clamp_min(0.0).sqrt().reshape(-1)
+        if variance is not None
+        else None
+    )
+    prediction = (p_success >= config.classification_threshold).to(
+        dtype=y_true.dtype
+    )
+    probabilities = torch.stack((1.0 - p_success, p_success), dim=-1)
+    result_indices = indices.detach().cpu()
+    return CVPredictionResult(
+        indices=result_indices,
+        y_true=y_true.detach(),
+        y_pred=prediction.detach(),
+        predictive_mean=p_success.detach(),
+        predictive_std=(
+            predictive_std.detach() if predictive_std is not None else None
+        ),
+        probabilities=probabilities.detach(),
+        variance_kind="bernoulli_probability",
+        fold_indices=torch.full(
+            (len(result_indices),), fold, dtype=torch.long
+        ),
+        prediction_count=torch.ones(len(result_indices), dtype=torch.long),
+    )
+
+
 def cross_validate_observations(
     optimizer: Any,
     observation_data: Any,
@@ -677,14 +764,16 @@ def cross_validate_observations(
     model_config: ModelConfig | None = None,
     fit_config: FitConfig | None = None,
     cv_config: CrossValidationConfig | None = None,
+    failure_config: Any | None = None,
 ) -> CrossValidationResult:
-    """Cross-validate an objective model over successful observed target cells.
+    """Cross-validate observed objectives and, optionally, experiment success.
 
-    A single row split is shared by all outputs. Pending and failed experiments are
-    excluded from objective validation. For partially observed multi-output data,
-    each output is scored only where that target cell is observed. Known ``Yvar``
-    remains row/cell aligned inside every fold and is passed through
-    :class:`ObservationData` to model construction.
+    Without ``failure_config`` this preserves the Phase-5 protocol exactly: folds
+    are formed from successful rows carrying at least one observed objective cell.
+    With failure modeling enabled, folds are instead formed from all completed
+    rows (successful + failed), pending rows remain excluded, and the same row
+    split is shared by the objective model and success classifier. Objective
+    metrics continue to use only successful observed target cells.
     """
     from ..observation import ObservationData
 
@@ -725,23 +814,42 @@ def cross_validate_observations(
             f"for cross-validation; missing outputs: {missing_outputs!r}."
         )
 
-    eligible_X = X[objective_indices]
-    eligible_Y = Y[objective_indices]
+    failure_enabled = failure_config is not None
     warnings: list[str] = []
-    split_task = str(base_model.task_type)
-    strat_y = eligible_Y[:, 0]
-    if split_task == "hybrid" and config.stratify_output is not None:
-        output_index = (
-            names.index(config.stratify_output)
-            if isinstance(config.stratify_output, str)
-            else int(config.stratify_output)
-        )
-        if output_index < 0 or output_index >= len(names):
-            raise IndexError(
-                f"stratify_output={output_index} is outside [0, {len(names) - 1}]."
+    if failure_enabled:
+        split_indices = torch.nonzero(
+            observation_data.completed_mask, as_tuple=False
+        ).reshape(-1)
+        if int(split_indices.numel()) < 2:
+            raise ValueError(
+                "Failure-model cross-validation requires at least two completed "
+                "experiment rows."
             )
-        strat_y, split_task = eligible_Y[:, output_index], tasks[output_index]
+        strat_y = observation_data.success_mask[split_indices].to(dtype=Y.dtype)
+        if int(torch.unique(strat_y).numel()) < 2:
+            raise ValueError(
+                "Failure-model cross-validation requires both successful and failed "
+                "completed experiments."
+            )
+        split_task = "binary"
+    else:
+        split_indices = objective_indices
+        strat_y = Y[split_indices, 0]
+        split_task = str(base_model.task_type)
+        if split_task == "hybrid" and config.stratify_output is not None:
+            output_index = (
+                names.index(config.stratify_output)
+                if isinstance(config.stratify_output, str)
+                else int(config.stratify_output)
+            )
+            if output_index < 0 or output_index >= len(names):
+                raise IndexError(
+                    f"stratify_output={output_index} is outside [0, {len(names) - 1}]."
+                )
+            strat_y = Y[split_indices, output_index]
+            split_task = tasks[output_index]
 
+    eligible_X = X[split_indices]
     splitter, auto_y = _make_splitter(config, split_task, strat_y, warnings)
     if (
         auto_y is not None
@@ -750,28 +858,36 @@ def cross_validate_observations(
     ):
         raise ValueError(
             "Stratified observation-aware cross-validation requires the "
-            "stratification output to be observed on every objective-eligible row."
+            "stratification output to be observed on every eligible row."
         )
     split_y = auto_y if auto_y is not None else strat_y.detach().cpu().numpy()
-    groups = _observation_cv_groups(config.groups, objective_indices, len(X))
+    groups = _observation_cv_groups(config.groups, split_indices, len(X))
     try:
-        splits = list(splitter.split(eligible_X.detach().cpu().numpy(), split_y, groups=groups))
+        splits = list(
+            splitter.split(
+                eligible_X.detach().cpu().numpy(),
+                split_y,
+                groups=groups,
+            )
+        )
     except TypeError:
         splits = list(splitter.split(eligible_X.detach().cpu().numpy(), split_y))
     if not splits:
         raise ValueError("The configured cross-validation splitter produced no folds.")
 
     per_output: dict[str, list[CVFoldResult]] = {name: [] for name in names}
+    failure_folds: list[CVFoldResult] = []
+    success_targets = observation_data.success_mask.to(dtype=Y.dtype)
     models = [] if config.return_models else None
     for fold, (train_raw, test_raw) in enumerate(splits):
         train_relative = torch.as_tensor(
-            train_raw, dtype=torch.long, device=objective_indices.device
+            train_raw, dtype=torch.long, device=split_indices.device
         )
         test_relative = torch.as_tensor(
-            test_raw, dtype=torch.long, device=objective_indices.device
+            test_raw, dtype=torch.long, device=split_indices.device
         )
-        train_indices = objective_indices[train_relative]
-        test_indices = objective_indices[test_relative]
+        train_indices = split_indices[train_relative]
+        test_indices = split_indices[test_relative]
         train_observations = _slice_observation_data(observation_data, train_indices)
         train_counts = train_observations.observed_mask.sum(dim=0)
         empty_train_outputs = [
@@ -786,6 +902,15 @@ def cross_validate_observations(
                 f"fold={fold}, outputs={empty_train_outputs!r}. Reduce n_splits, "
                 "shuffle the folds, or collect more observations for those outputs."
             )
+        if failure_enabled:
+            train_success = observation_data.success_mask[train_indices]
+            if int(torch.unique(train_success).numel()) < 2:
+                raise ValueError(
+                    "Failure-model cross-validation cannot train a fold without both "
+                    "successful and failed completed experiments; "
+                    f"fold={fold}. Reduce n_splits, enable shuffling/stratification, "
+                    "or collect both experiment outcomes."
+                )
 
         fold_optimizer = type(optimizer)(
             model_config=clone_model_config_for_evaluation(base_model),
@@ -794,17 +919,73 @@ def cross_validate_observations(
             model_registry=optimizer.model_registry,
             acquisition_registry=optimizer.acquisition_registry,
         )
-        fold_optimizer.fit(
-            observation_data=train_observations,
-            model_config=clone_model_config_for_evaluation(base_model),
-            fit_config=clone_fit_config_for_evaluation(base_fit),
-        )
+        fit_kwargs = {
+            "observation_data": train_observations,
+            "model_config": clone_model_config_for_evaluation(base_model),
+            "fit_config": clone_fit_config_for_evaluation(base_fit),
+        }
+        if failure_enabled:
+            fit_kwargs["failure_config"] = copy.deepcopy(failure_config)
+        fold_optimizer.fit(**fit_kwargs)
         if models is not None:
             models.append(fold_optimizer.model)
 
+        if failure_enabled:
+            failure_model = getattr(fold_optimizer, "failure_model", None)
+            if failure_model is None:
+                raise RuntimeError(
+                    "Failure-model cross-validation expected a fitted success "
+                    f"classifier in fold={fold}."
+                )
+            failure_train = _failure_prediction(
+                failure_model,
+                X[train_indices],
+                success_targets[train_indices],
+                train_indices,
+                fold,
+                config,
+            )
+            failure_test = _failure_prediction(
+                failure_model,
+                X[test_indices],
+                success_targets[test_indices],
+                test_indices,
+                fold,
+                config,
+            )
+            failure_folds.append(
+                CVFoldResult(
+                    fold=fold,
+                    train_indices=train_indices.detach().cpu(),
+                    test_indices=test_indices.detach().cpu(),
+                    train_metrics=_failure_probability_metrics(
+                        failure_train.y_true,
+                        failure_train.predictive_mean,
+                        config,
+                        warnings,
+                        context=f"training fold {fold}",
+                    ),
+                    test_metrics=_failure_probability_metrics(
+                        failure_test.y_true,
+                        failure_test.predictive_mean,
+                        config,
+                        warnings,
+                        context=f"validation fold {fold}",
+                    ),
+                    train_predictions=failure_train,
+                    test_predictions=failure_test,
+                )
+            )
+
         for output, (name, task) in enumerate(zip(names, tasks, strict=True)):
-            train_cell_mask = observation_data.observed_mask[train_indices, output]
-            test_cell_mask = observation_data.observed_mask[test_indices, output]
+            train_cell_mask = (
+                observation_data.success_mask[train_indices]
+                & observation_data.observed_mask[train_indices, output]
+            )
+            test_cell_mask = (
+                observation_data.success_mask[test_indices]
+                & observation_data.observed_mask[test_indices, output]
+            )
             output_train_indices = train_indices[train_cell_mask]
             output_test_indices = test_indices[test_cell_mask]
             if int(output_test_indices.numel()) == 0:
@@ -874,14 +1055,14 @@ def cross_validate_observations(
                 f"Output {name!r} has no observed validation targets in any fold."
             )
         test_parts = [
-            fold.test_predictions
-            for fold in folds
-            if fold.test_predictions is not None
+            fold_result.test_predictions
+            for fold_result in folds
+            if fold_result.test_predictions is not None
         ]
         train_parts = [
-            fold.train_predictions
-            for fold in folds
-            if fold.train_predictions is not None
+            fold_result.train_predictions
+            for fold_result in folds
+            if fold_result.train_predictions is not None
         ]
         oof = _aggregate(test_parts, Y[:, output], len(Y))
         aggregated_train = (
@@ -894,11 +1075,11 @@ def cross_validate_observations(
             task_type=task,
             folds=folds,
             train_metric_summary={
-                key: _summary([fold.train_metrics[key] for fold in folds])
+                key: _summary([fold_result.train_metrics[key] for fold_result in folds])
                 for key in metric_names
             },
             test_metric_summary={
-                key: _summary([fold.test_metrics[key] for fold in folds])
+                key: _summary([fold_result.test_metrics[key] for fold_result in folds])
                 for key in metric_names
             },
             aggregated_train_predictions=aggregated_train,
@@ -919,6 +1100,58 @@ def cross_validate_observations(
             for fold_result in folds:
                 fold_result.train_predictions = None
 
+    failure_result = None
+    if failure_enabled:
+        failure_test_parts = [
+            fold_result.test_predictions
+            for fold_result in failure_folds
+            if fold_result.test_predictions is not None
+        ]
+        failure_train_parts = [
+            fold_result.train_predictions
+            for fold_result in failure_folds
+            if fold_result.train_predictions is not None
+        ]
+        failure_oof = _aggregate(failure_test_parts, success_targets, len(X))
+        failure_aggregated_train = (
+            _aggregate(failure_train_parts, success_targets, len(X))
+            if config.return_train_predictions
+            else None
+        )
+        failure_metric_names = list(failure_folds[0].test_metrics)
+        failure_result = OutputCrossValidationResult(
+            task_type="binary",
+            folds=failure_folds,
+            train_metric_summary={
+                key: _summary(
+                    [fold_result.train_metrics[key] for fold_result in failure_folds]
+                )
+                for key in failure_metric_names
+            },
+            test_metric_summary={
+                key: _summary(
+                    [fold_result.test_metrics[key] for fold_result in failure_folds]
+                )
+                for key in failure_metric_names
+            },
+            aggregated_train_predictions=failure_aggregated_train,
+            oof_predictions=failure_oof,
+            oof_metrics=_failure_probability_metrics(
+                failure_oof.y_true,
+                failure_oof.predictive_mean,
+                config,
+                warnings,
+                context="pooled OOF predictions",
+            ),
+        )
+        if not config.return_fold_predictions:
+            for fold_result in failure_folds:
+                fold_result.train_predictions = None
+                fold_result.test_predictions = None
+        elif not config.return_train_predictions:
+            for fold_result in failure_folds:
+                fold_result.train_predictions = None
+
     success_without_objective = (
         observation_data.success_mask & ~observation_data.observed_mask.any(dim=-1)
     )
@@ -927,7 +1160,7 @@ def cross_validate_observations(
         "return_models": config.return_models,
         "observation_aware": True,
         "objective_protocol": "successful_observed_cells",
-        "failure_model_evaluated": False,
+        "failure_model_evaluated": failure_enabled,
         "known_observation_variance": observation_data.Yvar is not None,
         "n_rows": int(len(X)),
         "n_objective_rows": int(objective_indices.numel()),
@@ -938,6 +1171,17 @@ def cross_validate_observations(
             name: int(observed_counts[index]) for index, name in enumerate(names)
         },
     }
+    if failure_enabled:
+        metadata.update(
+            {
+                "failure_protocol": "completed_rows_shared_with_objectives",
+                "failure_probability_target": "success",
+                "n_completed_rows": int(observation_data.completed_mask.sum()),
+                "n_success_rows": int(observation_data.success_mask.sum()),
+                "n_failed_rows": int(observation_data.failed_mask.sum()),
+                "n_failure_validation_rows": int(split_indices.numel()),
+            }
+        )
     return CrossValidationResult(
         outputs=outputs,
         splitter_name=type(splitter).__name__,
@@ -946,6 +1190,7 @@ def cross_validate_observations(
         metadata=metadata,
         models=models,
         feature_importance=None,
+        failure_model=failure_result,
     )
 
 

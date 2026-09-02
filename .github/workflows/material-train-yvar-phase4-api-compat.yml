@@ -1,0 +1,52 @@
+name: Material train Yvar Phase 4 API compatibility fix
+
+on:
+  push:
+    branches:
+      - feat/material-train-yvar-phase4
+    paths:
+      - .github/workflows/material-train-yvar-phase4-api-compat.yml
+      - .github/scripts/material_train_yvar_phase4_api_compat_patch.py
+
+permissions:
+  contents: write
+
+jobs:
+  fix-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/material-train-yvar-phase4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Apply API compatibility fix
+        run: python .github/scripts/material_train_yvar_phase4_api_compat_patch.py
+      - name: Install
+        run: |
+          python -m pip install -e ".[test,tabular,api]"
+          python -m pip install ruff
+      - name: API automatic defaults regression
+        run: pytest -q tests/test_api_automatic_defaults.py
+      - name: Phase 3 and Phase 4 known-noise regression
+        run: |
+          pytest -q \
+            tests/test_material_train_yvar_phase3.py \
+            tests/test_material_train_yvar_phase4.py
+      - name: Observation API regression
+        run: |
+          pytest -q \
+            tests/test_observation_data.py \
+            tests/test_partial_observation_api.py
+      - name: Ruff
+        run: ruff check src/bochan/api/optimizer/__init__.py tests/test_material_train_yvar_phase4.py
+      - name: Commit fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/bochan/api/optimizer/__init__.py
+          git diff --cached --quiet || git commit -m "fix: preserve optimizer objective bundle call compatibility"
+          git push origin HEAD:feat/material-train-yvar-phase4

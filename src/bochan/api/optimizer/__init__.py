@@ -573,8 +573,9 @@ class BayesianOptimizer(
         model_config: ModelConfig | None = None,
         fit_config: FitConfig | None = None,
         cv_config: Any | None = None,
+        failure_config: ExperimentFailureConfig | None = None,
     ) -> Any:
-        """Cross-validate successful observed target cells without mutating state."""
+        """Cross-validate observed objectives and optional experiment success."""
         observations = observation_data or self.observations
         if observations is None:
             raise ValueError(
@@ -589,6 +590,7 @@ class BayesianOptimizer(
             model_config=model_config,
             fit_config=fit_config,
             cv_config=cv_config,
+            failure_config=failure_config,
         )
 
     def cross_validate(self, *args: Any, **kwargs: Any) -> Any:

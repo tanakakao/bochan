@@ -1,6 +1,26 @@
-"""Composition-model namespace for material-aware Gaussian models.
+"""Canonical composition-model namespace for material-aware Gaussian models."""
 
-Concrete CrabNet and Roost Gaussian wrappers are relocated here in Phase 3.
-"""
+from .crabnet import (
+    CrabNetDKLModel,
+    CrabNetGPModel,
+    CrabNetMixedDKLModel,
+    CrabNetMixedGPModel,
+    CrabNetMixedMultiTaskDKLModel,
+    CrabNetMixedMultiTaskGPModel,
+    CrabNetMultiTaskDKLModel,
+    CrabNetMultiTaskGPModel,
+)
+from .roost import RoostDKLModel, RoostGPModel
 
-__all__: list[str] = []
+__all__ = [
+    "CrabNetDKLModel",
+    "CrabNetGPModel",
+    "CrabNetMixedDKLModel",
+    "CrabNetMixedGPModel",
+    "CrabNetMixedMultiTaskDKLModel",
+    "CrabNetMixedMultiTaskGPModel",
+    "CrabNetMultiTaskDKLModel",
+    "CrabNetMultiTaskGPModel",
+    "RoostDKLModel",
+    "RoostGPModel",
+]

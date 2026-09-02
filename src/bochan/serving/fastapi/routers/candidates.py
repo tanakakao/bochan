@@ -26,11 +26,16 @@ def _candidate_response(
     model_id: str,
     candidates: object,
     acq_value: object,
+    *,
+    diagnostics: object | None = None,
 ) -> CandidateResponse:
     return CandidateResponse(
         model_id=model_id,
         candidates=to_serializable(candidates),
         acq_value=to_serializable(acq_value),
+        diagnostics=(
+            None if diagnostics is None else to_serializable(diagnostics)
+        ),
     )
 
 
@@ -53,7 +58,12 @@ def generate_candidates(
             optimizer,
             request,
         )
-        return _candidate_response(model_id, candidates, acq_value)
+        return _candidate_response(
+            model_id,
+            candidates,
+            acq_value,
+            diagnostics=getattr(optimizer, "last_acquisition_diagnostics", None),
+        )
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -71,7 +81,12 @@ def ask_candidates(
             request,
             use_ask=True,
         )
-        return _candidate_response(model_id, candidates, acq_value)
+        return _candidate_response(
+            model_id,
+            candidates,
+            acq_value,
+            diagnostics=getattr(optimizer, "last_acquisition_diagnostics", None),
+        )
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

@@ -21,6 +21,7 @@ from .context import (
     _resolve_objective_config_n_w_from_input_transform,
 )
 from .defaults import resolve_acquisition_defaults
+from .defaults.observations import resolve_observation_aware_baselines
 from .feasibility import resolve_outcome_constraint_config
 
 
@@ -177,6 +178,11 @@ def resolve_acquisition(
 ) -> tuple[AcquisitionConfig, DataContext]:
     resolved = resolve_acquisition_class(optimizer, config)
     resolved = resolve_input_perturbation_objective(optimizer.bundle, resolved)
+    context = resolve_observation_aware_baselines(
+        optimizer.bundle,
+        resolved,
+        context,
+    )
     resolved, context = resolve_acquisition_defaults(
         optimizer.bundle,
         resolved,

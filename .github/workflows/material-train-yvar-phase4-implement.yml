@@ -20,8 +20,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Apply Phase 4 patch
-        run: python .github/scripts/material_train_yvar_phase4_patch.py
+      - name: Apply Phase 4 patches
+        run: |
+          python .github/scripts/material_train_yvar_phase4_patch.py
+          python .github/scripts/material_train_yvar_phase4_lint_patch.py
       - name: Install Ruff
         run: python -m pip install ruff
       - name: Ruff

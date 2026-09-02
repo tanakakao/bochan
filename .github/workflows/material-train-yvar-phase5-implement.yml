@@ -1,0 +1,66 @@
+name: Material train Yvar Phase 5 implementation
+
+on:
+  push:
+    branches:
+      - feat/material-train-yvar-phase5
+    paths:
+      - .github/workflows/material-train-yvar-phase5-implement.yml
+      - .github/scripts/material_train_yvar_phase5_patch.py
+
+permissions:
+  contents: write
+
+jobs:
+  implement-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/material-train-yvar-phase5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Apply Phase 5 patch
+        run: python .github/scripts/material_train_yvar_phase5_patch.py
+      - name: Install
+        run: |
+          python -m pip install -e ".[test,tabular,api]"
+          python -m pip install ruff
+      - name: Phase 5 focused tests
+        run: pytest -q tests/test_material_train_yvar_phase5.py
+      - name: Tabular observation regression
+        run: pytest -q tests/test_tabular_observation_states.py
+      - name: Phase 3 and Phase 4 known-noise regression
+        run: |
+          pytest -q \
+            tests/test_material_train_yvar_phase3.py \
+            tests/test_material_train_yvar_phase4.py
+      - name: Observation and partial API regression
+        run: |
+          pytest -q \
+            tests/test_observation_data.py \
+            tests/test_partial_observation_api.py
+      - name: Ruff
+        run: |
+          ruff check \
+            src/bochan/api/evaluation/cross_validation.py \
+            src/bochan/api/optimizer/__init__.py \
+            src/bochan/tabular/optimizer/fitting.py \
+            tests/test_material_train_yvar_phase5.py \
+            tests/test_tabular_observation_states.py
+      - name: Commit implementation
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            src/bochan/api/evaluation/cross_validation.py \
+            src/bochan/api/optimizer/__init__.py \
+            src/bochan/tabular/optimizer/fitting.py \
+            tests/test_material_train_yvar_phase5.py \
+            tests/test_tabular_observation_states.py \
+            docs/material_train_yvar_phase5.md
+          git diff --cached --quiet || git commit -m "feat: add observation-aware cross-validation"
+          git push origin HEAD:feat/material-train-yvar-phase5

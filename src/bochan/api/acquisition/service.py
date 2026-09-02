@@ -22,7 +22,10 @@ from .context import (
 )
 from .defaults import resolve_acquisition_defaults
 from .defaults.observations import resolve_observation_aware_baselines
-from .diagnostics import build_acquisition_observation_diagnostics
+from .diagnostics import (
+    attach_candidate_acquisition_diagnostics,
+    build_acquisition_observation_diagnostics,
+)
 from .feasibility import resolve_outcome_constraint_config
 
 
@@ -197,13 +200,15 @@ def resolve_acquisition(
     )
     resolved = _filter_context_fields_for_acqf(resolved)
     with suppress(Exception):
-        optimizer.last_acquisition_diagnostics = build_acquisition_observation_diagnostics(
+        diagnostics = build_acquisition_observation_diagnostics(
             bundle=optimizer.bundle,
             config=resolved,
             before_context=before_context,
             after_context=context,
             observations=getattr(optimizer, "observations", None),
         )
+        optimizer.last_acquisition_diagnostics = diagnostics
+        attach_candidate_acquisition_diagnostics(context, diagnostics)
     return resolved, context
 
 

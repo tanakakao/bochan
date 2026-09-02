@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 import torch
 
-from bochan.api import ExperimentFailureConfig, FitConfig
+from bochan.api import CrossValidationConfig, ExperimentFailureConfig, FitConfig
 from bochan.tabular import (
     ObservationTabularDataset,
     TabularBayesianOptimizer,
@@ -136,11 +136,11 @@ def test_tabular_status_fits_success_model_from_all_completed_rows() -> None:
     torch.testing.assert_close(context.X_pending, optimizer.dataset.X[3:4])
 
 
-def test_tabular_observation_mode_rejects_generic_cross_validation() -> None:
+def test_tabular_observation_mode_supports_cross_validation() -> None:
     data = pd.DataFrame(
         {
-            "x": [0.0, 0.5, 1.0],
-            "strength": [1.0, None, 3.0],
+            "x": [0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
+            "strength": [1.0, 1.2, None, 1.6, 1.8, 2.0],
         }
     )
     optimizer = TabularBayesianOptimizer(
@@ -152,8 +152,17 @@ def test_tabular_observation_mode_rejects_generic_cross_validation() -> None:
         skip_fit=True,
     )
 
-    with pytest.raises(ValueError, match="observation-aware validation"):
-        optimizer.fit(data, cross_validation=True)
+    optimizer.fit(
+        data,
+        cross_validation=True,
+        cv_config=CrossValidationConfig(n_splits=2, shuffle=False),
+    )
+
+    result = optimizer.cross_validation_result_
+    assert result is not None
+    assert result.metadata["observation_aware"] is True
+    assert result.metadata["n_objective_rows"] == 5
+    assert result.output.oof_predictions.indices.tolist() == [0, 1, 3, 4, 5]
 
 
 def test_unknown_experiment_status_is_rejected() -> None:

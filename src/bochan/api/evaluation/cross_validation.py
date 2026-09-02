@@ -612,6 +612,343 @@ def cross_validate_optimizer(
     )
 
 
+
+def _slice_observation_data(observation_data: Any, indices: Tensor) -> Any:
+    """Return one row-aligned observation subset without changing state semantics."""
+    from ..observation import ObservationData
+
+    return ObservationData(
+        X=observation_data.X[indices],
+        Y=observation_data.Y[indices],
+        Yvar=(
+            None
+            if observation_data.Yvar is None
+            else observation_data.Yvar[indices]
+        ),
+        observed_mask=observation_data.observed_mask[indices],
+        failed_mask=observation_data.failed_mask[indices],
+        pending_mask=observation_data.pending_mask[indices],
+    )
+
+
+def _observation_cv_groups(
+    groups: Any | None,
+    objective_indices: Tensor,
+    n_rows: int,
+) -> Any | None:
+    """Align optional splitter groups with the objective-eligible row subset."""
+    if groups is None:
+        return None
+    try:
+        n_groups = len(groups)
+    except TypeError as exc:
+        raise ValueError("Cross-validation groups must be a sized row-aligned value.") from exc
+    if n_groups == int(objective_indices.numel()):
+        return groups
+    if n_groups != int(n_rows):
+        raise ValueError(
+            "Observation-aware cross-validation groups must match either all "
+            "observation rows or the objective-eligible rows; "
+            f"got groups={n_groups}, rows={n_rows}, "
+            f"objective_rows={int(objective_indices.numel())}."
+        )
+    import numpy as np
+
+    values = groups.to_numpy() if callable(getattr(groups, "to_numpy", None)) else np.asarray(groups)
+    return values[objective_indices.detach().cpu().numpy()]
+
+
+def _metrics_for_output(
+    task: str,
+    y_true: Tensor,
+    y_pred: Tensor,
+    config: CrossValidationConfig,
+    warnings: list[str],
+) -> dict[str, float]:
+    if task in {"regression", "multi_objective"}:
+        return _regression_metrics(y_true, y_pred, config, warnings)
+    return _classification_metrics(y_true, y_pred, task, config)
+
+
+def cross_validate_observations(
+    optimizer: Any,
+    observation_data: Any,
+    *,
+    model_config: ModelConfig | None = None,
+    fit_config: FitConfig | None = None,
+    cv_config: CrossValidationConfig | None = None,
+) -> CrossValidationResult:
+    """Cross-validate an objective model over successful observed target cells.
+
+    A single row split is shared by all outputs. Pending and failed experiments are
+    excluded from objective validation. For partially observed multi-output data,
+    each output is scored only where that target cell is observed. Known ``Yvar``
+    remains row/cell aligned inside every fold and is passed through
+    :class:`ObservationData` to model construction.
+    """
+    from ..observation import ObservationData
+
+    if not isinstance(observation_data, ObservationData):
+        raise TypeError("observation_data must be an ObservationData instance.")
+    config = cv_config or CrossValidationConfig()
+    if config.feature_importance_config is not None:
+        raise ValueError(
+            "Observation-aware cross-validation does not yet support fold feature "
+            "importance because partial target cells require an output-specific "
+            "importance protocol."
+        )
+
+    X, Y = observation_data.X, observation_data.Y
+    objective_mask = observation_data.objective_row_mask
+    objective_indices = torch.nonzero(objective_mask, as_tuple=False).reshape(-1)
+    if int(objective_indices.numel()) < 2:
+        raise ValueError(
+            "Observation-aware cross-validation requires at least two successful "
+            "rows containing an observed objective value."
+        )
+
+    base_model = model_config or optimizer.model_config
+    base_fit = fit_config if fit_config is not None else optimizer.fit_config
+    names, tasks = _output_layout(base_model, Y)
+    successful_observed = (
+        observation_data.success_mask.unsqueeze(-1) & observation_data.observed_mask
+    )
+    observed_counts = successful_observed.sum(dim=0)
+    missing_outputs = [
+        names[index]
+        for index, count in enumerate(observed_counts.tolist())
+        if int(count) == 0
+    ]
+    if missing_outputs:
+        raise ValueError(
+            "Every objective output requires at least one successful observed value "
+            f"for cross-validation; missing outputs: {missing_outputs!r}."
+        )
+
+    eligible_X = X[objective_indices]
+    eligible_Y = Y[objective_indices]
+    warnings: list[str] = []
+    split_task = str(base_model.task_type)
+    strat_y = eligible_Y[:, 0]
+    if split_task == "hybrid" and config.stratify_output is not None:
+        output_index = (
+            names.index(config.stratify_output)
+            if isinstance(config.stratify_output, str)
+            else int(config.stratify_output)
+        )
+        if output_index < 0 or output_index >= len(names):
+            raise IndexError(
+                f"stratify_output={output_index} is outside [0, {len(names) - 1}]."
+            )
+        strat_y, split_task = eligible_Y[:, output_index], tasks[output_index]
+
+    splitter, auto_y = _make_splitter(config, split_task, strat_y, warnings)
+    if (
+        auto_y is not None
+        and torch.is_floating_point(strat_y)
+        and not bool(torch.isfinite(strat_y).all())
+    ):
+        raise ValueError(
+            "Stratified observation-aware cross-validation requires the "
+            "stratification output to be observed on every objective-eligible row."
+        )
+    split_y = auto_y if auto_y is not None else strat_y.detach().cpu().numpy()
+    groups = _observation_cv_groups(config.groups, objective_indices, len(X))
+    try:
+        splits = list(splitter.split(eligible_X.detach().cpu().numpy(), split_y, groups=groups))
+    except TypeError:
+        splits = list(splitter.split(eligible_X.detach().cpu().numpy(), split_y))
+    if not splits:
+        raise ValueError("The configured cross-validation splitter produced no folds.")
+
+    per_output: dict[str, list[CVFoldResult]] = {name: [] for name in names}
+    models = [] if config.return_models else None
+    for fold, (train_raw, test_raw) in enumerate(splits):
+        train_relative = torch.as_tensor(
+            train_raw, dtype=torch.long, device=objective_indices.device
+        )
+        test_relative = torch.as_tensor(
+            test_raw, dtype=torch.long, device=objective_indices.device
+        )
+        train_indices = objective_indices[train_relative]
+        test_indices = objective_indices[test_relative]
+        train_observations = _slice_observation_data(observation_data, train_indices)
+        train_counts = train_observations.observed_mask.sum(dim=0)
+        empty_train_outputs = [
+            names[index]
+            for index, count in enumerate(train_counts.tolist())
+            if int(count) == 0
+        ]
+        if empty_train_outputs:
+            raise ValueError(
+                "Observation-aware cross-validation cannot train a fold with no "
+                "observed values for an output; "
+                f"fold={fold}, outputs={empty_train_outputs!r}. Reduce n_splits, "
+                "shuffle the folds, or collect more observations for those outputs."
+            )
+
+        fold_optimizer = type(optimizer)(
+            model_config=clone_model_config_for_evaluation(base_model),
+            fit_config=clone_fit_config_for_evaluation(base_fit),
+            bounds=copy.deepcopy(optimizer.bounds),
+            model_registry=optimizer.model_registry,
+            acquisition_registry=optimizer.acquisition_registry,
+        )
+        fold_optimizer.fit(
+            observation_data=train_observations,
+            model_config=clone_model_config_for_evaluation(base_model),
+            fit_config=clone_fit_config_for_evaluation(base_fit),
+        )
+        if models is not None:
+            models.append(fold_optimizer.model)
+
+        for output, (name, task) in enumerate(zip(names, tasks, strict=True)):
+            train_cell_mask = observation_data.observed_mask[train_indices, output]
+            test_cell_mask = observation_data.observed_mask[test_indices, output]
+            output_train_indices = train_indices[train_cell_mask]
+            output_test_indices = test_indices[test_cell_mask]
+            if int(output_test_indices.numel()) == 0:
+                warnings.append(
+                    f"Output {name!r} has no observed validation target in fold {fold}; "
+                    "that output/fold metric was skipped."
+                )
+                continue
+
+            train_pred = _prediction_for_output(
+                fold_optimizer,
+                X[output_train_indices],
+                output,
+                task,
+                config,
+            )
+            test_pred = _prediction_for_output(
+                fold_optimizer,
+                X[output_test_indices],
+                output,
+                task,
+                config,
+            )
+            for pred_result, indices in (
+                (train_pred, output_train_indices),
+                (test_pred, output_test_indices),
+            ):
+                result_indices = indices.detach().cpu()
+                pred_result.indices = result_indices
+                pred_result.y_true = Y[indices, output].detach()
+                pred_result.fold_indices = torch.full(
+                    (len(result_indices),), fold, dtype=torch.long
+                )
+                pred_result.prediction_count = torch.ones(
+                    len(result_indices), dtype=torch.long
+                )
+
+            per_output[name].append(
+                CVFoldResult(
+                    fold=fold,
+                    train_indices=output_train_indices.detach().cpu(),
+                    test_indices=output_test_indices.detach().cpu(),
+                    train_metrics=_metrics_for_output(
+                        task,
+                        train_pred.y_true,
+                        train_pred.y_pred,
+                        config,
+                        warnings,
+                    ),
+                    test_metrics=_metrics_for_output(
+                        task,
+                        test_pred.y_true,
+                        test_pred.y_pred,
+                        config,
+                        warnings,
+                    ),
+                    train_predictions=train_pred,
+                    test_predictions=test_pred,
+                )
+            )
+
+    outputs: dict[str, OutputCrossValidationResult] = {}
+    for output, (name, task) in enumerate(zip(names, tasks, strict=True)):
+        folds = per_output[name]
+        if not folds:
+            raise ValueError(
+                f"Output {name!r} has no observed validation targets in any fold."
+            )
+        test_parts = [
+            fold.test_predictions
+            for fold in folds
+            if fold.test_predictions is not None
+        ]
+        train_parts = [
+            fold.train_predictions
+            for fold in folds
+            if fold.train_predictions is not None
+        ]
+        oof = _aggregate(test_parts, Y[:, output], len(Y))
+        aggregated_train = (
+            _aggregate(train_parts, Y[:, output], len(Y))
+            if config.return_train_predictions
+            else None
+        )
+        metric_names = list(folds[0].test_metrics)
+        outputs[name] = OutputCrossValidationResult(
+            task_type=task,
+            folds=folds,
+            train_metric_summary={
+                key: _summary([fold.train_metrics[key] for fold in folds])
+                for key in metric_names
+            },
+            test_metric_summary={
+                key: _summary([fold.test_metrics[key] for fold in folds])
+                for key in metric_names
+            },
+            aggregated_train_predictions=aggregated_train,
+            oof_predictions=oof,
+            oof_metrics=_metrics_for_output(
+                task,
+                oof.y_true,
+                oof.y_pred,
+                config,
+                warnings,
+            ),
+        )
+        if not config.return_fold_predictions:
+            for fold_result in folds:
+                fold_result.train_predictions = None
+                fold_result.test_predictions = None
+        elif not config.return_train_predictions:
+            for fold_result in folds:
+                fold_result.train_predictions = None
+
+    success_without_objective = (
+        observation_data.success_mask & ~observation_data.observed_mask.any(dim=-1)
+    )
+    metadata = {
+        "random_state": config.random_state,
+        "return_models": config.return_models,
+        "observation_aware": True,
+        "objective_protocol": "successful_observed_cells",
+        "failure_model_evaluated": False,
+        "known_observation_variance": observation_data.Yvar is not None,
+        "n_rows": int(len(X)),
+        "n_objective_rows": int(objective_indices.numel()),
+        "n_excluded_failed_rows": int(observation_data.failed_mask.sum()),
+        "n_excluded_pending_rows": int(observation_data.pending_mask.sum()),
+        "n_excluded_success_without_objective": int(success_without_objective.sum()),
+        "observed_per_output": {
+            name: int(observed_counts[index]) for index, name in enumerate(names)
+        },
+    }
+    return CrossValidationResult(
+        outputs=outputs,
+        splitter_name=type(splitter).__name__,
+        n_splits=len(splits),
+        warnings=warnings,
+        metadata=metadata,
+        models=models,
+        feature_importance=None,
+    )
+
+
 def _aggregate_feature_importance(folds: list[Any]) -> Any:
     """Aggregate fold means and ranks without aligning latent diagnostics.
 

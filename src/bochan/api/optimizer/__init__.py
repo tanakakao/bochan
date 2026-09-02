@@ -566,6 +566,31 @@ class BayesianOptimizer(
             return_result=return_result,
         )
 
+    def cross_validate_observations(
+        self,
+        observation_data: ObservationData | None = None,
+        *,
+        model_config: ModelConfig | None = None,
+        fit_config: FitConfig | None = None,
+        cv_config: Any | None = None,
+    ) -> Any:
+        """Cross-validate successful observed target cells without mutating state."""
+        observations = observation_data or self.observations
+        if observations is None:
+            raise ValueError(
+                "observation_data is required when the optimizer has no stored "
+                "observation state."
+            )
+        from ..evaluation.cross_validation import cross_validate_observations
+
+        return cross_validate_observations(
+            self,
+            observations,
+            model_config=model_config,
+            fit_config=fit_config,
+            cv_config=cv_config,
+        )
+
     def cross_validate(self, *args: Any, **kwargs: Any) -> Any:
         if self.observations is not None:
             has_partial = not bool(self.observations.observed_mask.all())

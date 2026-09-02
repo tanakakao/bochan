@@ -43,6 +43,7 @@ class CandidateResponse(BaseModel):
     model_id: str
     candidates: Any
     acq_value: Any
+    diagnostics: dict[str, Any] | None = None
 
 
 class CompareCandidatesResponse(BaseModel):
@@ -52,7 +53,6 @@ class CompareCandidatesResponse(BaseModel):
 
 class AcquisitionNamesResponse(BaseModel):
     names: list[str]
-
 
 
 class SavedModelsResponse(BaseModel):

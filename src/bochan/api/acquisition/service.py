@@ -22,6 +22,7 @@ from .context import (
 )
 from .defaults import resolve_acquisition_defaults
 from .defaults.observations import resolve_observation_aware_baselines
+from .diagnostics import build_acquisition_observation_diagnostics
 from .feasibility import resolve_outcome_constraint_config
 
 
@@ -176,8 +177,10 @@ def resolve_acquisition(
     config: AcquisitionConfig,
     context: DataContext,
 ) -> tuple[AcquisitionConfig, DataContext]:
+    optimizer.last_acquisition_diagnostics = None
     resolved = resolve_acquisition_class(optimizer, config)
     resolved = resolve_input_perturbation_objective(optimizer.bundle, resolved)
+    before_context = context
     context = resolve_observation_aware_baselines(
         optimizer.bundle,
         resolved,
@@ -193,6 +196,14 @@ def resolve_acquisition(
         config=resolved,
     )
     resolved = _filter_context_fields_for_acqf(resolved)
+    with suppress(Exception):
+        optimizer.last_acquisition_diagnostics = build_acquisition_observation_diagnostics(
+            bundle=optimizer.bundle,
+            config=resolved,
+            before_context=before_context,
+            after_context=context,
+            observations=getattr(optimizer, "observations", None),
+        )
     return resolved, context
 
 

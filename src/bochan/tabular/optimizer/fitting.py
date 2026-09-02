@@ -805,10 +805,7 @@ def fit_optimizer(
         )
     owner.data_config = resolved
     run_cv = owner.cross_validation if cross_validation is None else bool(cross_validation)
-    if owner.observation.uses_observation_conversion(resolved) and run_cv:
-        raise ValueError(
-            "Cross-validation requires an observation-aware validation protocol."
-        )
+    uses_observation_conversion = owner.observation.uses_observation_conversion(resolved)
     dataset = to_dataset(owner, fit_data, y, data_config=resolved)
     if dataset.Y is None:
         raise ValueError(
@@ -819,16 +816,24 @@ def fit_optimizer(
     resolved_cv = resolve_cv_config(cv_config) if cv_config is not None else owner.cv_config
     owner.cross_validation_result_ = None
     if run_cv:
-        owner.cross_validation_result_ = owner.bo.cross_validate(
-            dataset.X,
-            dataset.Y,
-            dataset.Yvar,
-            model_config=model_config,
-            fit_config=owner.fit_config,
-            cv_config=resolved_cv or CrossValidationConfig(),
-        )
+        if uses_observation_conversion:
+            owner.cross_validation_result_ = owner.bo.cross_validate_observations(
+                dataset.observation_data(),
+                model_config=model_config,
+                fit_config=owner.fit_config,
+                cv_config=resolved_cv or CrossValidationConfig(),
+            )
+        else:
+            owner.cross_validation_result_ = owner.bo.cross_validate(
+                dataset.X,
+                dataset.Y,
+                dataset.Yvar,
+                model_config=model_config,
+                fit_config=owner.fit_config,
+                cv_config=resolved_cv or CrossValidationConfig(),
+            )
     resolved_failure_config = owner.observation.resolve_failure_config(failure_config)
-    if owner.observation.uses_observation_conversion(resolved):
+    if uses_observation_conversion:
         owner.bo.fit(
             observation_data=dataset.observation_data(),
             failure_config=resolved_failure_config,

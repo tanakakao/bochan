@@ -51,6 +51,14 @@ class CompareCandidatesResponse(BaseModel):
     results: dict[str, CandidateResponse]
 
 
+class AcquisitionDiagnosticsResponse(BaseModel):
+    """Read-only observation/acquisition diagnostics for one fitted model."""
+
+    model_id: str
+    diagnostics: dict[str, Any] | None = None
+    observation_report: dict[str, Any] | None = None
+
+
 class AcquisitionNamesResponse(BaseModel):
     names: list[str]
 

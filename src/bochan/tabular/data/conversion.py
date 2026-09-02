@@ -290,15 +290,35 @@ def dataframe_to_tensors(data: Any, config: TabularDataConfig) -> TabularDataset
         raise TypeError("dataframe_to_tensors expects a pandas.DataFrame.")
 
     target_cols = _as_list(config.target_cols)
+    target_variance_cols = _as_list(config.target_variance_cols)
+    if target_variance_cols and not target_cols:
+        raise ValueError("target_variance_cols requires target_cols.")
+    if target_variance_cols and len(target_variance_cols) != len(target_cols):
+        raise ValueError(
+            "target_variance_cols must contain exactly one variance column per target column."
+        )
+    overlap = sorted(set(target_cols).intersection(target_variance_cols), key=str)
+    if overlap:
+        raise ValueError(
+            "target_variance_cols must be distinct from target_cols; "
+            f"overlap={overlap!r}."
+        )
+    excluded = set(target_cols) | set(target_variance_cols)
     input_cols = (
-        [column for column in data.columns if column not in target_cols]
+        [column for column in data.columns if column not in excluded]
         if config.input_cols is None
         else _as_list(config.input_cols)
     )
+    variance_inputs = sorted(set(input_cols).intersection(target_variance_cols), key=str)
+    if variance_inputs:
+        raise ValueError(
+            "target_variance_cols must not be included in input_cols; "
+            f"overlap={variance_inputs!r}."
+        )
     if not input_cols:
         raise ValueError("input_cols could not be inferred. Pass TabularDataConfig.input_cols.")
 
-    selected_cols = list(dict.fromkeys(input_cols + target_cols))
+    selected_cols = list(dict.fromkeys(input_cols + target_cols + target_variance_cols))
     work = data.loc[:, selected_cols].copy()
     work, impute_values, target_impute_values = _apply_missing_value_strategy(
         work=work,
@@ -309,6 +329,11 @@ def dataframe_to_tensors(data: Any, config: TabularDataConfig) -> TabularDataset
     )
     X_df = work.loc[:, input_cols].copy()
     Y_df = work.loc[:, target_cols].copy() if target_cols else None
+    Yvar_df = (
+        work.loc[:, target_variance_cols].copy()
+        if target_variance_cols
+        else None
+    )
 
     category_maps, inverse_maps = _encode_dataframe_category_columns(
         X_df,
@@ -348,10 +373,37 @@ def dataframe_to_tensors(data: Any, config: TabularDataConfig) -> TabularDataset
         if Y.ndim == 1:
             Y = Y.reshape(-1, 1)
 
+    Yvar = None
+    if Yvar_df is not None:
+        non_numeric = [
+            column
+            for column in target_variance_cols
+            if not pd.api.types.is_numeric_dtype(Yvar_df.loc[:, column])
+        ]
+        if non_numeric:
+            raise TypeError(
+                "target_variance_cols must be numeric variance columns; "
+                f"non_numeric={non_numeric!r}."
+            )
+        variance_values = Yvar_df.to_numpy(dtype=float)
+        np = _numpy()
+        if not np.isfinite(variance_values).all():
+            raise ValueError("target variance values must be finite.")
+        if (variance_values <= 0.0).any():
+            raise ValueError("target variance values must be strictly positive.")
+        Yvar = _to_tensor(variance_values, dtype=dtype, device=config.device)
+        if Yvar.ndim == 1:
+            Yvar = Yvar.reshape(-1, 1)
+        if Y is None or Yvar.shape != Y.shape:
+            raise ValueError(
+                "Target variance shape must match target shape after tabular conversion."
+            )
+
     feature_names = list(input_cols)
     return TabularDataset(
         X=X,
         Y=Y,
+        Yvar=Yvar,
         feature_names=feature_names,
         target_names=list(target_cols),
         cat_dims=resolve_column_indices(config.categorical_cols, feature_names) or [],

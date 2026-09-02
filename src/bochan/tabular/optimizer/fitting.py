@@ -13,6 +13,7 @@ from bochan.composition import ATOMIC_NUMBERS, ATOMIC_WEIGHTS
 
 from ..config import UNSET, make_fit_config, make_model_config
 from ..data import dataframe_to_tensors, numpy_to_tensors
+from ..data.columns import _as_list
 from .configuration import DATA_KEYS, FIT_KEYS, MODEL_KEYS, merge_data_config, resolve_cv_config, take
 from .settings import apply_alpha_to_model_config, merge_input_transform_config, validate_noise_alpha
 
@@ -688,6 +689,18 @@ def model_config_for_dataset(owner: Any, dataset: Any) -> Any:
     config = _configure_tabular_roost_model(owner, dataset, config)
     if config.cat_dims is None and dataset.cat_dims:
         config = replace(config, cat_dims=dataset.cat_dims)
+    if dataset.Yvar is not None:
+        model_kwargs = dict(config.model_kwargs or {})
+        if owner.alpha is not None or "_tabular_noise_alpha" in model_kwargs:
+            raise ValueError(
+                "target_variance_cols cannot be combined with alpha; known per-row "
+                "observation variance already defines the Gaussian noise."
+            )
+        if "likelihood" in model_kwargs:
+            raise ValueError(
+                "target_variance_cols cannot be combined with model_kwargs['likelihood']; "
+                "remove the explicit likelihood to use fixed known observation variance."
+            )
     return apply_alpha_to_model_config(
         config,
         train_X=dataset.X,
@@ -702,6 +715,11 @@ def sync_visualization_metadata(owner: Any) -> None:
     metadata = dict(getattr(owner.bo.bundle, "metadata", {}) or {})
     metadata["feature_cols"] = list(owner.dataset.feature_names)
     metadata["target_cols"] = list(owner.dataset.target_names)
+    metadata["known_observation_variance"] = owner.dataset.Yvar is not None
+    if owner.data_config.target_variance_cols is not None:
+        metadata["target_variance_cols"] = list(
+            _as_list(owner.data_config.target_variance_cols)
+        )
     if owner.dataset.category_maps:
         labels = dict(metadata.get("labels") or {})
         labels.update(owner.dataset.category_maps)
@@ -791,6 +809,14 @@ def fit_optimizer(
         raise ValueError(
             "Cross-validation requires an observation-aware validation protocol."
         )
+    if (
+        owner.observation.uses_observation_conversion(resolved)
+        and resolved.target_variance_cols is not None
+    ):
+        raise ValueError(
+            "target_variance_cols is not yet supported with "
+            "target_missing_strategy='keep' or experiment_status_col."
+        )
     dataset = to_dataset(owner, fit_data, y, data_config=resolved)
     if dataset.Y is None:
         raise ValueError(
@@ -804,6 +830,7 @@ def fit_optimizer(
         owner.cross_validation_result_ = owner.bo.cross_validate(
             dataset.X,
             dataset.Y,
+            dataset.Yvar,
             model_config=model_config,
             fit_config=owner.fit_config,
             cv_config=resolved_cv or CrossValidationConfig(),
@@ -811,6 +838,7 @@ def fit_optimizer(
     owner.bo.fit(
         dataset.X,
         dataset.Y,
+        dataset.Yvar,
         model_config=model_config,
         fit_config=owner.fit_config,
     )

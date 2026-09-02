@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pandas as pd
 import pytest
 import torch
 
 from bochan.api import CrossValidationConfig, FitConfig, ModelConfig, ObservationData, PredictionResult
 from bochan.api.evaluation.cross_validation import cross_validate_observations
+from bochan.tabular import TabularBayesianOptimizer
 
 
 class _FakeObservationCVOptimizer:
@@ -171,3 +173,42 @@ def test_observation_cv_rejects_feature_importance_until_output_protocol_exists(
             _partial_known_noise_observations(),
             cv_config=CrossValidationConfig(feature_importance_config=object()),
         )
+
+
+def test_tabular_observation_cv_supports_known_variance_and_status_rows() -> None:
+    data = pd.DataFrame(
+        {
+            "x": [0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
+            "strength": [1.0, 1.2, None, 1.6, None, 2.0],
+            "strength_var": [0.01, 0.01, None, 0.02, None, 0.03],
+            "status": ["success", "success", "failed", "success", "pending", "success"],
+        }
+    )
+    optimizer = TabularBayesianOptimizer(
+        task_type="regression",
+        model_type="base",
+        input_cols=["x"],
+        target_cols=["strength"],
+        target_variance_cols=["strength_var"],
+        experiment_status_col="status",
+        target_missing_strategy="keep",
+        skip_fit=True,
+    )
+
+    optimizer.fit(
+        data,
+        cross_validation=True,
+        cv_config=CrossValidationConfig(n_splits=2, shuffle=False),
+    )
+
+    result = optimizer.cross_validation_result_
+    assert result is not None
+    assert result.metadata["observation_aware"] is True
+    assert result.metadata["known_observation_variance"] is True
+    assert result.metadata["n_objective_rows"] == 4
+    assert result.metadata["n_excluded_failed_rows"] == 1
+    assert result.metadata["n_excluded_pending_rows"] == 1
+    assert result.output.oof_predictions.indices.tolist() == [0, 1, 3, 5]
+    assert optimizer.dataset.Yvar is not None
+    assert optimizer.bo.observations is not None
+    assert optimizer.bo.observations.Yvar is not None

@@ -130,6 +130,7 @@ class CrossValidationResult:
     models: list[Any] | None = None
     feature_importance: Any | None = None
     failure_model: OutputCrossValidationResult | None = None
+    failure_feature_importance: Any | None = None
 
     def _single(self) -> OutputCrossValidationResult:
         """Return the sole output or reject an ambiguous convenience access."""
@@ -757,6 +758,214 @@ def _failure_prediction(
     )
 
 
+
+class _ObservationFeatureImportancePredictor:
+    """Expose one objective output through the raw-space inspection API."""
+
+    def __init__(
+        self,
+        optimizer: Any,
+        *,
+        output: int,
+        task: str,
+        cv_config: CrossValidationConfig,
+    ) -> None:
+        self.optimizer = optimizer
+        self.output = int(output)
+        self.task = str(task)
+        self.cv_config = cv_config
+        model = optimizer.model
+        models = getattr(model, "models", None)
+        if models is not None and self.output < len(models):
+            model = models[self.output]
+        self.model = model
+
+    def predict(self, X: Tensor, *, return_result: bool = False) -> Any:
+        prediction = _prediction_for_output(
+            self.optimizer,
+            X,
+            self.output,
+            self.task,
+            self.cv_config,
+        )
+        if self.task in {"multiclass", "ordinal"} and prediction.probabilities is not None:
+            mean = prediction.probabilities
+        else:
+            mean = prediction.predictive_mean.reshape(-1, 1)
+        if not return_result:
+            return mean
+
+        class _Result:
+            pass
+
+        result = _Result()
+        result.mean = mean
+        return result
+
+
+class _FailureFeatureImportancePredictor:
+    """Expose P(success) through the raw-space inspection API."""
+
+    def __init__(self, model: Any) -> None:
+        self.model = model
+
+    def predict(self, X: Tensor, *, return_result: bool = False) -> Any:
+        posterior = self.model.posterior(X)
+        mean, _ = _aggregate_expanded_moments(
+            posterior.mean,
+            getattr(posterior, "variance", None),
+            n_rows=len(X),
+        )
+        probability = mean[..., 0].reshape(-1, 1).clamp(0.0, 1.0)
+        if not return_result:
+            return probability
+
+        class _Result:
+            pass
+
+        result = _Result()
+        result.mean = probability
+        return result
+
+
+def _feature_importance_config_for_fold(
+    config: CrossValidationConfig,
+    fold: int,
+    *,
+    offset: int = 0,
+) -> Any:
+    """Clone FI settings and derive deterministic fold-local permutation seeds."""
+    importance_config = copy.deepcopy(config.feature_importance_config)
+    if importance_config is None:
+        return None
+    if getattr(importance_config, "random_state", None) is not None:
+        importance_config.random_state = (
+            int(importance_config.random_state) + int(fold) * 104729 + int(offset)
+        )
+    return importance_config
+
+
+def _observation_output_feature_importance(
+    fold_optimizer: Any,
+    X: Tensor,
+    Y: Tensor,
+    indices: Tensor,
+    *,
+    output: int,
+    name: str,
+    task: str,
+    fold: int,
+    config: CrossValidationConfig,
+) -> Any:
+    """Evaluate one objective only on successful observed validation cells."""
+    from bochan.inspection import compute_feature_importance
+
+    importance_config = _feature_importance_config_for_fold(config, fold)
+    predictor = _ObservationFeatureImportancePredictor(
+        fold_optimizer,
+        output=output,
+        task=task,
+        cv_config=config,
+    )
+    bundle = getattr(fold_optimizer, "bundle", None)
+    cat_dims = tuple(getattr(bundle, "cat_dims", ()) or ())
+    result = compute_feature_importance(
+        model=predictor.model,
+        predictor=predictor,
+        X=X[indices],
+        y=Y[indices, output : output + 1],
+        task_type=task,
+        feature_names=config.feature_names,
+        output_names=[name],
+        cat_dims=cat_dims,
+        config=importance_config,
+        training_data=False,
+    )
+    result.metadata.update(
+        {
+            "cv_fold": fold,
+            "derived_random_state": getattr(importance_config, "random_state", None),
+            "observation_aware": True,
+            "validation_protocol": "successful_observed_cells",
+            "n_validation_rows": int(indices.numel()),
+        }
+    )
+    return result
+
+
+def _failure_feature_importance(
+    failure_model: Any,
+    X: Tensor,
+    success_targets: Tensor,
+    indices: Tensor,
+    *,
+    fold: int,
+    config: CrossValidationConfig,
+    cat_dims: tuple[int, ...] = (),
+) -> Any:
+    """Evaluate experiment-success FI only on completed validation rows."""
+    from bochan.inspection import compute_feature_importance
+
+    importance_config = _feature_importance_config_for_fold(config, fold, offset=7919)
+    predictor = _FailureFeatureImportancePredictor(failure_model)
+    result = compute_feature_importance(
+        model=failure_model,
+        predictor=predictor,
+        X=X[indices],
+        y=success_targets[indices].reshape(-1, 1),
+        task_type="binary",
+        feature_names=config.feature_names,
+        output_names=["experiment_success"],
+        cat_dims=cat_dims,
+        config=importance_config,
+        training_data=False,
+    )
+    result.metadata.update(
+        {
+            "cv_fold": fold,
+            "derived_random_state": getattr(importance_config, "random_state", None),
+            "observation_aware": True,
+            "validation_protocol": "completed_rows",
+            "probability_target": "success",
+            "n_validation_rows": int(indices.numel()),
+        }
+    )
+    return result
+
+
+def _combine_observation_feature_importance(
+    per_output: dict[str, list[Any]],
+) -> Any | None:
+    """Combine output-local CV FI aggregates into the standard result contract."""
+    available = {name: folds for name, folds in per_output.items() if folds}
+    if not available:
+        return None
+
+    from bochan.inspection.result_types import CrossValidatedFeatureImportanceResult
+
+    outputs = {}
+    warnings: list[str] = []
+    feature_names = None
+    fold_counts: dict[str, int] = {}
+    for name, folds in available.items():
+        aggregated = _aggregate_feature_importance(folds)
+        outputs.update(aggregated.outputs)
+        warnings.extend(aggregated.warnings)
+        feature_names = feature_names or aggregated.feature_names
+        fold_counts[name] = len(folds)
+    return CrossValidatedFeatureImportanceResult(
+        outputs=outputs,
+        feature_names=feature_names or (),
+        warnings=list(dict.fromkeys(warnings)),
+        metadata={
+            "observation_aware": True,
+            "protocol": "output_specific_successful_observed_validation_cells",
+            "n_folds_by_output": fold_counts,
+            "pooled_oof_importance": False,
+        },
+    )
+
+
 def cross_validate_observations(
     optimizer: Any,
     observation_data: Any,
@@ -781,11 +990,13 @@ def cross_validate_observations(
         raise TypeError("observation_data must be an ObservationData instance.")
     config = cv_config or CrossValidationConfig()
     if config.feature_importance_config is not None:
-        raise ValueError(
-            "Observation-aware cross-validation does not yet support fold feature "
-            "importance because partial target cells require an output-specific "
-            "importance protocol."
-        )
+        from bochan.inspection import FeatureImportanceConfig
+
+        if not isinstance(config.feature_importance_config, FeatureImportanceConfig):
+            raise ValueError(
+                "Observation-aware feature importance requires a "
+                "FeatureImportanceConfig instance."
+            )
 
     X, Y = observation_data.X, observation_data.Y
     objective_mask = observation_data.objective_row_mask
@@ -876,7 +1087,9 @@ def cross_validate_observations(
         raise ValueError("The configured cross-validation splitter produced no folds.")
 
     per_output: dict[str, list[CVFoldResult]] = {name: [] for name in names}
+    objective_importances: dict[str, list[Any]] = {name: [] for name in names}
     failure_folds: list[CVFoldResult] = []
+    failure_importances: list[Any] = []
     success_targets = observation_data.success_mask.to(dtype=Y.dtype)
     models = [] if config.return_models else None
     for fold, (train_raw, test_raw) in enumerate(splits):
@@ -953,6 +1166,20 @@ def cross_validate_observations(
                 fold,
                 config,
             )
+            failure_importance = None
+            if config.feature_importance_config is not None:
+                bundle = getattr(fold_optimizer, "bundle", None)
+                cat_dims = tuple(getattr(bundle, "cat_dims", ()) or ())
+                failure_importance = _failure_feature_importance(
+                    failure_model,
+                    X,
+                    success_targets,
+                    test_indices,
+                    fold=fold,
+                    config=config,
+                    cat_dims=cat_dims,
+                )
+                failure_importances.append(failure_importance)
             failure_folds.append(
                 CVFoldResult(
                     fold=fold,
@@ -974,6 +1201,7 @@ def cross_validate_observations(
                     ),
                     train_predictions=failure_train,
                     test_predictions=failure_test,
+                    feature_importance=failure_importance,
                 )
             )
 
@@ -1023,6 +1251,21 @@ def cross_validate_observations(
                     len(result_indices), dtype=torch.long
                 )
 
+            fold_importance = None
+            if config.feature_importance_config is not None:
+                fold_importance = _observation_output_feature_importance(
+                    fold_optimizer,
+                    X,
+                    Y,
+                    output_test_indices,
+                    output=output,
+                    name=name,
+                    task=task,
+                    fold=fold,
+                    config=config,
+                )
+                objective_importances[name].append(fold_importance)
+
             per_output[name].append(
                 CVFoldResult(
                     fold=fold,
@@ -1044,6 +1287,7 @@ def cross_validate_observations(
                     ),
                     train_predictions=train_pred,
                     test_predictions=test_pred,
+                    feature_importance=fold_importance,
                 )
             )
 
@@ -1152,6 +1396,15 @@ def cross_validate_observations(
             for fold_result in failure_folds:
                 fold_result.train_predictions = None
 
+    objective_feature_importance = _combine_observation_feature_importance(
+        objective_importances
+    )
+    failure_feature_importance = (
+        _aggregate_feature_importance(failure_importances)
+        if failure_importances
+        else None
+    )
+
     success_without_objective = (
         observation_data.success_mask & ~observation_data.observed_mask.any(dim=-1)
     )
@@ -1161,6 +1414,12 @@ def cross_validate_observations(
         "observation_aware": True,
         "objective_protocol": "successful_observed_cells",
         "failure_model_evaluated": failure_enabled,
+        "feature_importance_evaluated": config.feature_importance_config is not None,
+        "feature_importance_protocol": (
+            "output_specific_successful_observed_validation_cells"
+            if config.feature_importance_config is not None
+            else None
+        ),
         "known_observation_variance": observation_data.Yvar is not None,
         "n_rows": int(len(X)),
         "n_objective_rows": int(objective_indices.numel()),
@@ -1180,6 +1439,9 @@ def cross_validate_observations(
                 "n_success_rows": int(observation_data.success_mask.sum()),
                 "n_failed_rows": int(observation_data.failed_mask.sum()),
                 "n_failure_validation_rows": int(split_indices.numel()),
+                "failure_feature_importance_evaluated": (
+                    failure_feature_importance is not None
+                ),
             }
         )
     return CrossValidationResult(
@@ -1189,8 +1451,9 @@ def cross_validate_observations(
         warnings=warnings,
         metadata=metadata,
         models=models,
-        feature_importance=None,
+        feature_importance=objective_feature_importance,
         failure_model=failure_result,
+        failure_feature_importance=failure_feature_importance,
     )
 
 

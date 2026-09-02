@@ -18,20 +18,39 @@ class MultitaskFixedNoiseGaussianLikelihood(FixedNoiseGaussianLikelihood):
     The public noise contract is ``[..., n, m]``. The likelihood converts this
     wide tensor to the covariance event order at the likelihood boundary, using
     ``MultitaskMultivariateNormal._interleaved`` rather than assuming one layout.
-    Stored training noise is canonicalized in interleaved order internally.
+
+    ``allow_missing=True`` is reserved for partially observed correlated
+    multitask training. In that mode, ``NaN`` marks an unobserved target cell.
+    The underlying fixed-noise covariance stores a finite placeholder at those
+    positions; the corresponding target entries are removed by the exact-GP
+    missing-observation mask, so the placeholder is never used as an observed
+    variance and is not an imputation.
     """
 
-    def __init__(self, noise: Tensor, *, num_tasks: int | None = None) -> None:
+    def __init__(
+        self,
+        noise: Tensor,
+        *,
+        num_tasks: int | None = None,
+        allow_missing: bool = False,
+    ) -> None:
         resolved_num_tasks = self._validate_wide_noise(
             noise,
             num_tasks=num_tasks,
             argument_name="noise",
+            allow_missing=allow_missing,
         )
+        missing_mask = torch.isnan(noise) if allow_missing else torch.zeros_like(
+            noise, dtype=torch.bool
+        )
+        stored_noise = torch.where(missing_mask, torch.ones_like(noise), noise)
         super().__init__(
-            noise=self._flatten_event(noise, interleaved=True),
+            noise=self._flatten_event(stored_noise, interleaved=True),
             learn_additional_noise=False,
         )
         self.num_tasks = resolved_num_tasks
+        self.allow_missing = bool(allow_missing)
+        self.register_buffer("_missing_noise_mask", missing_mask.detach().clone())
 
     @staticmethod
     def _validate_wide_noise(
@@ -39,6 +58,7 @@ class MultitaskFixedNoiseGaussianLikelihood(FixedNoiseGaussianLikelihood):
         *,
         num_tasks: int | None,
         argument_name: str,
+        allow_missing: bool = False,
     ) -> int:
         if not torch.is_tensor(noise):
             raise TypeError(f"{argument_name} must be a Tensor.")
@@ -56,9 +76,19 @@ class MultitaskFixedNoiseGaussianLikelihood(FixedNoiseGaussianLikelihood):
                 f"{argument_name} task dimension does not match num_tasks: "
                 f"{inferred_num_tasks} != {int(num_tasks)}."
             )
-        if not torch.isfinite(noise).all():
-            raise ValueError(f"{argument_name} must contain only finite variances.")
-        if (noise <= 0).any():
+
+        if allow_missing:
+            if torch.isinf(noise).any():
+                raise ValueError(
+                    f"{argument_name} must contain finite variances or NaN missing markers."
+                )
+            observed = ~torch.isnan(noise)
+        else:
+            if not torch.isfinite(noise).all():
+                raise ValueError(f"{argument_name} must contain only finite variances.")
+            observed = torch.ones_like(noise, dtype=torch.bool)
+
+        if observed.any() and (noise[observed] <= 0).any():
             raise ValueError(
                 f"{argument_name} must contain strictly positive variances."
             )
@@ -70,9 +100,7 @@ class MultitaskFixedNoiseGaussianLikelihood(FixedNoiseGaussianLikelihood):
         return ordered.reshape(*ordered.shape[:-2], -1)
 
     @property
-    def task_noise(self) -> Tensor:
-        """Return fixed training variance in natural ``[..., n, m]`` shape."""
-
+    def _stored_task_noise(self) -> Tensor:
         flat_noise = self.noise_covar.noise
         if flat_noise.shape[-1] % self.num_tasks != 0:
             raise RuntimeError(
@@ -84,6 +112,21 @@ class MultitaskFixedNoiseGaussianLikelihood(FixedNoiseGaussianLikelihood):
             num_data,
             self.num_tasks,
         )
+
+    @property
+    def missing_noise_mask(self) -> Tensor:
+        """Return the canonical wide mask of unobserved variance cells."""
+
+        return self._missing_noise_mask
+
+    @property
+    def task_noise(self) -> Tensor:
+        """Return fixed training variance in natural ``[..., n, m]`` shape."""
+
+        stored = self._stored_task_noise
+        if not bool(self._missing_noise_mask.any()):
+            return stored
+        return stored.masked_fill(self._missing_noise_mask, float("nan"))
 
     def _shaped_noise_covar(
         self,
@@ -104,10 +147,13 @@ class MultitaskFixedNoiseGaussianLikelihood(FixedNoiseGaussianLikelihood):
             (*base_shape[:-2], int(base_shape[-2]) * self.num_tasks)
         )
         if explicit_noise is not None:
+            # Test-time observation noise represents actual requested observations,
+            # so it remains strict even when the stored training table is partial.
             self._validate_wide_noise(
                 explicit_noise,
                 num_tasks=self.num_tasks,
                 argument_name="noise",
+                allow_missing=False,
             )
             if tuple(explicit_noise.shape[-2:]) != tuple(base_shape[-2:]):
                 raise ValueError(
@@ -124,7 +170,7 @@ class MultitaskFixedNoiseGaussianLikelihood(FixedNoiseGaussianLikelihood):
                 **kwargs,
             )
 
-        stored_noise = self.task_noise
+        stored_noise = self._stored_task_noise
         if int(stored_noise.shape[-2]) == int(base_shape[-2]):
             return self.noise_covar(
                 shape=flat_shape,
@@ -186,6 +232,7 @@ class MultitaskFixedNoiseGaussianLikelihood(FixedNoiseGaussianLikelihood):
             new_noise,
             num_tasks=self.num_tasks,
             argument_name="noise",
+            allow_missing=False,
         )
         old_noise = self.task_noise
         batch_shape = torch.broadcast_shapes(
@@ -205,6 +252,7 @@ class MultitaskFixedNoiseGaussianLikelihood(FixedNoiseGaussianLikelihood):
         fantasy = type(self)(
             torch.cat([old_noise, new_noise], dim=-2),
             num_tasks=self.num_tasks,
+            allow_missing=self.allow_missing,
         )
         fantasy.train(self.training)
         return fantasy

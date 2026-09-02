@@ -24,6 +24,7 @@ def _fixed_noise_likelihood(
     train_Yvar: Tensor | None,
     *,
     num_outputs: int,
+    allow_missing: bool = False,
 ) -> FixedNoiseGaussianLikelihood | None:
     """Build fixed known observation noise in outcome-transform space.
 
@@ -45,10 +46,13 @@ def _fixed_noise_likelihood(
     return MultitaskFixedNoiseGaussianLikelihood(
         noise=train_Yvar,
         num_tasks=num_outputs,
+        allow_missing=allow_missing,
     )
 
 
 class DeepKernelGaussianGPModel(_BaseDeepKernelGPModel):
+    _supports_partial_multitask_targets = True
+
     """連続入力向け Deep Kernel GP 回帰モデル。
 
     Args:
@@ -88,6 +92,7 @@ class DeepKernelGaussianGPModel(_BaseDeepKernelGPModel):
             likelihood = _fixed_noise_likelihood(
                 self.train_Yvar,
                 num_outputs=self._num_outputs,
+                allow_missing=self._uses_observation_nan_mask,
             )
             if likelihood is None:
                 if self._num_outputs == 1:
@@ -117,6 +122,8 @@ class DeepKernelGaussianGPModel(_BaseDeepKernelGPModel):
 
 
 class DeepKernelGaussianMixedGPModel(_BaseDeepKernelGPModel):
+    _supports_partial_multitask_targets = True
+
     """混合入力（連続 + カテゴリ）向け Deep Kernel GP 回帰モデル。
 
     Args:
@@ -165,6 +172,7 @@ class DeepKernelGaussianMixedGPModel(_BaseDeepKernelGPModel):
             likelihood = _fixed_noise_likelihood(
                 self.train_Yvar,
                 num_outputs=self._num_outputs,
+                allow_missing=self._uses_observation_nan_mask,
             )
             if likelihood is None:
                 if self._num_outputs == 1:

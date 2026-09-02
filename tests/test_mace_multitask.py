@@ -296,7 +296,7 @@ def test_mace_mixed_multitask_dkl_uses_same_partial_training_policy() -> None:
     assert not any(parameter.requires_grad for parameter in upstream.readouts.parameters())
 
 
-def test_mace_multitask_rejects_single_output_and_train_yvar() -> None:
+def test_mace_multitask_rejects_single_output_and_accepts_train_yvar() -> None:
     X, Y = _train_data()
     encoder, _ = _material_encoder()
     with pytest.raises(ValueError, match="wide train_Y"):
@@ -307,15 +307,23 @@ def test_mace_multitask_rejects_single_output_and_train_yvar() -> None:
             encoder=encoder,
         )
 
+    train_Yvar = torch.full_like(Y, 0.01)
     encoder, _ = _material_encoder()
-    with pytest.raises(NotImplementedError, match="train_Yvar"):
-        MACEMultiTaskGPModel(
-            X,
-            Y,
-            torch.full_like(Y, 0.01),
-            structures=_structures(),
-            encoder=encoder,
-        )
+    model = MACEMultiTaskGPModel(
+        X,
+        Y,
+        train_Yvar,
+        structures=_structures(),
+        encoder=encoder,
+        outcome_transform=None,
+    ).double()
+
+    assert model.train_Yvar is not None
+    torch.testing.assert_close(model.train_Yvar, train_Yvar)
+    posterior = model.posterior(X[:2])
+    assert posterior.mean.shape == torch.Size([2, 2])
+    assert torch.isfinite(posterior.mean).all()
+    assert torch.isfinite(posterior.variance).all()
 
 
 def test_mace_mixed_multitask_rejects_structure_selector_in_cat_dims() -> None:

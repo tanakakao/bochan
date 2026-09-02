@@ -17,6 +17,7 @@ from .deepkernel import (
     OutcomeTransformArg,
     _BaseDeepKernelGPModel,
 )
+from .multitask_fixed_noise import MultitaskFixedNoiseGaussianLikelihood
 
 
 def _fixed_noise_likelihood(
@@ -24,22 +25,27 @@ def _fixed_noise_likelihood(
     *,
     num_outputs: int,
 ) -> FixedNoiseGaussianLikelihood | None:
-    """Build fixed training noise for scalar-output exact GPs.
+    """Build fixed known observation noise in outcome-transform space.
 
-    ``train_Yvar`` is already in outcome-transform space when this helper is
-    called. Correlated multitask fixed-noise likelihoods require a separate
-    event/noise contract and are intentionally deferred to the next phase.
+    Scalar outputs retain GPyTorch's standard ``FixedNoiseGaussianLikelihood``.
+    Correlated wide outputs use an interleaved multitask adapter so the public
+    ``train_Yvar`` contract remains ``[..., n, m]`` while the covariance receives
+    the required flattened ``n * m`` diagonal ordering.
     """
 
     if train_Yvar is None:
         return None
-    if num_outputs != 1:
-        raise NotImplementedError(
-            "Known observation variance is not yet supported for correlated "
-            "multi-output DeepKernel Gaussian models."
+    if num_outputs == 1:
+        noise = (
+            train_Yvar.squeeze(-1)
+            if train_Yvar.shape[-1:] == (1,)
+            else train_Yvar
         )
-    noise = train_Yvar.squeeze(-1) if train_Yvar.shape[-1:] == (1,) else train_Yvar
-    return FixedNoiseGaussianLikelihood(noise=noise)
+        return FixedNoiseGaussianLikelihood(noise=noise)
+    return MultitaskFixedNoiseGaussianLikelihood(
+        noise=train_Yvar,
+        num_tasks=num_outputs,
+    )
 
 
 class DeepKernelGaussianGPModel(_BaseDeepKernelGPModel):

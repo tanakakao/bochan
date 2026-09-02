@@ -25,6 +25,18 @@ jobs:
           cache: pip
       - name: Apply Phase 5 patch
         run: python .github/scripts/material_train_yvar_phase5_patch.py
+      - name: Normalize Ruff condition
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("src/bochan/api/evaluation/cross_validation.py")
+          text = path.read_text(encoding="utf-8")
+          old = '''    if auto_y is not None and torch.is_floating_point(strat_y):\n        if not bool(torch.isfinite(strat_y).all()):\n            raise ValueError(\n                "Stratified observation-aware cross-validation requires the "\n                "stratification output to be observed on every objective-eligible row."\n            )\n'''
+          new = '''    if (\n        auto_y is not None\n        and torch.is_floating_point(strat_y)\n        and not bool(torch.isfinite(strat_y).all())\n    ):\n        raise ValueError(\n            "Stratified observation-aware cross-validation requires the "\n            "stratification output to be observed on every objective-eligible row."\n        )\n'''
+          if old not in text:
+              raise SystemExit("Ruff normalization target not found")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
       - name: Install
         run: |
           python -m pip install -e ".[test,tabular,api]"

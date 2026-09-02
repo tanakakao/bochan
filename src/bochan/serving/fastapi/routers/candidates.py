@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from bochan.api.acquisition.diagnostics import candidate_acquisition_diagnostics
+
 from ..converters import to_serializable
 from ..dependencies import OptimizerStore, get_optimizer_store
 from ..schemas import (
@@ -87,15 +89,16 @@ def generate_candidates(
 ) -> CandidateResponse:
     optimizer = _optimizer_or_404(store, model_id)
     try:
-        candidates, acq_value = generate_candidate_result(
+        result = generate_candidate_result(
             optimizer,
             request,
+            return_result=True,
         )
         return _candidate_response(
             model_id,
-            candidates,
-            acq_value,
-            diagnostics=getattr(optimizer, "last_acquisition_diagnostics", None),
+            result.candidates,
+            result.acq_value,
+            diagnostics=candidate_acquisition_diagnostics(result),
         )
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -109,16 +112,17 @@ def ask_candidates(
 ) -> CandidateResponse:
     optimizer = _optimizer_or_404(store, model_id)
     try:
-        candidates, acq_value = generate_candidate_result(
+        result = generate_candidate_result(
             optimizer,
             request,
             use_ask=True,
+            return_result=True,
         )
         return _candidate_response(
             model_id,
-            candidates,
-            acq_value,
-            diagnostics=getattr(optimizer, "last_acquisition_diagnostics", None),
+            result.candidates,
+            result.acq_value,
+            diagnostics=candidate_acquisition_diagnostics(result),
         )
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -141,6 +145,7 @@ def compare_candidates(
                 model_id,
                 result.candidates,
                 result.acq_value,
+                diagnostics=candidate_acquisition_diagnostics(result),
             )
             for name, result in results.items()
         }

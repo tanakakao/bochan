@@ -80,6 +80,10 @@ def build_acquisition_observation_diagnostics(
         and baseline_rows is not None
         and baseline_rows < training_rows
     )
+    known_observation_variance = bool(
+        getattr(bundle, "train_Yvar", None) is not None
+        or report.get("known_observation_variance", False)
+    )
 
     diagnostics: dict[str, Any] = {
         "training_rows": training_rows,
@@ -89,7 +93,7 @@ def build_acquisition_observation_diagnostics(
         "partial_observation": partial_observation,
         "observed_per_output": observed_per_output,
         "objective_output_indices": objective_output_indices,
-        "known_observation_variance": getattr(bundle, "train_Yvar", None) is not None,
+        "known_observation_variance": known_observation_variance,
     }
 
     if report:

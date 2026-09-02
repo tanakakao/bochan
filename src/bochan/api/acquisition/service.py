@@ -150,7 +150,7 @@ def resolve_input_perturbation_objective(
     resolved = resolve_outcome_constraint_config(bundle=bundle, config=resolved)
     objective_config = resolved.objective_config
     if (
-        resolved.constraints is not None
+        getattr(resolved, "constraints", None) is not None
         and objective_config is not None
         and objective_config.risk_type is None
         and objective_config.aggregate_mean_when_no_risk

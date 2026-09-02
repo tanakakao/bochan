@@ -34,6 +34,7 @@ from .requests import (
     TensorOptionsSchema,
 )
 from .responses import (
+    AcquisitionDiagnosticsResponse,
     AcquisitionNamesResponse,
     CandidateResponse,
     CompareCandidatesResponse,
@@ -86,6 +87,7 @@ from .tabular import (
 __all__ = [
     "APIRequest",
     "AcquisitionConfigSchema",
+    "AcquisitionDiagnosticsResponse",
     "AcquisitionNamesResponse",
     "AutoCandidateRequest",
     "CandidateRepairConfigSchema",

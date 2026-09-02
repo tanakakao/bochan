@@ -21,7 +21,9 @@ jobs:
       - name: Install
         run: python -m pip install -e ".[test,web]"
       - name: Apply Phase 8 patch
-        run: python .github/scripts/material_train_yvar_phase8_patch.py
+        run: |
+          python .github/scripts/material_train_yvar_phase8_patch.py
+          python .github/scripts/material_train_yvar_phase8_fix1.py
       - name: Run Phase 8 focused tests
         run: pytest -q --maxfail=1 tests/test_material_train_yvar_phase8.py
       - name: Run Phase 7 and Phase 5 regression
@@ -42,6 +44,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git rm .github/scripts/material_train_yvar_phase8_patch.py
+          git rm .github/scripts/material_train_yvar_phase8_fix1.py
           git rm .github/workflows/material-train-yvar-phase8-implement.yml
           git add \
             src/bochan/api/evaluation/cross_validation.py \

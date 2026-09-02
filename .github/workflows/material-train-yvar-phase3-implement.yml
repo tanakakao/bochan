@@ -27,29 +27,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e ".[test,tabular,api]"
           python -m pip install ruff
-      - name: Focused Phase 3 tests
-        run: python -m pytest tests/test_material_train_yvar_phase3.py -q
-      - name: Ruff
-        run: |
-          ruff check \
-            src/bochan/api/evaluation/cross_validation.py \
-            src/bochan/api/modeling/build.py \
-            src/bochan/api/optimizer/core.py \
-            src/bochan/tabular/config/data.py \
-            src/bochan/tabular/data/conversion.py \
-            src/bochan/tabular/data/dataset.py \
-            src/bochan/tabular/optimizer/fitting.py \
-            src/bochan/serving/fastapi/routers/models.py \
-            src/bochan/serving/fastapi/routers/suggestions.py \
-            src/bochan/serving/fastapi/schemas/requests.py \
-            src/bochan/serving/fastapi/schemas/tabular.py \
-            src/bochan/serving/fastapi/services/tabular.py \
-            src/bochan/serving/fastapi/services/mace_tabular.py \
-            src/bochan/serving/fastapi/services/chgnet_tabular.py \
-            src/bochan/serving/fastapi/services/m3gnet_tabular.py \
-            src/bochan/serving/fastapi/services/alignn_tabular.py \
-            tests/test_material_train_yvar_phase3.py
-      - name: Commit implementation
+      - name: Commit implementation for inspection
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -75,3 +53,25 @@ jobs:
             .github/workflows/material-train-yvar-phase3-smoke.yml
           git commit -m "feat: plumb known observation variance through high-level APIs"
           git push origin HEAD:feat/material-train-yvar-phase3
+      - name: Focused Phase 3 tests
+        run: python -m pytest tests/test_material_train_yvar_phase3.py -q
+      - name: Ruff
+        run: |
+          ruff check \
+            src/bochan/api/evaluation/cross_validation.py \
+            src/bochan/api/modeling/build.py \
+            src/bochan/api/optimizer/core.py \
+            src/bochan/tabular/config/data.py \
+            src/bochan/tabular/data/conversion.py \
+            src/bochan/tabular/data/dataset.py \
+            src/bochan/tabular/optimizer/fitting.py \
+            src/bochan/serving/fastapi/routers/models.py \
+            src/bochan/serving/fastapi/routers/suggestions.py \
+            src/bochan/serving/fastapi/schemas/requests.py \
+            src/bochan/serving/fastapi/schemas/tabular.py \
+            src/bochan/serving/fastapi/services/tabular.py \
+            src/bochan/serving/fastapi/services/mace_tabular.py \
+            src/bochan/serving/fastapi/services/chgnet_tabular.py \
+            src/bochan/serving/fastapi/services/m3gnet_tabular.py \
+            src/bochan/serving/fastapi/services/alignn_tabular.py \
+            tests/test_material_train_yvar_phase3.py

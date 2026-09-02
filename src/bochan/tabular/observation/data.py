@@ -36,6 +36,7 @@ class ObservationTabularDataset(TabularDataset):
         return ObservationData(
             X=self.X,
             Y=self.Y,
+            Yvar=self.Yvar,
             observed_mask=self.observed_mask,
             failed_mask=self.failed_mask,
             pending_mask=self.pending_mask,
@@ -175,8 +176,21 @@ def dataframe_to_observation_tensors(
         raise TypeError("dataframe_to_observation_tensors expects a pandas.DataFrame.")
 
     target_cols = _as_list(config.target_cols)
+    target_variance_cols = _as_list(config.target_variance_cols)
+    if target_variance_cols and not target_cols:
+        raise ValueError("target_variance_cols requires target_cols.")
+    if target_variance_cols and len(target_variance_cols) != len(target_cols):
+        raise ValueError(
+            "target_variance_cols must contain exactly one variance column per target column."
+        )
+    overlap = sorted(set(target_cols).intersection(target_variance_cols), key=str)
+    if overlap:
+        raise ValueError(
+            "target_variance_cols must be distinct from target_cols; "
+            f"overlap={overlap!r}."
+        )
     status_col = config.experiment_status_col
-    excluded = set(target_cols)
+    excluded = set(target_cols) | set(target_variance_cols)
     if status_col is not None:
         excluded.add(status_col)
     input_cols = (
@@ -184,6 +198,12 @@ def dataframe_to_observation_tensors(
         if config.input_cols is None
         else _as_list(config.input_cols)
     )
+    variance_inputs = sorted(set(input_cols).intersection(target_variance_cols), key=str)
+    if variance_inputs:
+        raise ValueError(
+            "target_variance_cols must not be included in input_cols; "
+            f"overlap={variance_inputs!r}."
+        )
     if not input_cols:
         raise ValueError("input_cols could not be inferred. Pass TabularDataConfig.input_cols.")
 
@@ -191,6 +211,7 @@ def dataframe_to_observation_tensors(
         dict.fromkeys(
             input_cols
             + target_cols
+            + target_variance_cols
             + ([status_col] if status_col is not None else [])
         )
     )
@@ -209,6 +230,11 @@ def dataframe_to_observation_tensors(
 
     X_df = work.loc[:, input_cols].copy()
     Y_df = work.loc[:, target_cols].copy() if target_cols else None
+    Yvar_df = (
+        work.loc[:, target_variance_cols].copy()
+        if target_variance_cols
+        else None
+    )
     category_maps, inverse_maps = _encode_dataframe_category_columns(
         X_df,
         columns=config.categorical_cols,
@@ -233,6 +259,7 @@ def dataframe_to_observation_tensors(
     dtype = resolve_dtype(config.dtype)
     X = _to_tensor(X_df.to_numpy(dtype=float), dtype=dtype, device=config.device)
     Y = None
+    Yvar = None
     observed_mask = None
     import torch
 
@@ -252,10 +279,42 @@ def dataframe_to_observation_tensors(
                 torch.full_like(Y, float("nan")),
             )
 
+    if Yvar_df is not None:
+        non_numeric = [
+            column
+            for column in target_variance_cols
+            if not pd.api.types.is_numeric_dtype(Yvar_df.loc[:, column])
+        ]
+        if non_numeric:
+            raise TypeError(
+                "target_variance_cols must be numeric variance columns; "
+                f"non_numeric={non_numeric!r}."
+            )
+        Yvar = _to_tensor(
+            Yvar_df.to_numpy(dtype=float),
+            dtype=dtype,
+            device=config.device,
+        )
+        if Yvar.ndim == 1:
+            Yvar = Yvar.reshape(-1, 1)
+        if Y is None or tuple(Yvar.shape) != tuple(Y.shape):
+            raise ValueError("Target variance shape must match target shape.")
+        invalid_observed = observed_mask & (~torch.isfinite(Yvar) | (Yvar <= 0.0))
+        if bool(invalid_observed.any()):
+            raise ValueError(
+                "Every observed target cell requires a finite, strictly positive target variance."
+            )
+        Yvar = torch.where(
+            observed_mask,
+            Yvar,
+            torch.full_like(Yvar, float("nan")),
+        )
+
     feature_names = list(input_cols)
     return ObservationTabularDataset(
         X=X,
         Y=Y,
+        Yvar=Yvar,
         feature_names=feature_names,
         target_names=list(target_cols),
         cat_dims=resolve_column_indices(config.categorical_cols, feature_names) or [],
@@ -289,6 +348,10 @@ def numpy_to_observation_tensors(
 ) -> ObservationTabularDataset:
     if config.experiment_status_col is not None:
         raise ValueError("experiment_status_col requires DataFrame input.")
+    if config.target_variance_cols is not None:
+        raise ValueError(
+            "target_variance_cols requires DataFrame input in observation-aware mode."
+        )
     dataset = numpy_to_tensors(
         X,
         y,

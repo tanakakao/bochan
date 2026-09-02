@@ -809,14 +809,6 @@ def fit_optimizer(
         raise ValueError(
             "Cross-validation requires an observation-aware validation protocol."
         )
-    if (
-        owner.observation.uses_observation_conversion(resolved)
-        and resolved.target_variance_cols is not None
-    ):
-        raise ValueError(
-            "target_variance_cols is not yet supported with "
-            "target_missing_strategy='keep' or experiment_status_col."
-        )
     dataset = to_dataset(owner, fit_data, y, data_config=resolved)
     if dataset.Y is None:
         raise ValueError(
@@ -835,20 +827,30 @@ def fit_optimizer(
             fit_config=owner.fit_config,
             cv_config=resolved_cv or CrossValidationConfig(),
         )
-    owner.bo.fit(
-        dataset.X,
-        dataset.Y,
-        dataset.Yvar,
-        model_config=model_config,
-        fit_config=owner.fit_config,
-    )
+    resolved_failure_config = owner.observation.resolve_failure_config(failure_config)
+    if owner.observation.uses_observation_conversion(resolved):
+        owner.bo.fit(
+            observation_data=dataset.observation_data(),
+            failure_config=resolved_failure_config,
+            model_config=model_config,
+            fit_config=owner.fit_config,
+        )
+        owner.observation.failure_config = resolved_failure_config
+    else:
+        owner.bo.fit(
+            dataset.X,
+            dataset.Y,
+            dataset.Yvar,
+            model_config=model_config,
+            fit_config=owner.fit_config,
+        )
+        owner.observation.attach(
+            owner.bo,
+            dataset,
+            failure_config=resolved_failure_config,
+        )
     if dataset.bounds is not None:
         owner.bo.set_bounds(dataset.bounds)
-    owner.observation.attach(
-        owner.bo,
-        dataset,
-        failure_config=owner.observation.resolve_failure_config(failure_config),
-    )
     sync_visualization_metadata(owner)
     return owner
 

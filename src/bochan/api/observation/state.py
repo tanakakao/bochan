@@ -50,6 +50,7 @@ class ObservationData:
     observed_mask: Any | None = None
     failed_mask: Any | None = None
     pending_mask: Any | None = None
+    Yvar: Any | None = None
 
     def __post_init__(self) -> None:
         torch = _torch()
@@ -95,8 +96,28 @@ class ObservationData:
         canonical_y = torch.full_like(Y, float("nan"))
         canonical_y = torch.where(observed, Y, canonical_y)
 
+        canonical_yvar = None
+        if self.Yvar is not None:
+            Yvar = torch.as_tensor(self.Yvar, device=X.device)
+            if Yvar.ndim == 1:
+                Yvar = Yvar.unsqueeze(-1)
+            if tuple(Yvar.shape) != tuple(Y.shape):
+                raise ValueError(
+                    "Yvar must have the same shape as Y. "
+                    f"Y={tuple(Y.shape)}, Yvar={tuple(Yvar.shape)}."
+                )
+            Yvar = Yvar.to(dtype=Y.dtype)
+            invalid_observed = observed & (~torch.isfinite(Yvar) | (Yvar <= 0.0))
+            if bool(invalid_observed.any()):
+                raise ValueError(
+                    "Every observed target cell requires a finite, strictly positive Yvar."
+                )
+            canonical_yvar = torch.full_like(Yvar, float("nan"))
+            canonical_yvar = torch.where(observed, Yvar, canonical_yvar)
+
         self.X = X
         self.Y = canonical_y
+        self.Yvar = canonical_yvar
         self.observed_mask = observed
         self.failed_mask = failed
         self.pending_mask = pending
@@ -109,6 +130,7 @@ class ObservationData:
         *,
         status: Any,
         observed_mask: Any | None = None,
+        Yvar: Any | None = None,
     ) -> ObservationData:
         statuses = [str(value).strip().lower() for value in list(status)]
         valid = {"success", "failed", "pending"}
@@ -124,6 +146,7 @@ class ObservationData:
             observed_mask=observed_mask,
             failed_mask=[value == "failed" for value in statuses],
             pending_mask=[value == "pending" for value in statuses],
+            Yvar=Yvar,
         )
 
     @property
@@ -152,6 +175,14 @@ class ObservationData:
             raise ValueError("No successful experiment contains an observed objective value.")
         return self.X[mask], self.Y[mask]
 
+    def objective_training_data_with_variance(self) -> tuple[Any, Any, Any | None]:
+        """Return successful objective rows with cell-aligned known variance."""
+        mask = self.objective_row_mask
+        if not bool(mask.any()):
+            raise ValueError("No successful experiment contains an observed objective value.")
+        Yvar = None if self.Yvar is None else self.Yvar[mask]
+        return self.X[mask], self.Y[mask], Yvar
+
     def output_training_data(self, output_index: int) -> tuple[Any, Any]:
         index = int(output_index)
         if index < 0 or index >= int(self.Y.shape[-1]):
@@ -162,6 +193,24 @@ class ObservationData:
         if not bool(mask.any()):
             raise ValueError(f"Output {index} has no successful observed values.")
         return self.X[mask], self.Y[mask, index : index + 1]
+
+    def output_training_data_with_variance(
+        self,
+        output_index: int,
+    ) -> tuple[Any, Any, Any | None]:
+        """Return one observed output with its known observation variance."""
+        index = int(output_index)
+        if index < 0 or index >= int(self.Y.shape[-1]):
+            raise IndexError(
+                f"output_index={index} is outside [0, {int(self.Y.shape[-1]) - 1}]."
+            )
+        mask = self.success_mask & self.observed_mask[:, index]
+        if not bool(mask.any()):
+            raise ValueError(f"Output {index} has no successful observed values.")
+        Yvar = None
+        if self.Yvar is not None:
+            Yvar = self.Yvar[mask, index : index + 1]
+        return self.X[mask], self.Y[mask, index : index + 1], Yvar
 
     def success_training_data(self) -> tuple[Any, Any]:
         torch = _torch()
@@ -180,9 +229,17 @@ class ObservationData:
             raise ValueError("ObservationData feature dimensions must match.")
         if int(self.Y.shape[-1]) != int(other.Y.shape[-1]):
             raise ValueError("ObservationData target dimensions must match.")
+        if (self.Yvar is None) != (other.Yvar is None):
+            raise ValueError(
+                "ObservationData with known Yvar cannot be mixed with observations without Yvar."
+            )
+        Yvar = None
+        if self.Yvar is not None:
+            Yvar = torch.cat([self.Yvar, other.Yvar.to(self.Yvar)], dim=0)
         return ObservationData(
             X=torch.cat([self.X, other.X.to(self.X)], dim=0),
             Y=torch.cat([self.Y, other.Y.to(self.Y)], dim=0),
+            Yvar=Yvar,
             observed_mask=torch.cat(
                 [self.observed_mask, other.observed_mask.to(self.observed_mask.device)],
                 dim=0,
@@ -211,11 +268,16 @@ class ObservationData:
             raise ValueError("ObservationData feature dimensions must match.")
         if int(self.Y.shape[-1]) != int(other.Y.shape[-1]):
             raise ValueError("ObservationData target dimensions must match.")
+        if (self.Yvar is None) != (other.Yvar is None):
+            raise ValueError(
+                "ObservationData with known Yvar cannot be mixed with observations without Yvar."
+            )
         if not bool(self.pending_mask.any()) or not bool(other.completed_mask.any()):
             return self.append(other)
 
         resolved_x = self.X.clone()
         resolved_y = self.Y.clone()
+        resolved_yvar = None if self.Yvar is None else self.Yvar.clone()
         resolved_observed = self.observed_mask.clone()
         resolved_failed = self.failed_mask.clone()
         resolved_pending = self.pending_mask.clone()
@@ -256,6 +318,8 @@ class ObservationData:
             existing_index = int(pending_indices[match_offset].item())
             resolved_x[existing_index] = candidate_x
             resolved_y[existing_index] = other.Y[incoming_index].to(resolved_y)
+            if resolved_yvar is not None:
+                resolved_yvar[existing_index] = other.Yvar[incoming_index].to(resolved_yvar)
             resolved_observed[existing_index] = other.observed_mask[incoming_index].to(
                 resolved_observed.device
             )
@@ -271,6 +335,7 @@ class ObservationData:
         resolved = ObservationData(
             X=resolved_x,
             Y=resolved_y,
+            Yvar=resolved_yvar,
             observed_mask=resolved_observed,
             failed_mask=resolved_failed,
             pending_mask=resolved_pending,
@@ -282,6 +347,7 @@ class ObservationData:
             ObservationData(
                 X=other.X[remaining],
                 Y=other.Y[remaining],
+                Yvar=None if other.Yvar is None else other.Yvar[remaining],
                 observed_mask=other.observed_mask[remaining],
                 failed_mask=other.failed_mask[remaining],
                 pending_mask=other.pending_mask[remaining],
@@ -289,7 +355,7 @@ class ObservationData:
         )
 
     def report(self) -> dict[str, Any]:
-        return {
+        report = {
             "n_rows": int(self.X.shape[0]),
             "n_completed": int(self.completed_mask.sum().item()),
             "n_success": int(self.success_mask.sum().item()),
@@ -300,6 +366,9 @@ class ObservationData:
                 for value in self.observed_mask.sum(dim=0).detach().cpu().tolist()
             ],
         }
+        if self.Yvar is not None:
+            report["known_observation_variance"] = True
+        return report
 
 
 @dataclass

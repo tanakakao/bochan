@@ -10,7 +10,7 @@ from botorch.utils.transforms import normalize_indices
 from gpytorch.likelihoods import GaussianLikelihood
 from gpytorch.mlls import ExactMarginalLogLikelihood
 from gpytorch.models.deep_gps import DeepGP
-from gpytorch.settings import fast_pred_var
+from gpytorch.settings import fast_pred_var, observation_nan_policy
 from torch import Tensor, nn
 
 from bochan.models.components.layers import DeepKernel, DeepKernelMixed
@@ -116,6 +116,16 @@ def _apply_input_transform_for_eval(
     return X_tf
 
 
+class _ObservationMaskingExactMarginalLogLikelihood(ExactMarginalLogLikelihood):
+    """Exact MLL that automatically excludes NaN observation cells."""
+
+    def forward(self, function_dist, target, *params, **kwargs):
+        if torch.is_tensor(target) and bool(torch.isnan(target).any()):
+            with observation_nan_policy("mask"):
+                return super().forward(function_dist, target, *params, **kwargs)
+        return super().forward(function_dist, target, *params, **kwargs)
+
+
 class _BaseDeepKernelGPModel(DeepGP, GPyTorchModel):
     """
     DeepKernel 系回帰モデルの共通 wrapper。
@@ -132,6 +142,7 @@ class _BaseDeepKernelGPModel(DeepGP, GPyTorchModel):
         self._num_outputs = 1
         self._model_dtype: torch.dtype | None = None
         self._model_device: torch.device | None = None
+        self._uses_observation_nan_mask = False
 
     # ------------------------------------------------------------------
     # transform 解決
@@ -215,6 +226,48 @@ class _BaseDeepKernelGPModel(DeepGP, GPyTorchModel):
             return train_Y.squeeze(-1)
         return train_Y
 
+    @classmethod
+    def _validate_observation_targets(
+        cls,
+        train_Y: Tensor,
+        train_Yvar: Tensor | None,
+    ) -> bool:
+        """Validate correlated partial targets and matching known variance."""
+
+        if torch.isinf(train_Y).any():
+            raise ValueError("train_Y must not contain infinite values.")
+        missing = torch.isnan(train_Y)
+        uses_mask = bool(missing.any())
+        if uses_mask:
+            if cls._get_num_outputs(train_Y) < 2:
+                raise ValueError(
+                    "NaN targets in a DeepKernel model require a correlated "
+                    "multi-output target matrix."
+                )
+            observed_per_output = (~missing).sum(dim=-2)
+            if bool((observed_per_output == 0).any()):
+                empty = (observed_per_output == 0).nonzero(as_tuple=False).reshape(-1)
+                raise ValueError(
+                    "Each correlated output requires at least one observed target; "
+                    f"empty output indices: {empty.tolist()}."
+                )
+
+        if train_Yvar is not None:
+            if torch.isinf(train_Yvar).any():
+                raise ValueError("train_Yvar must not contain infinite values.")
+            variance_missing = torch.isnan(train_Yvar)
+            if not torch.equal(missing, variance_missing):
+                raise ValueError(
+                    "train_Yvar NaN positions must exactly match missing train_Y cells "
+                    "for correlated partial observations."
+                )
+            observed_variance = train_Yvar[~missing]
+            if observed_variance.numel() and bool((observed_variance <= 0).any()):
+                raise ValueError(
+                    "Observed train_Yvar cells must contain strictly positive variances."
+                )
+        return uses_mask
+
     def _setup_common(
         self,
         train_X: Tensor,
@@ -233,6 +286,10 @@ class _BaseDeepKernelGPModel(DeepGP, GPyTorchModel):
         self._model_device = train_X.device
 
         self._validate_tensor_args(X=train_X, Y=train_Y, Yvar=train_Yvar)
+        self._uses_observation_nan_mask = self._validate_observation_targets(
+            train_Y,
+            train_Yvar,
+        )
 
         train_Y, train_Yvar = self._resolve_outcome_transform(
             train_X=train_X,
@@ -462,7 +519,9 @@ class _BaseDeepKernelGPModel(DeepGP, GPyTorchModel):
         """
         この wrapper 用の ExactMarginalLogLikelihood を返す。
         """
-        return ExactMarginalLogLikelihood(self.likelihood, self.deepkernel)
+        return _ObservationMaskingExactMarginalLogLikelihood(
+            self.likelihood, self.deepkernel
+        )
 
     @property
     def num_outputs(self) -> int:

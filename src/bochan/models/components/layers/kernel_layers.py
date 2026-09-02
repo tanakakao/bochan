@@ -6,11 +6,15 @@ from botorch.models.gpytorch import BatchedMultiOutputGPyTorchModel
 from botorch.models.kernels.categorical import CategoricalKernel
 from botorch.models.utils.gpytorch_modules import get_covar_module_with_dim_scaled_prior
 from botorch.utils.transforms import normalize_indices
+from gpytorch import settings
 from gpytorch.constraints import GreaterThan
 from gpytorch.distributions import MultitaskMultivariateNormal, MultivariateNormal
 from gpytorch.kernels import MultitaskKernel, RBFKernel, ScaleKernel
 from gpytorch.means import ConstantMean, MultitaskMean
 from gpytorch.models import ExactGP
+from gpytorch.models.exact_prediction_strategies import DefaultPredictionStrategy
+from linear_operator import to_linear_operator
+from linear_operator.operators import MaskedLinearOperator
 from torch import Tensor
 
 from ..layers.feature_extractor import LargeFeatureExtractor, SkipLargeFeatureExtractor
@@ -191,6 +195,80 @@ def _validate_projected_features(
         )
 
 
+class _PartialObservationPredictionStrategy(DefaultPredictionStrategy):
+    """Exact prediction strategy that conditions only on observed task cells."""
+
+    def _observed_event_mask(self) -> Tensor | None:
+        if not bool(torch.isnan(self.train_labels).any()):
+            return None
+        return settings.observation_nan_policy._get_observed(
+            self.train_labels,
+            torch.Size((self.train_labels.shape[-1],)),
+        ).reshape(-1)
+
+    def exact_prediction(self, test_mean, test_test_covar, test_train_covar):
+        if self._observed_event_mask() is None:
+            return super().exact_prediction(
+                test_mean,
+                test_test_covar,
+                test_train_covar,
+            )
+        with settings.observation_nan_policy("mask"):
+            return super().exact_prediction(
+                test_mean,
+                test_test_covar,
+                test_train_covar,
+            )
+
+    def exact_predictive_covar(self, test_test_covar, test_train_covar):
+        observed = self._observed_event_mask()
+        if observed is None:
+            return super().exact_predictive_covar(
+                test_test_covar,
+                test_train_covar,
+            )
+
+        train_covar = MaskedLinearOperator(
+            to_linear_operator(self.lik_train_train_covar),
+            observed,
+            observed,
+        )
+        test_rows = torch.ones(
+            test_train_covar.shape[-2],
+            dtype=torch.bool,
+            device=observed.device,
+        )
+        test_train_observed = MaskedLinearOperator(
+            to_linear_operator(test_train_covar),
+            test_rows,
+            observed,
+        )
+        test_train_dense = test_train_observed.to_dense()
+        correction_rhs = train_covar.solve(test_train_dense.transpose(-1, -2))
+        correction = test_train_dense @ correction_rhs
+        return to_linear_operator(test_test_covar) + to_linear_operator(
+            correction.mul(-1)
+        )
+
+
+class _PartialObservationMultitaskKernel(MultitaskKernel):
+    """Multitask kernel selecting the partial-observation prediction strategy."""
+
+    def prediction_strategy(
+        self,
+        train_inputs,
+        train_prior_dist,
+        train_labels,
+        likelihood,
+    ):
+        return _PartialObservationPredictionStrategy(
+            train_inputs,
+            train_prior_dist,
+            train_labels,
+            likelihood,
+        )
+
+
 class DeepKernel(ExactGP):
     """
     連続入力向け Deep Kernel Learning 回帰モデル。
@@ -248,7 +326,7 @@ class DeepKernel(ExactGP):
                 ConstantMean(),
                 num_tasks=train_y.shape[-1],
             )
-            self.covar_module = MultitaskKernel(
+            self.covar_module = _PartialObservationMultitaskKernel(
                 ScaleKernel(RBFKernel(ard_num_dims=self.latent_dim)),
                 num_tasks=train_y.shape[-1],
             )
@@ -401,7 +479,7 @@ class DeepKernelMixed(BatchedMultiOutputGPyTorchModel, ExactGP):
         if self._num_outputs == 1:
             self.covar_module = base_kernel
         else:
-            self.covar_module = MultitaskKernel(
+            self.covar_module = _PartialObservationMultitaskKernel(
                 base_kernel,
                 num_tasks=train_y.shape[-1],
             )

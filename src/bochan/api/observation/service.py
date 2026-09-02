@@ -24,7 +24,13 @@ def _supports_wide_missing_targets(config: ModelConfig) -> bool:
     """Return whether one model consumes a wide matrix with NaN task cells."""
 
     name = _normalize_model_name(config.model_type)
-    return name == "multitask" or name.endswith("widemultitask")
+    if name == "multitask" or name.endswith("widemultitask"):
+        return True
+    model_cls = config.model_cls
+    return bool(
+        model_cls is not None
+        and getattr(model_cls, "_supports_partial_multitask_targets", False)
+    )
 
 
 def _reject_unsupported_correlated_missing(

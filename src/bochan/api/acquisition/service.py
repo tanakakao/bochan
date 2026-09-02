@@ -196,13 +196,14 @@ def resolve_acquisition(
         config=resolved,
     )
     resolved = _filter_context_fields_for_acqf(resolved)
-    optimizer.last_acquisition_diagnostics = build_acquisition_observation_diagnostics(
-        bundle=optimizer.bundle,
-        config=resolved,
-        before_context=before_context,
-        after_context=context,
-        observations=getattr(optimizer, "observations", None),
-    )
+    with suppress(Exception):
+        optimizer.last_acquisition_diagnostics = build_acquisition_observation_diagnostics(
+            bundle=optimizer.bundle,
+            config=resolved,
+            before_context=before_context,
+            after_context=context,
+            observations=getattr(optimizer, "observations", None),
+        )
     return resolved, context
 
 

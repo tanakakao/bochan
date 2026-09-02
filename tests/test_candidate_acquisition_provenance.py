@@ -1,10 +1,11 @@
 from types import SimpleNamespace
 
+from bochan.api.acquisition import service as acquisition_service
 from bochan.api.acquisition.diagnostics import (
     attach_candidate_acquisition_diagnostics,
     candidate_acquisition_diagnostics,
 )
-from bochan.api.configs import DataContext
+from bochan.api.configs import AcquisitionConfig, DataContext
 from bochan.serving.fastapi.routers import candidates as candidate_routes
 from bochan.serving.fastapi.services import candidates as candidate_service
 
@@ -55,6 +56,67 @@ def test_candidate_diagnostics_are_snapshotted_on_result_context():
     assert candidate_acquisition_diagnostics(result)["nested"][
         "observed_per_output"
     ] == [4, 3]
+
+
+def test_resolve_acquisition_attaches_candidate_provenance(monkeypatch):
+    config = AcquisitionConfig(name="EI")
+    context = DataContext()
+    optimizer = SimpleNamespace(
+        bundle=object(),
+        observations=None,
+        last_acquisition_diagnostics=None,
+    )
+    monkeypatch.setattr(
+        acquisition_service,
+        "resolve_acquisition_class",
+        lambda optimizer, config: config,
+    )
+    monkeypatch.setattr(
+        acquisition_service,
+        "resolve_input_perturbation_objective",
+        lambda bundle, config: config,
+    )
+    monkeypatch.setattr(
+        acquisition_service,
+        "resolve_observation_aware_baselines",
+        lambda bundle, config, context: context,
+    )
+    monkeypatch.setattr(
+        acquisition_service,
+        "resolve_acquisition_defaults",
+        lambda bundle, config, context: (config, context),
+    )
+    monkeypatch.setattr(
+        acquisition_service,
+        "resolve_outcome_constraint_config",
+        lambda bundle, config: config,
+    )
+    monkeypatch.setattr(
+        acquisition_service,
+        "_filter_context_fields_for_acqf",
+        lambda config: config,
+    )
+    monkeypatch.setattr(
+        acquisition_service,
+        "build_acquisition_observation_diagnostics",
+        lambda **kwargs: {"baseline_rows": 2, "training_rows": 3},
+    )
+
+    _, resolved_context = acquisition_service.resolve_acquisition(
+        optimizer,
+        config,
+        context,
+    )
+    result = SimpleNamespace(data_context=resolved_context)
+
+    assert optimizer.last_acquisition_diagnostics == {
+        "baseline_rows": 2,
+        "training_rows": 3,
+    }
+    assert candidate_acquisition_diagnostics(result) == {
+        "baseline_rows": 2,
+        "training_rows": 3,
+    }
 
 
 def test_generate_candidate_result_can_request_canonical_result(monkeypatch):

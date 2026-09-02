@@ -355,18 +355,20 @@ class ObservationData:
         )
 
     def report(self) -> dict[str, Any]:
-        return {
+        report = {
             "n_rows": int(self.X.shape[0]),
             "n_completed": int(self.completed_mask.sum().item()),
             "n_success": int(self.success_mask.sum().item()),
             "n_failed": int(self.failed_mask.sum().item()),
             "n_pending": int(self.pending_mask.sum().item()),
-            "known_observation_variance": self.Yvar is not None,
             "observed_per_output": [
                 int(value)
                 for value in self.observed_mask.sum(dim=0).detach().cpu().tolist()
             ],
         }
+        if self.Yvar is not None:
+            report["known_observation_variance"] = True
+        return report
 
 
 @dataclass

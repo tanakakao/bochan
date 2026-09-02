@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Any
 
 from ..configs import AcquisitionConfig, DataContext, ModelBundle
 from .defaults.observations import _as_output_matrix, _scalar_objective_indices
+
+_CANDIDATE_DIAGNOSTICS_ATTR = "_bochan_acquisition_diagnostics"
 
 
 def _row_count(values: Any | None) -> int | None:
@@ -18,6 +21,32 @@ def _row_count(values: Any | None) -> int | None:
             return len(values)
         except (TypeError, ValueError):
             return None
+
+
+def attach_candidate_acquisition_diagnostics(
+    context: DataContext,
+    diagnostics: dict[str, Any] | None,
+) -> None:
+    """Snapshot diagnostics on the exact context stored by ``CandidateResult``.
+
+    ``DataContext`` intentionally has no slots, so a private provenance attribute
+    can be attached without placing transport-only metadata in ``extra``.  This is
+    important because ``extra`` is forwarded to acquisition constructors.
+    """
+
+    setattr(
+        context,
+        _CANDIDATE_DIAGNOSTICS_ATTR,
+        None if diagnostics is None else deepcopy(diagnostics),
+    )
+
+
+def candidate_acquisition_diagnostics(result: Any) -> dict[str, Any] | None:
+    """Return the immutable-per-call diagnostics snapshot for a candidate result."""
+
+    context = getattr(result, "data_context", None)
+    diagnostics = getattr(context, _CANDIDATE_DIAGNOSTICS_ATTR, None)
+    return None if diagnostics is None else deepcopy(diagnostics)
 
 
 def build_acquisition_observation_diagnostics(
@@ -118,4 +147,8 @@ def build_acquisition_observation_diagnostics(
     return diagnostics
 
 
-__all__ = ["build_acquisition_observation_diagnostics"]
+__all__ = [
+    "attach_candidate_acquisition_diagnostics",
+    "build_acquisition_observation_diagnostics",
+    "candidate_acquisition_diagnostics",
+]

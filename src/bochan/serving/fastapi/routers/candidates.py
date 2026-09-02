@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from ..converters import to_serializable
 from ..dependencies import OptimizerStore, get_optimizer_store
 from ..schemas import (
+    AcquisitionDiagnosticsResponse,
     CandidateRequest,
     CandidateResponse,
     CompareCandidatesRequest,
@@ -44,6 +45,38 @@ def _optimizer_or_404(store: OptimizerStore, model_id: str):
         return store.get(model_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get(
+    "/{model_id}/acquisition/diagnostics",
+    response_model=AcquisitionDiagnosticsResponse,
+)
+def acquisition_diagnostics(
+    model_id: str,
+    store: OptimizerStore = OPTIMIZER_STORE_DEP,
+) -> AcquisitionDiagnosticsResponse:
+    """Return the latest acquisition diagnostics and current observation report."""
+
+    optimizer = _optimizer_or_404(store, model_id)
+    diagnostics = getattr(optimizer, "last_acquisition_diagnostics", None)
+    observations = getattr(optimizer, "observations", None)
+    observation_report = None
+    if observations is not None:
+        try:
+            observation_report = observations.report()
+        except Exception:
+            observation_report = None
+    return AcquisitionDiagnosticsResponse(
+        model_id=model_id,
+        diagnostics=(
+            None if diagnostics is None else to_serializable(diagnostics)
+        ),
+        observation_report=(
+            None
+            if observation_report is None
+            else to_serializable(observation_report)
+        ),
+    )
 
 
 @router.post("/{model_id}/candidates", response_model=CandidateResponse)

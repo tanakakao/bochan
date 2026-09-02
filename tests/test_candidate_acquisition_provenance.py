@@ -6,7 +6,7 @@ from bochan.api.acquisition.diagnostics import (
 )
 from bochan.api.configs import DataContext
 from bochan.serving.fastapi.routers import candidates as candidate_routes
-from bochan.serving.fastapi.services.candidates import generate_candidate_result
+from bochan.serving.fastapi.services import candidates as candidate_service
 
 
 class _Store:
@@ -57,7 +57,7 @@ def test_candidate_diagnostics_are_snapshotted_on_result_context():
     ] == [4, 3]
 
 
-def test_generate_candidate_result_can_request_canonical_result():
+def test_generate_candidate_result_can_request_canonical_result(monkeypatch):
     optimizer = _CandidateOptimizer()
     request = SimpleNamespace(
         tensor_options=None,
@@ -69,10 +69,26 @@ def test_generate_candidate_result_can_request_canonical_result():
         llm_config=None,
         llm_context=None,
     )
+    monkeypatch.setattr(
+        candidate_service,
+        "to_acquisition_config",
+        lambda config, options, optimizer=None: "acq-config",
+    )
+    monkeypatch.setattr(
+        candidate_service,
+        "to_optimize_config",
+        lambda config, options: SimpleNamespace(optimizer_kwargs={}),
+    )
 
-    # Keep conversion details out of this service-level contract test.
-    original = candidate_routes.generate_candidate_result
-    assert original is generate_candidate_result
+    result = candidate_service.generate_candidate_result(
+        optimizer,
+        request,
+        return_result=True,
+    )
+
+    assert result.candidates == [1.0]
+    assert optimizer.kwargs["acq_config"] == "acq-config"
+    assert optimizer.kwargs["return_result"] is True
 
 
 def test_compare_endpoint_uses_each_results_own_diagnostics(monkeypatch):

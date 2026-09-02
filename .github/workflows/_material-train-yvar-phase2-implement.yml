@@ -1,0 +1,624 @@
+name: Material train Yvar Phase 2 implementation runner
+
+on:
+  push:
+    branches:
+      - feat/material-train-yvar-phase2
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    if: github.event.head_commit.message == 'Add Phase 2 implementation runner'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/material-train-yvar-phase2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Apply correlated fixed-noise implementation
+        shell: bash
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          import re
+          from pathlib import Path
+
+          ROOT = Path('.')
+          DEEP = ROOT / 'src/bochan/models/regression/gaussian/deep'
+
+          likelihood_source = '''"""Fixed known observation noise for interleaved correlated multitask GPs."""
+
+          from __future__ import annotations
+
+          import warnings
+
+          import torch
+          from gpytorch.likelihoods import FixedNoiseGaussianLikelihood
+          from gpytorch.utils.warnings import GPInputWarning
+          from linear_operator.operators import LinearOperator, ZeroLinearOperator
+          from torch import Tensor
+
+
+          class MultitaskFixedNoiseGaussianLikelihood(FixedNoiseGaussianLikelihood):
+              """Fixed per-observation, per-task variance for interleaved multitask GPs.
+
+              GPyTorch's ``MultitaskMultivariateNormal`` stores an interleaved event as
+              ``[x0-task0, x0-task1, ..., x1-task0, ...]`` in its flattened covariance.
+              The public noise contract here stays in the natural wide shape ``[..., n, m]``
+              and is flattened only at the likelihood boundary.
+
+              The current bochan correlated DeepKernel models all construct the default
+              interleaved ``MultitaskMultivariateNormal``. Supporting non-interleaved
+              multitask distributions would require a separate ordering contract and is
+              intentionally rejected rather than silently applying the wrong diagonal.
+              """
+
+              def __init__(self, noise: Tensor, *, num_tasks: int | None = None) -> None:
+                  resolved_num_tasks = self._validate_wide_noise(
+                      noise,
+                      num_tasks=num_tasks,
+                      argument_name="noise",
+                  )
+                  super().__init__(
+                      noise=self._flatten_interleaved(noise),
+                      learn_additional_noise=False,
+                  )
+                  self.num_tasks = resolved_num_tasks
+
+              @staticmethod
+              def _validate_wide_noise(
+                  noise: Tensor,
+                  *,
+                  num_tasks: int | None,
+                  argument_name: str,
+              ) -> int:
+                  if not torch.is_tensor(noise):
+                      raise TypeError(f"{argument_name} must be a Tensor.")
+                  if noise.ndim < 2:
+                      raise ValueError(
+                          f"{argument_name} must have shape [..., n, m] for multitask noise."
+                      )
+                  inferred_num_tasks = int(noise.shape[-1])
+                  if inferred_num_tasks < 2:
+                      raise ValueError(
+                          f"{argument_name} must contain at least two task columns."
+                      )
+                  if num_tasks is not None and inferred_num_tasks != int(num_tasks):
+                      raise ValueError(
+                          f"{argument_name} task dimension does not match num_tasks: "
+                          f"{inferred_num_tasks} != {int(num_tasks)}."
+                      )
+                  if not torch.isfinite(noise).all():
+                      raise ValueError(f"{argument_name} must contain only finite variances.")
+                  if (noise < 0).any():
+                      raise ValueError(f"{argument_name} must contain non-negative variances.")
+                  return inferred_num_tasks
+
+              @staticmethod
+              def _flatten_interleaved(noise: Tensor) -> Tensor:
+                  return noise.reshape(*noise.shape[:-2], -1)
+
+              @property
+              def task_noise(self) -> Tensor:
+                  """Return fixed training variance in natural ``[..., n, m]`` shape."""
+
+                  flat_noise = self.noise_covar.noise
+                  if flat_noise.shape[-1] % self.num_tasks != 0:
+                      raise RuntimeError(
+                          "Stored fixed noise is incompatible with the configured task count."
+                      )
+                  num_data = flat_noise.shape[-1] // self.num_tasks
+                  return flat_noise.reshape(
+                      *flat_noise.shape[:-1],
+                      num_data,
+                      self.num_tasks,
+                  )
+
+              def _shaped_noise_covar(
+                  self,
+                  base_shape: torch.Size,
+                  *params,
+                  **kwargs,
+              ) -> Tensor | LinearOperator:
+                  del params
+                  if len(base_shape) < 2 or int(base_shape[-1]) != self.num_tasks:
+                      raise ValueError(
+                          "Multitask fixed noise expects an event shape [..., n, m] with "
+                          f"m={self.num_tasks}; got {tuple(base_shape)}."
+                      )
+
+                  explicit_noise = kwargs.pop("noise", None)
+                  flat_shape = torch.Size(
+                      (*base_shape[:-2], int(base_shape[-2]) * self.num_tasks)
+                  )
+                  if explicit_noise is not None:
+                      self._validate_wide_noise(
+                          explicit_noise,
+                          num_tasks=self.num_tasks,
+                          argument_name="noise",
+                      )
+                      if tuple(explicit_noise.shape[-2:]) != tuple(base_shape[-2:]):
+                          raise ValueError(
+                              "Explicit multitask observation noise must match the requested "
+                              f"[n, m] event shape: {tuple(explicit_noise.shape[-2:])} != "
+                              f"{tuple(base_shape[-2:])}."
+                          )
+                      return self.noise_covar(
+                          shape=flat_shape,
+                          noise=self._flatten_interleaved(explicit_noise),
+                          **kwargs,
+                      )
+
+                  result = self.noise_covar(shape=flat_shape, **kwargs)
+                  if isinstance(result, ZeroLinearOperator):
+                      warnings.warn(
+                          "The requested multitask event size does not match the stored fixed "
+                          "training noise and no explicit observation noise was supplied. "
+                          "This is treated as a no-op.",
+                          GPInputWarning,
+                          stacklevel=2,
+                      )
+                  return result
+
+              def get_fantasy_likelihood(self, **kwargs):
+                  """Append wide fixed noise for fantasy observations along the data axis."""
+
+                  if "noise" not in kwargs:
+                      raise RuntimeError(
+                          "MultitaskFixedNoiseGaussianLikelihood.fantasize requires a "
+                          "wide `noise` kwarg with shape [..., q, m]."
+                      )
+                  new_noise = kwargs["noise"]
+                  self._validate_wide_noise(
+                      new_noise,
+                      num_tasks=self.num_tasks,
+                      argument_name="noise",
+                  )
+                  old_noise = self.task_noise
+                  batch_shape = torch.broadcast_shapes(
+                      old_noise.shape[:-2],
+                      new_noise.shape[:-2],
+                  )
+                  old_noise = old_noise.expand(
+                      *batch_shape,
+                      old_noise.shape[-2],
+                      self.num_tasks,
+                  )
+                  new_noise = new_noise.expand(
+                      *batch_shape,
+                      new_noise.shape[-2],
+                      self.num_tasks,
+                  )
+                  fantasy = type(self)(
+                      torch.cat([old_noise, new_noise], dim=-2),
+                      num_tasks=self.num_tasks,
+                  )
+                  fantasy.train(self.training)
+                  return fantasy
+
+
+          __all__ = ["MultitaskFixedNoiseGaussianLikelihood"]
+          '''
+          (DEEP / 'multitask_fixed_noise.py').write_text(likelihood_source, encoding='utf-8')
+
+          configurable_path = DEEP / 'deepkernel_configurable.py'
+          text = configurable_path.read_text(encoding='utf-8')
+          marker = '''from .deepkernel import (
+              InputTransformArg,
+              OutcomeTransformArg,
+              _BaseDeepKernelGPModel,
+          )
+          '''
+          replacement = marker + 'from .multitask_fixed_noise import MultitaskFixedNoiseGaussianLikelihood\n'
+          if marker not in text:
+              raise RuntimeError('deepkernel_configurable import marker not found')
+          text = text.replace(marker, replacement, 1)
+
+          helper_pattern = re.compile(
+              r'def _fixed_noise_likelihood\(.*?\n\n\nclass DeepKernelGaussianGPModel',
+              flags=re.DOTALL,
+          )
+          helper = '''def _fixed_noise_likelihood(
+              train_Yvar: Tensor | None,
+              *,
+              num_outputs: int,
+          ) -> FixedNoiseGaussianLikelihood | None:
+              """Build fixed known observation noise in outcome-transform space.
+
+              Scalar outputs retain GPyTorch's standard ``FixedNoiseGaussianLikelihood``.
+              Correlated wide outputs use an interleaved multitask adapter so the public
+              ``train_Yvar`` contract remains ``[..., n, m]`` while the covariance receives
+              the required flattened ``n * m`` diagonal ordering.
+              """
+
+              if train_Yvar is None:
+                  return None
+              if num_outputs == 1:
+                  noise = (
+                      train_Yvar.squeeze(-1)
+                      if train_Yvar.shape[-1:] == (1,)
+                      else train_Yvar
+                  )
+                  return FixedNoiseGaussianLikelihood(noise=noise)
+              return MultitaskFixedNoiseGaussianLikelihood(
+                  noise=train_Yvar,
+                  num_tasks=num_outputs,
+              )
+
+
+          class DeepKernelGaussianGPModel'''
+          text, count = helper_pattern.subn(helper, text, count=1)
+          if count != 1:
+              raise RuntimeError(f'fixed-noise helper replacement count={count}')
+          configurable_path.write_text(text, encoding='utf-8')
+
+          family_files = [
+              'mace_multitask.py',
+              'chgnet_multitask.py',
+              'm3gnet_multitask.py',
+              'alignn_multitask.py',
+              'crabnet_multitask.py',
+          ]
+          for name in family_files:
+              path = DEEP / name
+              text = path.read_text(encoding='utf-8')
+              text, guard_count = re.subn(
+                  r'\n    if train_Yvar is not None:\n'
+                  r'        raise NotImplementedError\(f"\{model_name\} does not yet support train_Yvar\."\)\n',
+                  '\n',
+                  text,
+              )
+              if guard_count != 1:
+                  raise RuntimeError(f'{name}: expected one train_Yvar guard, found {guard_count}')
+              pass_count = text.count('            train_Yvar=None,\n')
+              if pass_count < 1:
+                  raise RuntimeError(f'{name}: no correlated train_Yvar=None pass-through found')
+              text = text.replace(
+                  '            train_Yvar=None,\n',
+                  '            train_Yvar=train_Yvar,\n',
+              )
+              path.write_text(text, encoding='utf-8')
+
+          test_files = [
+              'tests/test_mace_multitask.py',
+              'tests/test_chgnet_multitask.py',
+              'tests/test_m3gnet_multitask.py',
+              'tests/test_alignn_multitask.py',
+              'tests/test_crabnet_multitask.py',
+          ]
+          reject_pattern = re.compile(
+              r'^    with pytest\.raises\(NotImplementedError, match="train_Yvar"\):\n'
+              r'(?P<body>(?:        .*\n)+)',
+              flags=re.MULTILINE,
+          )
+          for filename in test_files:
+              path = ROOT / filename
+              text = path.read_text(encoding='utf-8')
+              text = text.replace(
+                  '_rejects_single_output_and_train_yvar',
+                  '_rejects_single_output_and_accepts_train_yvar',
+              )
+
+              def _dedent(match: re.Match[str]) -> str:
+                  body = match.group('body')
+                  return ''.join(
+                      line[4:] if line.startswith('    ') else line
+                      for line in body.splitlines(keepends=True)
+                  )
+
+              text, count = reject_pattern.subn(_dedent, text)
+              if count != 1:
+                  raise RuntimeError(f'{filename}: expected one NotImplemented block, found {count}')
+              path.write_text(text, encoding='utf-8')
+
+          phase2_test = '''from __future__ import annotations
+
+          import pytest
+          import torch
+          from gpytorch.distributions import MultitaskMultivariateNormal
+          from gpytorch.kernels import RBFKernel
+          from linear_operator.operators import to_linear_operator
+          from torch import nn
+
+          from bochan.models.regression.gaussian.deep.deepkernel_configurable import (
+              DeepKernelGaussianGPModel,
+          )
+          from bochan.models.regression.gaussian.deep.multitask_fixed_noise import (
+              MultitaskFixedNoiseGaussianLikelihood,
+          )
+
+
+          def _generic_data() -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+              X = torch.tensor(
+                  [[0.0, 0.0], [0.3, 0.2], [0.6, 0.8], [1.0, 1.0]],
+                  dtype=torch.double,
+              )
+              Y = torch.tensor(
+                  [[0.0, 1.0], [0.4, 1.3], [0.7, 1.8], [1.1, 2.2]],
+                  dtype=torch.double,
+              )
+              Yvar = torch.tensor(
+                  [[0.01, 0.02], [0.03, 0.04], [0.05, 0.06], [0.07, 0.08]],
+                  dtype=torch.double,
+              )
+              return X, Y, Yvar
+
+
+          def test_multitask_fixed_noise_uses_interleaved_event_order() -> None:
+              noise = torch.tensor(
+                  [[0.01, 0.02], [0.03, 0.04]],
+                  dtype=torch.double,
+              )
+              likelihood = MultitaskFixedNoiseGaussianLikelihood(noise)
+
+              diagonal = likelihood._shaped_noise_covar(torch.Size([2, 2])).diagonal()
+              torch.testing.assert_close(
+                  diagonal,
+                  torch.tensor([0.01, 0.02, 0.03, 0.04], dtype=torch.double),
+              )
+              torch.testing.assert_close(likelihood.task_noise, noise)
+
+
+          def test_multitask_fixed_noise_matches_multitask_distribution_covariance() -> None:
+              mean = torch.zeros(2, 2, dtype=torch.double)
+              covariance = to_linear_operator(torch.eye(4, dtype=torch.double))
+              latent = MultitaskMultivariateNormal(mean, covariance, interleaved=True)
+              noise = torch.tensor(
+                  [[0.01, 0.02], [0.03, 0.04]],
+                  dtype=torch.double,
+              )
+              observed = MultitaskFixedNoiseGaussianLikelihood(noise)(latent)
+
+              torch.testing.assert_close(
+                  observed.lazy_covariance_matrix.diagonal() - latent.lazy_covariance_matrix.diagonal(),
+                  noise.reshape(-1),
+              )
+
+
+          def test_correlated_deepkernel_accepts_wide_train_yvar_and_exact_mll() -> None:
+              X, Y, Yvar = _generic_data()
+              model = DeepKernelGaussianGPModel(
+                  X,
+                  Y,
+                  Yvar,
+                  feature_extractor=nn.Identity(),
+                  latent_dim=2,
+                  input_transform=None,
+                  outcome_transform=None,
+              ).double()
+
+              assert isinstance(model.likelihood, MultitaskFixedNoiseGaussianLikelihood)
+              torch.testing.assert_close(model.likelihood.task_noise, Yvar)
+
+              model.train()
+              transformed_X = model.transform_inputs(X)
+              output = model.deepkernel(transformed_X)
+              mll_value = model.make_mll()(output, Y)
+              assert torch.isfinite(mll_value)
+
+              model.eval()
+              latent = model.posterior(X[:2], observation_noise=False)
+              test_noise = torch.tensor(
+                  [[0.05, 0.06], [0.07, 0.08]],
+                  dtype=torch.double,
+              )
+              observed = model.posterior(X[:2], observation_noise=test_noise)
+              assert torch.isfinite(observed.mean).all()
+              assert torch.isfinite(observed.variance).all()
+              torch.testing.assert_close(
+                  observed.variance - latent.variance,
+                  test_noise,
+                  rtol=1e-4,
+                  atol=1e-6,
+              )
+
+
+          def test_default_outcome_transform_scales_wide_variance_before_likelihood() -> None:
+              X, Y, Yvar = _generic_data()
+              model = DeepKernelGaussianGPModel(
+                  X,
+                  Y,
+                  Yvar,
+                  feature_extractor=nn.Identity(),
+                  latent_dim=2,
+                  input_transform=None,
+              ).double()
+
+              assert model.train_Yvar is not None
+              assert model.train_Yvar.shape == Yvar.shape
+              assert isinstance(model.likelihood, MultitaskFixedNoiseGaussianLikelihood)
+              torch.testing.assert_close(model.likelihood.task_noise, model.train_Yvar)
+              assert torch.isfinite(model.train_Yvar).all()
+
+
+          def test_multitask_fixed_noise_validates_task_shape_and_values() -> None:
+              with pytest.raises(ValueError, match="at least two task"):
+                  MultitaskFixedNoiseGaussianLikelihood(torch.ones(3, 1))
+              with pytest.raises(ValueError, match="non-negative"):
+                  MultitaskFixedNoiseGaussianLikelihood(
+                      torch.tensor([[0.01, -0.02], [0.03, 0.04]])
+                  )
+
+              likelihood = MultitaskFixedNoiseGaussianLikelihood(torch.full((3, 2), 0.01))
+              with pytest.raises(ValueError, match="event shape"):
+                  likelihood._shaped_noise_covar(torch.Size([2, 3]))
+              with pytest.raises(ValueError, match="match the requested"):
+                  likelihood._shaped_noise_covar(
+                      torch.Size([2, 2]),
+                      noise=torch.full((3, 2), 0.02),
+                  )
+
+
+          def test_multitask_fixed_noise_fantasy_appends_data_axis() -> None:
+              likelihood = MultitaskFixedNoiseGaussianLikelihood(
+                  torch.tensor([[0.01, 0.02], [0.03, 0.04]], dtype=torch.double)
+              )
+              fantasy = likelihood.get_fantasy_likelihood(
+                  noise=torch.tensor([[0.05, 0.06]], dtype=torch.double)
+              )
+              assert fantasy.task_noise.shape == torch.Size([3, 2])
+              torch.testing.assert_close(
+                  fantasy.task_noise,
+                  torch.tensor(
+                      [[0.01, 0.02], [0.03, 0.04], [0.05, 0.06]],
+                      dtype=torch.double,
+                  ),
+              )
+          '''
+          (ROOT / 'tests/test_material_train_yvar_phase2.py').write_text(
+              phase2_test,
+              encoding='utf-8',
+          )
+
+          docs = '''# Material `train_Yvar` Phase 2: correlated multitask fixed noise
+
+          Phase 2 extends known observation variance to bochan's **correlated multitask**
+          material GP/DKL models.
+
+          ## Contract
+
+          - `train_Yvar` means **variance**, not standard deviation.
+          - Correlated multitask targets use wide `train_Y` and `train_Yvar` with shape
+            `[n_samples, n_tasks]`, with at least two tasks.
+          - The default outcome transform is applied to `train_Y` and `train_Yvar` before
+            constructing the likelihood, so the fixed variance is expressed in the same
+            transformed space used by the GP.
+          - A user-supplied `likelihood` remains authoritative. The automatic fixed-noise
+            likelihood is selected only when `likelihood=None` and `train_Yvar` is supplied.
+
+          ## Event ordering
+
+          The correlated DeepKernel models return GPyTorch's default interleaved
+          `MultitaskMultivariateNormal`. Its covariance event order is
+          `x0/task0, x0/task1, ..., x1/task0, ...`. The public variance tensor remains wide;
+          `MultitaskFixedNoiseGaussianLikelihood` flattens it only at the likelihood boundary
+          so the diagonal noise is aligned with the covariance event order.
+
+          ## Supported correlated material families
+
+          Phase 2 enables the contract for MACE, CHGNet, M3GNet, ALIGNN, and CrabNet,
+          including their correlated mixed-process and DKL variants where those classes
+          already exist. Roost is not included because bochan does not currently expose a
+          correlated Roost multitask model.
+
+          ## Posterior observation noise
+
+          `posterior(..., observation_noise=False)` remains the latent-function posterior.
+          To add known test-time observation noise, pass a wide tensor with shape `[q, m]`
+          (plus optional batch dimensions). Calling a fixed-noise likelihood on a different
+          event size without explicit test noise is treated as a no-op, matching the scalar
+          fixed-noise behavior.
+
+          ## Scope boundary
+
+          This phase is the model-layer correlated multitask contract. High-level tabular
+          variance-column ingestion and FastAPI request/schema plumbing remain separate work.
+          '''
+          (ROOT / 'docs/material_train_yvar_phase2.md').write_text(docs, encoding='utf-8')
+
+          phase2_workflow = '''name: Material train Yvar Phase 2 smoke
+
+          on:
+            pull_request:
+              paths:
+                - "src/bochan/models/regression/gaussian/deep/**"
+                - "tests/test_material_train_yvar_phase2.py"
+                - "tests/test_mace_multitask.py"
+                - "tests/test_chgnet_multitask.py"
+                - "tests/test_m3gnet_multitask.py"
+                - "tests/test_alignn_multitask.py"
+                - "tests/test_crabnet_multitask.py"
+                - "docs/material_train_yvar_phase2.md"
+                - ".github/workflows/material-train-yvar-phase2-smoke.yml"
+            workflow_dispatch:
+
+          jobs:
+            correlated-fixed-noise:
+              runs-on: ubuntu-latest
+              steps:
+                - uses: actions/checkout@v4
+                - uses: actions/setup-python@v5
+                  with:
+                    python-version: "3.11"
+                - name: Install material test surface
+                  run: |
+                    python -m pip install --upgrade pip
+                    python -m pip install -e ".[test,materials]"
+                    python -m pip install ruff
+                - name: Run Phase 2 fixed-noise tests
+                  run: python -m pytest tests/test_material_train_yvar_phase2.py -q
+                - name: Run correlated material multitask regressions
+                  run: |
+                    python -m pytest \\
+                      tests/test_mace_multitask.py \\
+                      tests/test_chgnet_multitask.py \\
+                      tests/test_m3gnet_multitask.py \\
+                      tests/test_alignn_multitask.py \\
+                      tests/test_crabnet_multitask.py \\
+                      -q
+                - name: Ruff
+                  run: |
+                    ruff check \\
+                      src/bochan/models/regression/gaussian/deep/deepkernel_configurable.py \\
+                      src/bochan/models/regression/gaussian/deep/multitask_fixed_noise.py \\
+                      src/bochan/models/regression/gaussian/deep/mace_multitask.py \\
+                      src/bochan/models/regression/gaussian/deep/chgnet_multitask.py \\
+                      src/bochan/models/regression/gaussian/deep/m3gnet_multitask.py \\
+                      src/bochan/models/regression/gaussian/deep/alignn_multitask.py \\
+                      src/bochan/models/regression/gaussian/deep/crabnet_multitask.py \\
+                      tests/test_material_train_yvar_phase2.py
+          '''
+          (ROOT / '.github/workflows/material-train-yvar-phase2-smoke.yml').write_text(
+              phase2_workflow,
+              encoding='utf-8',
+          )
+          PY
+      - name: Install and validate
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[test,materials]"
+          python -m pip install ruff
+          python -m pytest tests/test_material_train_yvar_phase2.py -q
+          python -m pytest \
+            tests/test_mace_multitask.py \
+            tests/test_chgnet_multitask.py \
+            tests/test_m3gnet_multitask.py \
+            tests/test_alignn_multitask.py \
+            tests/test_crabnet_multitask.py \
+            -q
+          ruff check \
+            src/bochan/models/regression/gaussian/deep/deepkernel_configurable.py \
+            src/bochan/models/regression/gaussian/deep/multitask_fixed_noise.py \
+            src/bochan/models/regression/gaussian/deep/mace_multitask.py \
+            src/bochan/models/regression/gaussian/deep/chgnet_multitask.py \
+            src/bochan/models/regression/gaussian/deep/m3gnet_multitask.py \
+            src/bochan/models/regression/gaussian/deep/alignn_multitask.py \
+            src/bochan/models/regression/gaussian/deep/crabnet_multitask.py \
+            tests/test_material_train_yvar_phase2.py
+      - name: Commit implementation
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            src/bochan/models/regression/gaussian/deep/deepkernel_configurable.py \
+            src/bochan/models/regression/gaussian/deep/multitask_fixed_noise.py \
+            src/bochan/models/regression/gaussian/deep/mace_multitask.py \
+            src/bochan/models/regression/gaussian/deep/chgnet_multitask.py \
+            src/bochan/models/regression/gaussian/deep/m3gnet_multitask.py \
+            src/bochan/models/regression/gaussian/deep/alignn_multitask.py \
+            src/bochan/models/regression/gaussian/deep/crabnet_multitask.py \
+            tests/test_material_train_yvar_phase2.py \
+            tests/test_mace_multitask.py \
+            tests/test_chgnet_multitask.py \
+            tests/test_m3gnet_multitask.py \
+            tests/test_alignn_multitask.py \
+            tests/test_crabnet_multitask.py \
+            docs/material_train_yvar_phase2.md \
+            .github/workflows/material-train-yvar-phase2-smoke.yml
+          git commit -m "Add correlated material fixed-noise GP support"
+          git push origin HEAD:feat/material-train-yvar-phase2

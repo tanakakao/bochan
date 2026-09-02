@@ -1,5 +1,6 @@
 """Regression workflow routes for the Web API."""
 
+from contextlib import suppress
 import logging
 from time import perf_counter
 from typing import Any
@@ -9,9 +10,14 @@ from fastapi import APIRouter, HTTPException
 from bochan.api.progress import progress_reporting
 from bochan.serving.fastapi.converters import to_serializable
 
-from ..logging import log_event
+from ..logging import current_request_id, log_event
 from ..schemas.regression import RegressionRunRequest
+from ..services.acquisition_diagnostics import (
+    acquisition_diagnostics_view_for_optimizer,
+    build_acquisition_diagnostics_view,
+)
 from ..services.model_reuse import current_model_reuse_state
+from ..services.visualization_sessions import get_visualization_session
 from ..workflows import run_regression_web_workflow
 
 _CRABNET_MULTITASK_WEB_BASE_MODELS = {
@@ -161,6 +167,20 @@ def _progress_callback(
     return callback
 
 
+def _attach_web_acquisition_diagnostics(result: dict[str, Any]) -> None:
+    """Attach presentation-ready diagnostics without affecting workflow success."""
+
+    result["acquisition_diagnostics_view"] = build_acquisition_diagnostics_view(None)
+    run_id = current_request_id()
+    if not run_id:
+        return
+    with suppress(Exception):
+        session = get_visualization_session(run_id)
+        result["acquisition_diagnostics_view"] = (
+            acquisition_diagnostics_view_for_optimizer(session.optimizer)
+        )
+
+
 def run_regression_request(
     request: RegressionRunRequest,
     *,
@@ -210,6 +230,7 @@ def run_regression_request(
                 _workflow_request(request),
                 dataset_store,
             )
+        _attach_web_acquisition_diagnostics(result)
         log_event(
             logger,
             logging.INFO,
@@ -221,6 +242,7 @@ def run_regression_request(
             n_train=result.get("n_train"),
             n_candidates=len(result.get("candidates", [])),
             model_details=result.get("metadata", {}).get("model_details"),
+            acquisition_diagnostics=result.get("acquisition_diagnostics_view"),
             duration_ms=round((perf_counter() - started) * 1000, 3),
         )
         return result

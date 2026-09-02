@@ -107,7 +107,6 @@ def test_diagnostics_preserve_explicit_complete_baseline_semantics():
     assert diagnostics["baseline_filtered"] is False
     assert diagnostics["partial_observation"] is False
     assert diagnostics["observed_per_output"] == [4]
-    assert diagnostics["failure_rows"] if False else True
     assert diagnostics["failed_rows"] == 0
     assert diagnostics["pending_rows"] == 0
     assert diagnostics["failed_excluded_from_objective_training"] is False

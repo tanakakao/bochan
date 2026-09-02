@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from bochan.api.acquisition.provenance import candidate_acquisition_diagnostics
+
 from ..converters import to_serializable
 from ..dependencies import OptimizerStore, get_optimizer_store
 from ..schemas import (
@@ -141,6 +143,7 @@ def compare_candidates(
                 model_id,
                 result.candidates,
                 result.acq_value,
+                diagnostics=candidate_acquisition_diagnostics(result),
             )
             for name, result in results.items()
         }

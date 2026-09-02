@@ -1,6 +1,7 @@
-"""Compatibility imports for canonical material/process fusion contracts."""
+"""Common contracts for material-aware Gaussian models."""
 
-from bochan.models.regression.gaussian.materials.common.fusion import (
+from .base import MaterialEncoder
+from .fusion import (
     ConcatFusion,
     MaterialProcessFusion,
     build_material_process_fusion,
@@ -8,6 +9,7 @@ from bochan.models.regression.gaussian.materials.common.fusion import (
 
 __all__ = [
     "ConcatFusion",
+    "MaterialEncoder",
     "MaterialProcessFusion",
     "build_material_process_fusion",
 ]

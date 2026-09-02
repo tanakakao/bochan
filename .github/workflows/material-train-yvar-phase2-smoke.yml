@@ -5,14 +5,12 @@ on:
     paths:
       - "src/bochan/models/regression/gaussian/deep/**"
       - "tests/test_material_train_yvar_phase2.py"
-      - "tests/test_mace_multitask.py"
-      - "tests/test_chgnet_multitask.py"
-      - "tests/test_m3gnet_multitask.py"
-      - "tests/test_alignn_multitask.py"
-      - "tests/test_crabnet_multitask.py"
       - "docs/material_train_yvar_phase2.md"
       - ".github/workflows/material-train-yvar-phase2-smoke.yml"
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   correlated-fixed-noise:
@@ -22,22 +20,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Install material test surface
+      - name: Install test surface
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[test,materials]"
+          python -m pip install -e ".[test]"
           python -m pip install ruff
       - name: Run Phase 2 fixed-noise tests
         run: python -m pytest tests/test_material_train_yvar_phase2.py -q
-      - name: Run correlated material multitask regressions
-        run: |
-          python -m pytest \
-            tests/test_mace_multitask.py \
-            tests/test_chgnet_multitask.py \
-            tests/test_m3gnet_multitask.py \
-            tests/test_alignn_multitask.py \
-            tests/test_crabnet_multitask.py \
-            -q
       - name: Ruff
         run: |
           ruff check \

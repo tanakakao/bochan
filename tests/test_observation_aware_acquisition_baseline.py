@@ -183,6 +183,36 @@ def test_complete_legacy_data_keeps_existing_baseline_identity():
     assert resolved.Y_baseline is bundle.train_Y
 
 
+def test_tensor_list_complete_data_is_a_strict_noop():
+    train_x = torch.arange(8, dtype=torch.double).reshape(4, 2)
+    train_y = [
+        torch.tensor([[1.0], [2.0], [3.0], [4.0]], dtype=torch.double),
+        torch.tensor([[10.0], [11.0], [12.0], [13.0]], dtype=torch.double),
+    ]
+    bundle = ModelBundle(
+        model=SimpleNamespace(output_names=["strength", "conductivity"]),
+        train_X=train_x,
+        train_Y=train_y,
+        model_config=ModelConfig(
+            task_type="regression",
+            model_type="base",
+            outcome_transform=False,
+        ),
+        metadata={},
+    )
+    context = DataContext(X_baseline=train_x, Y_baseline=train_y)
+    config = AcquisitionConfig(
+        name="qnei",
+        objective_config=ObjectiveConfig(mode="scalar", output="strength"),
+    )
+
+    resolved = resolve_observation_aware_baselines(bundle, config, context)
+
+    assert resolved is context
+    assert resolved.X_baseline is train_x
+    assert resolved.Y_baseline is train_y
+
+
 def test_scalar_output_without_any_observation_raises_clear_error():
     bundle = _bundle(
         [

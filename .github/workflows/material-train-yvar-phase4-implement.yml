@@ -24,6 +24,7 @@ jobs:
         run: |
           python .github/scripts/material_train_yvar_phase4_patch.py
           python .github/scripts/material_train_yvar_phase4_lint_patch.py
+          python .github/scripts/material_train_yvar_phase4_test_patch.py
       - name: Install Ruff
         run: python -m pip install ruff
       - name: Ruff

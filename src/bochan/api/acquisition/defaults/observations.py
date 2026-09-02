@@ -118,7 +118,11 @@ def _scalar_objective_indices(
     if mode == "scalar" and objective_config.weights is not None:
         weights = list(objective_config.weights)
         if len(weights) == n_outputs:
-            indices = [index for index, weight in enumerate(weights) if float(weight) != 0.0]
+            indices = [
+                index
+                for index, weight in enumerate(weights)
+                if getattr(weight, "numel", lambda: 1)() == 1 and float(weight) != 0.0
+            ]
             return indices or None
 
     if n_outputs == 1:
@@ -149,6 +153,12 @@ def resolve_observation_aware_baselines(
     train_Y_raw = getattr(bundle, "train_Y", None)
     train_Y = _as_output_matrix(train_Y_raw)
     if train_X is None or train_Y is None or train_Y.shape[0] == 0:
+        return context
+
+    # Complete outcome data must be a strict no-op. Besides preserving legacy
+    # object identity, this avoids resolving named outputs for workflows that do
+    # not need observation masking at all.
+    if bool(torch.isfinite(train_Y).all()):
         return context
 
     n_outputs = int(train_Y.shape[-1])

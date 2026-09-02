@@ -1,10 +1,11 @@
-"""Fixed known observation noise for interleaved correlated multitask GPs."""
+"""Fixed known observation noise for correlated multitask GPs."""
 
 from __future__ import annotations
 
 import warnings
 
 import torch
+from gpytorch.distributions import MultitaskMultivariateNormal
 from gpytorch.likelihoods import FixedNoiseGaussianLikelihood
 from gpytorch.utils.warnings import GPInputWarning
 from linear_operator.operators import LinearOperator, ZeroLinearOperator
@@ -12,16 +13,12 @@ from torch import Tensor
 
 
 class MultitaskFixedNoiseGaussianLikelihood(FixedNoiseGaussianLikelihood):
-    """Fixed per-observation, per-task variance for interleaved multitask GPs.
+    """Fixed per-observation, per-task variance for wide multitask targets.
 
-    GPyTorch's default ``MultitaskMultivariateNormal`` stores an interleaved
-    event as ``[x0-task0, x0-task1, ..., x1-task0, ...]`` in its flattened
-    covariance. The public noise contract remains ``[..., n, m]`` and is
-    flattened only at the likelihood boundary.
-
-    Bochan's correlated DeepKernel models currently construct this default
-    interleaved distribution. Non-interleaved multitask distributions are not
-    accepted by this adapter because their diagonal ordering is different.
+    The public noise contract is ``[..., n, m]``. The likelihood converts this
+    wide tensor to the covariance event order at the likelihood boundary, using
+    ``MultitaskMultivariateNormal._interleaved`` rather than assuming one layout.
+    Stored training noise is canonicalized in interleaved order internally.
     """
 
     def __init__(self, noise: Tensor, *, num_tasks: int | None = None) -> None:
@@ -31,7 +28,7 @@ class MultitaskFixedNoiseGaussianLikelihood(FixedNoiseGaussianLikelihood):
             argument_name="noise",
         )
         super().__init__(
-            noise=self._flatten_interleaved(noise),
+            noise=self._flatten_event(noise, interleaved=True),
             learn_additional_noise=False,
         )
         self.num_tasks = resolved_num_tasks
@@ -61,13 +58,16 @@ class MultitaskFixedNoiseGaussianLikelihood(FixedNoiseGaussianLikelihood):
             )
         if not torch.isfinite(noise).all():
             raise ValueError(f"{argument_name} must contain only finite variances.")
-        if (noise < 0).any():
-            raise ValueError(f"{argument_name} must contain non-negative variances.")
+        if (noise <= 0).any():
+            raise ValueError(
+                f"{argument_name} must contain strictly positive variances."
+            )
         return inferred_num_tasks
 
     @staticmethod
-    def _flatten_interleaved(noise: Tensor) -> Tensor:
-        return noise.reshape(*noise.shape[:-2], -1)
+    def _flatten_event(noise: Tensor, *, interleaved: bool) -> Tensor:
+        ordered = noise if interleaved else noise.transpose(-1, -2)
+        return ordered.reshape(*ordered.shape[:-2], -1)
 
     @property
     def task_noise(self) -> Tensor:
@@ -98,6 +98,7 @@ class MultitaskFixedNoiseGaussianLikelihood(FixedNoiseGaussianLikelihood):
                 f"m={self.num_tasks}; got {tuple(base_shape)}."
             )
 
+        interleaved = bool(kwargs.pop("_interleaved", True))
         explicit_noise = kwargs.pop("noise", None)
         flat_shape = torch.Size(
             (*base_shape[:-2], int(base_shape[-2]) * self.num_tasks)
@@ -116,7 +117,21 @@ class MultitaskFixedNoiseGaussianLikelihood(FixedNoiseGaussianLikelihood):
                 )
             return self.noise_covar(
                 shape=flat_shape,
-                noise=self._flatten_interleaved(explicit_noise),
+                noise=self._flatten_event(
+                    explicit_noise,
+                    interleaved=interleaved,
+                ),
+                **kwargs,
+            )
+
+        stored_noise = self.task_noise
+        if int(stored_noise.shape[-2]) == int(base_shape[-2]):
+            return self.noise_covar(
+                shape=flat_shape,
+                noise=self._flatten_event(
+                    stored_noise,
+                    interleaved=interleaved,
+                ),
                 **kwargs,
             )
 
@@ -131,13 +146,40 @@ class MultitaskFixedNoiseGaussianLikelihood(FixedNoiseGaussianLikelihood):
             )
         return result
 
+    def marginal(
+        self,
+        function_dist: MultitaskMultivariateNormal,
+        *params,
+        **kwargs,
+    ) -> MultitaskMultivariateNormal:
+        """Add fixed noise while preserving the multitask event ordering."""
+
+        if not isinstance(function_dist, MultitaskMultivariateNormal):
+            raise TypeError(
+                "MultitaskFixedNoiseGaussianLikelihood requires a "
+                "MultitaskMultivariateNormal."
+            )
+        mean = function_dist.mean
+        covariance = function_dist.lazy_covariance_matrix
+        noise_covar = self._shaped_noise_covar(
+            mean.shape,
+            *params,
+            _interleaved=bool(function_dist._interleaved),
+            **kwargs,
+        )
+        return MultitaskMultivariateNormal(
+            mean,
+            covariance + noise_covar,
+            interleaved=bool(function_dist._interleaved),
+        )
+
     def get_fantasy_likelihood(self, **kwargs):
         """Append wide fixed noise for fantasy observations along the data axis."""
 
         if "noise" not in kwargs:
             raise RuntimeError(
-                "MultitaskFixedNoiseGaussianLikelihood.fantasize requires a wide "
-                "`noise` kwarg with shape [..., q, m]."
+                "MultitaskFixedNoiseGaussianLikelihood.fantasize requires a "
+                "wide `noise` kwarg with shape [..., q, m]."
             )
         new_noise = kwargs["noise"]
         self._validate_wide_noise(

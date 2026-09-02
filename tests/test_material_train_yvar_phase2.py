@@ -64,6 +64,24 @@ def test_multitask_fixed_noise_matches_multitask_distribution_covariance() -> No
     )
 
 
+def test_multitask_fixed_noise_uses_noninterleaved_event_order() -> None:
+    mean = torch.zeros(2, 2, dtype=torch.double)
+    covariance = to_linear_operator(torch.eye(4, dtype=torch.double))
+    latent = MultitaskMultivariateNormal(mean, covariance, interleaved=False)
+    noise = torch.tensor(
+        [[0.01, 0.02], [0.03, 0.04]],
+        dtype=torch.double,
+    )
+    observed = MultitaskFixedNoiseGaussianLikelihood(noise)(latent)
+
+    assert observed._interleaved is False
+    torch.testing.assert_close(
+        observed.lazy_covariance_matrix.diagonal()
+        - latent.lazy_covariance_matrix.diagonal(),
+        torch.tensor([0.01, 0.03, 0.02, 0.04], dtype=torch.double),
+    )
+
+
 def test_correlated_deepkernel_accepts_wide_train_yvar_and_exact_mll() -> None:
     X, Y, Yvar = _generic_data()
     model = DeepKernelGaussianGPModel(
@@ -83,6 +101,12 @@ def test_correlated_deepkernel_accepts_wide_train_yvar_and_exact_mll() -> None:
     output = model.deepkernel(model.transform_inputs(X))
     mll_value = model.make_mll()(output, Y)
     assert torch.isfinite(mll_value)
+    (-mll_value).backward()
+    assert any(
+        parameter.grad is not None and torch.isfinite(parameter.grad).all()
+        for parameter in model.parameters()
+        if parameter.requires_grad
+    )
 
     model.eval()
     latent = model.posterior(X[:2], observation_noise=False)
@@ -122,9 +146,13 @@ def test_default_outcome_transform_scales_wide_variance_before_likelihood() -> N
 def test_multitask_fixed_noise_validates_task_shape_and_values() -> None:
     with pytest.raises(ValueError, match="at least two task"):
         MultitaskFixedNoiseGaussianLikelihood(torch.ones(3, 1))
-    with pytest.raises(ValueError, match="non-negative"):
+    with pytest.raises(ValueError, match="strictly positive"):
         MultitaskFixedNoiseGaussianLikelihood(
             torch.tensor([[0.01, -0.02], [0.03, 0.04]])
+        )
+    with pytest.raises(ValueError, match="strictly positive"):
+        MultitaskFixedNoiseGaussianLikelihood(
+            torch.tensor([[0.01, 0.0], [0.03, 0.04]])
         )
 
     likelihood = MultitaskFixedNoiseGaussianLikelihood(torch.full((3, 2), 0.01))

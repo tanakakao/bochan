@@ -92,8 +92,6 @@ def _validate_multitask_targets(
             f"{model_name} requires wide train_Y with shape [n, m] and at least "
             "two target columns."
         )
-    if train_Yvar is not None:
-        raise NotImplementedError(f"{model_name} does not yet support train_Yvar.")
     if isinstance(latent_dim, bool) or not isinstance(latent_dim, int) or latent_dim <= 0:
         raise ValueError("latent_dim must be a positive integer.")
 
@@ -192,7 +190,7 @@ class CrabNetMultiTaskGPModel(
             self,
             train_X=train_X,
             train_Y=train_Y,
-            train_Yvar=None,
+            train_Yvar=train_Yvar,
             likelihood=likelihood,
             input_transform=resolved_input_transform,
             outcome_transform=outcome_transform,
@@ -424,7 +422,7 @@ class CrabNetMixedMultiTaskGPModel(
             train_X=train_X,
             train_Y=train_Y,
             cat_dims=normalized_cat_dims,
-            train_Yvar=None,
+            train_Yvar=train_Yvar,
             likelihood=likelihood,
             input_transform=None,
             outcome_transform=outcome_transform,
@@ -538,7 +536,7 @@ class CrabNetMixedMultiTaskDKLModel(
             self,
             train_X=train_X,
             train_Y=train_Y,
-            train_Yvar=None,
+            train_Yvar=train_Yvar,
             likelihood=likelihood,
             input_transform=None,
             outcome_transform=outcome_transform,

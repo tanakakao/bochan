@@ -75,23 +75,29 @@ class BayesianOptimizer(
         model_config: ModelConfig | None = None,
         fit_config: FitConfig | None = None,
     ) -> BayesianOptimizer:
-        if train_Yvar is not None:
-            if observation_data is not None:
-                raise ValueError(
-                    "train_Yvar cannot be combined with observation_data in Phase 3. "
-                    "Use fully observed train_X/train_Y rows for known observation variance."
-                )
-            if any(
+        if observation_data is not None and train_Yvar is not None:
+            raise ValueError(
+                "Pass known observation variance inside ObservationData.Yvar when "
+                "observation_data is supplied."
+            )
+
+        direct_known_noise = False
+        if train_Yvar is not None and observation_data is None:
+            import torch
+
+            y_tensor = torch.as_tensor(train_Y)
+            yvar_tensor = torch.as_tensor(train_Yvar)
+            has_observation_state = any(
                 value is not None
                 for value in (observed_mask, failed_mask, pending_mask)
-            ):
-                raise ValueError(
-                    "train_Yvar cannot be combined with observed/failed/pending masks in Phase 3."
-                )
-            if failure_config is not None:
-                raise ValueError(
-                    "train_Yvar cannot be combined with failure_config in Phase 3."
-                )
+            ) or failure_config is not None
+            direct_known_noise = (
+                not has_observation_state
+                and bool(torch.isfinite(y_tensor).all())
+                and bool(torch.isfinite(yvar_tensor).all())
+            )
+
+        if direct_known_noise:
             if train_X is None or train_Y is None:
                 raise ValueError("Provide both train_X and train_Y with train_Yvar.")
 
@@ -140,6 +146,7 @@ class BayesianOptimizer(
             observation_data = ObservationData(
                 X=train_X,
                 Y=train_Y,
+                Yvar=train_Yvar,
                 observed_mask=observed_mask,
                 failed_mask=failed_mask,
                 pending_mask=pending_mask,
@@ -152,7 +159,9 @@ class BayesianOptimizer(
                 "Pass masks inside ObservationData when observation_data is supplied."
             )
 
-        objective_X, objective_Y = observation_data.objective_training_data()
+        objective_X, objective_Y, objective_Yvar = (
+            observation_data.objective_training_data_with_variance()
+        )
         base_model_config = model_config or self.model_config
         base_fit_config = fit_config or self.fit_config
         base_model_config, base_fit_config, llm_plan = resolve_llm_selected_model_config(
@@ -175,7 +184,7 @@ class BayesianOptimizer(
         self.fit_config = base_fit_config
         self.train_X = objective_X
         self.train_Y = objective_Y
-        self.train_Yvar = None
+        self.train_Yvar = objective_Yvar
 
         if self.bounds is None:
             self.bounds = _infer_bounds_from_train_X(observation_data.X)
@@ -185,6 +194,7 @@ class BayesianOptimizer(
         self.bundle = build_objective_bundle(
             train_X=objective_X,
             train_Y=objective_Y,
+            train_Yvar=objective_Yvar,
             config=self.model_config,
             model_registry=self.model_registry,
         )
@@ -241,7 +251,9 @@ class BayesianOptimizer(
         if self.observations is None:
             raise RuntimeError("Call fit(...) before tell_observations(...).")
         self.observations = self.observations.resolve_pending(observations)
-        self.train_X, self.train_Y = self.observations.objective_training_data()
+        self.train_X, self.train_Y, self.train_Yvar = (
+            self.observations.objective_training_data_with_variance()
+        )
         if refit:
             self.refit(fit_config=fit_config)
         return self
@@ -257,6 +269,33 @@ class BayesianOptimizer(
         refit: bool = True,
         fit_config: FitConfig | None = None,
     ) -> BayesianOptimizer:
+        if self.observations is not None:
+            import torch
+
+            X_tensor = torch.as_tensor(X_new)
+            n_rows = int(X_tensor.shape[0]) if X_tensor.ndim > 1 else 1
+            statuses = [status] * n_rows if isinstance(status, str) else list(status)
+            observation_yvar = new_Yvar
+            if self.observations.Yvar is not None and observation_yvar is None:
+                Y_tensor = torch.as_tensor(Y_new)
+                if Y_tensor.ndim == 1:
+                    Y_tensor = Y_tensor.unsqueeze(-1)
+                if not torch.is_floating_point(Y_tensor):
+                    Y_tensor = Y_tensor.to(dtype=torch.get_default_dtype())
+                observation_yvar = torch.full_like(Y_tensor, float("nan"))
+            observations = ObservationData.from_status(
+                X_new,
+                Y_new,
+                status=statuses,
+                observed_mask=observed_mask,
+                Yvar=observation_yvar,
+            )
+            return self.tell_observations(
+                observations,
+                refit=refit,
+                fit_config=fit_config,
+            )
+
         if self.train_Yvar is not None or new_Yvar is not None:
             statuses = [status] if isinstance(status, str) else list(status)
             if any(str(value).lower() != "success" for value in statuses):
@@ -297,6 +336,23 @@ class BayesianOptimizer(
         *,
         append: bool = True,
     ) -> BayesianOptimizer:
+        if self.observations is not None:
+            if not append:
+                return self.fit(
+                    X_new,
+                    Y_new,
+                    new_Yvar,
+                    model_config=self.model_config,
+                    fit_config=self.fit_config,
+                    failure_config=self.failure_config,
+                )
+            return self.tell(
+                X_new,
+                Y_new,
+                new_Yvar,
+                status="success",
+                refit=False,
+            )
         if self.train_Yvar is not None or new_Yvar is not None:
             if not append:
                 return self.fit(

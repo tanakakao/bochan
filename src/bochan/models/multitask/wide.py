@@ -304,7 +304,36 @@ class WideMultiTaskGP(_WidePosteriorMixin, MultiTaskGP):
     """Exact regression MultiTaskGP accepting wide targets with optional NaNs."""
 
     def __init__(self, train_X: Tensor, train_Y: Tensor, **kwargs: Any) -> None:
-        X_long, Y_long, num_tasks = wide_to_long(train_X, train_Y)
+        train_Y_tensor = torch.as_tensor(train_Y)
+        X_long, Y_long, num_tasks = wide_to_long(train_X, train_Y_tensor)
+        train_Yvar = kwargs.pop("train_Yvar", None)
+        train_Yvar_wide = None
+        if train_Yvar is not None:
+            train_Yvar_wide = torch.as_tensor(
+                train_Yvar,
+                dtype=Y_long.dtype,
+                device=Y_long.device,
+            )
+            if tuple(train_Yvar_wide.shape) != tuple(train_Y_tensor.shape):
+                raise ValueError(
+                    "train_Yvar must match wide train_Y shape; "
+                    f"train_Y={tuple(train_Y_tensor.shape)}, "
+                    f"train_Yvar={tuple(train_Yvar_wide.shape)}."
+                )
+            observed = ~torch.isnan(train_Y_tensor)
+            observed_yvar = train_Yvar_wide[observed]
+            if not bool(torch.isfinite(observed_yvar).all()) or bool(
+                (observed_yvar <= 0.0).any()
+            ):
+                raise ValueError(
+                    "Observed wide multitask targets require finite, strictly positive train_Yvar."
+                )
+            kwargs["train_Yvar"] = observed_yvar.unsqueeze(-1)
+            train_Yvar_wide = torch.where(
+                observed,
+                train_Yvar_wide,
+                torch.full_like(train_Yvar_wide, float("nan")),
+            )
         kwargs.pop("num_tasks", None)
         kwargs.pop("task_feature", None)
         super().__init__(
@@ -316,7 +345,8 @@ class WideMultiTaskGP(_WidePosteriorMixin, MultiTaskGP):
         )
         self.num_tasks = num_tasks
         self.train_X_wide = torch.as_tensor(train_X)
-        self.train_Y_wide = torch.as_tensor(train_Y)
+        self.train_Y_wide = train_Y_tensor
+        self.train_Yvar_wide = train_Yvar_wide
 
     def make_mll(self) -> ExactMarginalLogLikelihood:
         """Return the exact marginal log likelihood for this model."""

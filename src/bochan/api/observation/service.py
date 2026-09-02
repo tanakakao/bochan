@@ -78,6 +78,7 @@ def _build_split_partial_bundle(
     *,
     train_X: Any,
     train_Y: Any,
+    train_Yvar: Any | None,
     config: ModelConfig,
     model_registry: Any = None,
 ) -> ModelBundle:
@@ -95,6 +96,9 @@ def _build_split_partial_bundle(
         _resolve_output_configs(config, n_outputs)
     )
     observed_mask = torch.isfinite(torch.as_tensor(train_Y))
+    Yvar = None if train_Yvar is None else torch.as_tensor(train_Yvar, device=train_Y.device)
+    if Yvar is not None and tuple(Yvar.shape) != tuple(train_Y.shape):
+        raise ValueError("train_Yvar must match train_Y shape for partial observations.")
     sub_bundles: list[ModelBundle] = []
     observed_counts: list[int] = []
 
@@ -109,10 +113,12 @@ def _build_split_partial_bundle(
         observed_counts.append(count)
         output_X = train_X[mask]
         output_Y = train_Y[mask, index : index + 1]
+        output_Yvar = None if Yvar is None else Yvar[mask, index : index + 1]
         sub_bundles.append(
             _build_single_model(
                 train_X=output_X,
                 train_Y=output_Y,
+                train_Yvar=output_Yvar,
                 config=output_config,
                 model_registry=model_registry,
             )
@@ -157,6 +163,7 @@ def build_objective_bundle(
     *,
     train_X: Any,
     train_Y: Any,
+    train_Yvar: Any | None = None,
     config: ModelConfig,
     model_registry: Any = None,
 ) -> ModelBundle:
@@ -165,11 +172,17 @@ def build_objective_bundle(
     import torch
 
     Y = torch.as_tensor(train_Y)
+    Yvar = None if train_Yvar is None else torch.as_tensor(train_Yvar, device=Y.device)
+    if Yvar is not None and tuple(Yvar.shape) != tuple(Y.shape):
+        raise ValueError(
+            "train_Yvar must match train_Y shape for observation-aware model building."
+        )
     has_missing = bool(torch.isnan(Y).any())
     if not has_missing:
         return build_model(
             train_X=train_X,
             train_Y=train_Y,
+            train_Yvar=Yvar,
             config=config,
             model_registry=model_registry,
         )
@@ -179,6 +192,7 @@ def build_objective_bundle(
         return build_model(
             train_X=train_X,
             train_Y=train_Y,
+            train_Yvar=Yvar,
             config=config,
             model_registry=model_registry,
         )
@@ -187,6 +201,7 @@ def build_objective_bundle(
         return _build_split_partial_bundle(
             train_X=train_X,
             train_Y=Y,
+            train_Yvar=Yvar,
             config=config,
             model_registry=model_registry,
         )
@@ -202,6 +217,7 @@ def build_objective_bundle(
     return _build_single_model(
         train_X=train_X[finite],
         train_Y=Y[finite],
+        train_Yvar=None if Yvar is None else Yvar[finite],
         config=config,
         model_registry=model_registry,
     )

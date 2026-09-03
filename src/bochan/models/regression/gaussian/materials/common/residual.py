@@ -20,6 +20,7 @@ from botorch.utils.transforms import normalize_indices
 from gpytorch.distributions import MultitaskMultivariateNormal, MultivariateNormal
 from torch import Tensor, nn
 
+from .baseline import MaterialBaselineSpec, MaterialPropertyContract
 from .pretrained import PretrainedMaterialSpec
 
 
@@ -82,8 +83,21 @@ def compute_material_residual_targets(
     train_X: Tensor,
     train_Y: Tensor,
     predictor: DirectMaterialPredictor,
+    *,
+    baseline_spec: MaterialBaselineSpec | None = None,
+    target_contract: MaterialPropertyContract | None = None,
 ) -> Tensor:
-    """Return ``train_Y - pretrained_prediction`` without masking observations."""
+    """Return ``train_Y - pretrained_prediction`` after optional contract checks."""
+
+    if target_contract is not None and baseline_spec is None:
+        raise ValueError("target_contract requires baseline_spec.")
+    if baseline_spec is not None:
+        if not isinstance(baseline_spec, MaterialBaselineSpec):
+            raise TypeError("baseline_spec must be a MaterialBaselineSpec.")
+        if not baseline_spec.enabled:
+            raise ValueError("A disabled baseline cannot be used to form residual targets.")
+        if target_contract is not None:
+            baseline_spec.assert_target_compatible(target_contract)
 
     if not torch.is_tensor(train_Y):
         raise TypeError("train_Y must be a Tensor.")
@@ -166,6 +180,7 @@ class ResidualMaterialGPModel(GPyTorchModel):
         predictor: DirectMaterialPredictor,
         residual_model: GPyTorchModel,
         pretrained_spec: PretrainedMaterialSpec | None = None,
+        baseline_spec: MaterialBaselineSpec | None = None,
     ) -> None:
         super().__init__()
         if not isinstance(predictor, DirectMaterialPredictor):
@@ -174,6 +189,16 @@ class ResidualMaterialGPModel(GPyTorchModel):
             raise TypeError("residual_model must implement BoTorch GPyTorchModel.")
         if pretrained_spec is not None:
             require_residual_gp_capability(pretrained_spec)
+        if baseline_spec is not None:
+            if not isinstance(baseline_spec, MaterialBaselineSpec):
+                raise TypeError("baseline_spec must be a MaterialBaselineSpec.")
+            if not baseline_spec.enabled:
+                raise ValueError("ResidualMaterialGPModel requires an enabled baseline_spec.")
+            if pretrained_spec is not None and baseline_spec.family != pretrained_spec.family.casefold():
+                raise ValueError(
+                    "baseline_spec.family must match pretrained_spec.family: "
+                    f"{baseline_spec.family!r} != {pretrained_spec.family!r}."
+                )
 
         residual_outputs = int(residual_model.num_outputs)
         if residual_outputs != predictor.output_dim:
@@ -184,6 +209,7 @@ class ResidualMaterialGPModel(GPyTorchModel):
         self.predictor = predictor
         self.residual_model = residual_model
         self.pretrained_spec = pretrained_spec
+        self.baseline_spec = baseline_spec
 
     @property
     def num_outputs(self) -> int:
@@ -227,6 +253,21 @@ class ResidualMaterialGPModel(GPyTorchModel):
         if likelihood is None:
             raise AttributeError("The residual GP backend does not expose a likelihood.")
         return likelihood
+
+    @property
+    def baseline_metadata(self) -> dict[str, object] | None:
+        """Return JSON-compatible baseline metadata when a contract is attached."""
+
+        if self.baseline_spec is None:
+            return None
+        return self.baseline_spec.as_dict()
+
+    def validate_target_contract(self, target: MaterialPropertyContract) -> None:
+        """Require that observed targets match the attached baseline semantics."""
+
+        if self.baseline_spec is None:
+            raise ValueError("No baseline_spec is attached to this residual model.")
+        self.baseline_spec.assert_target_compatible(target)
 
     def make_mll(self, **kwargs: Any) -> Any:
         """Build an exact marginal log likelihood for the residual GP backend."""
@@ -282,7 +323,12 @@ class ResidualMaterialGPModel(GPyTorchModel):
     ) -> ResidualMaterialGPModel:
         """Condition the residual model using observations in original scale."""
 
-        residual_Y = compute_material_residual_targets(X, Y, self.predictor)
+        residual_Y = compute_material_residual_targets(
+            X,
+            Y,
+            self.predictor,
+            baseline_spec=self.baseline_spec,
+        )
         conditioned = self.residual_model.condition_on_observations(X=X, Y=residual_Y, **kwargs)
         if not isinstance(conditioned, GPyTorchModel):
             raise TypeError("condition_on_observations must return a GPyTorchModel.")
@@ -290,6 +336,7 @@ class ResidualMaterialGPModel(GPyTorchModel):
             predictor=self.predictor,
             residual_model=conditioned,
             pretrained_spec=self.pretrained_spec,
+            baseline_spec=self.baseline_spec,
         )
 
 

@@ -42,6 +42,16 @@ _MULTITASK_RESIDUAL_TYPES = frozenset(
         "mace_mixed_multitask_residual_gp",
     }
 )
+_INDEPENDENT_RESIDUAL_TYPES = frozenset(
+    {
+        "chgnet_multioutput_residual_gp",
+        "chgnet_mixed_multioutput_residual_gp",
+        "m3gnet_multioutput_residual_gp",
+        "m3gnet_mixed_multioutput_residual_gp",
+        "mace_multioutput_residual_gp",
+        "mace_mixed_multioutput_residual_gp",
+    }
+)
 
 
 def _family(model_type: str) -> str:
@@ -110,6 +120,46 @@ def fit_material_residual_tabular_optimizer(
     return optimizer
 
 
+def _independent_output_metadata(bundle: Any, target_names: list[str]) -> tuple[list[dict[str, Any]], int]:
+    """Describe ModelList outputs and locate the unique pretrained residual output."""
+
+    sub_bundles = list((getattr(bundle, "metadata", {}) or {}).get("sub_bundles", []))
+    if len(sub_bundles) != len(target_names):
+        raise RuntimeError(
+            "Independent residual bundle metadata must expose one sub-bundle per target."
+        )
+
+    rows: list[dict[str, Any]] = []
+    residual_indices: list[int] = []
+    for index, sub_bundle in enumerate(sub_bundles):
+        model = sub_bundle.model
+        is_residual = hasattr(model, "residual_model") and hasattr(model, "predictor")
+        if is_residual:
+            residual_indices.append(index)
+        encoder = getattr(model, "material_encoder", None)
+        residual_model = getattr(model, "residual_model", None)
+        if encoder is None and residual_model is not None:
+            encoder = getattr(residual_model, "material_encoder", None)
+        rows.append(
+            {
+                "index": index,
+                "name": target_names[index],
+                "role": "pretrained_residual" if is_residual else "ordinary_gp",
+                "model_type": str(sub_bundle.model_type),
+                "model_cls": model.__class__.__name__,
+                "encoder_cls": None if encoder is None else encoder.__class__.__name__,
+                "residual_model_cls": (
+                    None if residual_model is None else residual_model.__class__.__name__
+                ),
+            }
+        )
+    if len(residual_indices) != 1:
+        raise RuntimeError(
+            "Independent residual ModelList must contain exactly one residual output model."
+        )
+    return rows, residual_indices[0]
+
+
 def build_material_residual_fit_response(
     model_id: str,
     optimizer: TabularBayesianOptimizer,
@@ -125,15 +175,11 @@ def build_material_residual_fit_response(
     model_type = str(bundle.model_type).lower()
     family = _family(model_type)
     multitask = model_type in _MULTITASK_RESIDUAL_TYPES
-    residual_model = getattr(model, "residual_model", None)
-    encoder = getattr(model, "material_encoder", None)
-    if encoder is None and residual_model is not None:
-        encoder = getattr(residual_model, "material_encoder", None)
-    predictor = getattr(model, "predictor", None)
+    independent = model_type in _INDEPENDENT_RESIDUAL_TYPES
 
     dataset = optimizer.dataset
     feature_names = list(getattr(dataset, "feature_names", None) or [])
-    target_names = list(getattr(dataset, "target_names", None) or [])
+    target_names = [str(name) for name in (getattr(dataset, "target_names", None) or [])]
     process_cat_dims = [int(index) for index in (bundle.cat_dims or [])]
     process_cat_dim_set = set(process_cat_dims)
     categorical_process_cols = [
@@ -147,8 +193,31 @@ def build_material_residual_fit_response(
         if index != 0 and index not in process_cat_dim_set
     ]
 
-    model_kwargs = dict(getattr(bundle.model_config, "model_kwargs", None) or {})
-    pretrained_output_index = model_kwargs.get("pretrained_output_index") if multitask else None
+    output_models: list[dict[str, Any]] = []
+    if independent:
+        output_models, pretrained_output_index = _independent_output_metadata(
+            bundle,
+            target_names,
+        )
+        residual_submodel = list(bundle.metadata["sub_bundles"])[pretrained_output_index].model
+        residual_model = getattr(residual_submodel, "residual_model", None)
+        predictor = getattr(residual_submodel, "predictor", None)
+        encoder = getattr(residual_submodel, "material_encoder", None)
+        if encoder is None and residual_model is not None:
+            encoder = getattr(residual_model, "material_encoder", None)
+        output_dependency = "independent"
+        num_outputs = len(output_models)
+    else:
+        residual_model = getattr(model, "residual_model", None)
+        encoder = getattr(model, "material_encoder", None)
+        if encoder is None and residual_model is not None:
+            encoder = getattr(residual_model, "material_encoder", None)
+        predictor = getattr(model, "predictor", None)
+        model_kwargs = dict(getattr(bundle.model_config, "model_kwargs", None) or {})
+        pretrained_output_index = model_kwargs.get("pretrained_output_index") if multitask else None
+        output_dependency = "correlated" if multitask else "scalar"
+        num_outputs = int(getattr(model, "num_outputs", len(target_names) or 1))
+
     metadata = dict(response.metadata)
     metadata["material_residual"] = to_serializable(
         {
@@ -159,9 +228,10 @@ def build_material_residual_fit_response(
             "baseline_process_dependent": False,
             "baseline_property": "energy" if family in {"chgnet", "mace"} else "pretrained_scalar",
             "pretrained_output_index": pretrained_output_index,
-            "output_dependency": "correlated" if multitask else "scalar",
-            "num_outputs": int(getattr(model, "num_outputs", len(target_names) or 1)),
+            "output_dependency": output_dependency,
+            "num_outputs": num_outputs,
             "output_names": target_names,
+            "output_models": output_models,
             "structure_col": optimizer.structure.column,
             "structure_ids": list(optimizer.structure.structure_ids),
             "num_structures": optimizer.structure.num_structures,

@@ -1,0 +1,37 @@
+name: Material multiple baselines FastAPI Phase 11 smoke
+
+on:
+  pull_request:
+    paths:
+      - "src/bochan/tabular/structure/material_multi_baseline.py"
+      - "src/bochan/tabular/structure/observation.py"
+      - "src/bochan/tabular/structure/candidates.py"
+      - "src/bochan/serving/fastapi/schemas/material_residual.py"
+      - "src/bochan/serving/fastapi/services/material_residual.py"
+      - "tests/serving/fastapi/test_material_multiple_baselines_phase11.py"
+      - ".github/workflows/material-multiple-baselines-fastapi-phase11.yml"
+
+jobs:
+  multiple-baseline-fastapi:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install test surface
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[test,tabular,api]"
+          python -m pip install ruff
+      - name: Run focused tests
+        run: python -m pytest tests/serving/fastapi/test_material_multiple_baselines_phase11.py -q
+      - name: Ruff
+        run: |
+          ruff check \
+            src/bochan/tabular/structure/material_multi_baseline.py \
+            src/bochan/tabular/structure/observation.py \
+            src/bochan/tabular/structure/candidates.py \
+            src/bochan/serving/fastapi/schemas/material_residual.py \
+            src/bochan/serving/fastapi/services/material_residual.py \
+            tests/serving/fastapi/test_material_multiple_baselines_phase11.py

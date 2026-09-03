@@ -223,10 +223,7 @@ def _default_data_context(
 
     objective_config = config.objective_config
     direction = "maximize" if objective_config is None else str(objective_config.direction)
-    if direction == "minimize":
-        best_f = -train_Y.min()
-    else:
-        best_f = train_Y.max()
+    best_f = -train_Y.min() if direction == "minimize" else train_Y.max()
     return DataContext(X_baseline=train_X, best_f=best_f)
 
 

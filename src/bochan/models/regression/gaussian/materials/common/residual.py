@@ -14,7 +14,6 @@ from typing import Any
 import torch
 from botorch.acquisition.objective import PosteriorTransform
 from botorch.models.gpytorch import GPyTorchModel
-from botorch.models.model import Model
 from botorch.posteriors.posterior import Posterior
 from botorch.posteriors.transformed import TransformedPosterior
 from botorch.utils.transforms import normalize_indices
@@ -111,11 +110,11 @@ def require_residual_gp_capability(spec: PretrainedMaterialSpec) -> None:
 class ResidualMaterialGPModel(GPyTorchModel):
     """Expose ``pretrained baseline + residual GP`` as one GPyTorch-compatible model.
 
-    The wrapper deliberately satisfies :class:`GPyTorchModel` so it can participate
-    in BoTorch ``ModelListGP`` just like an ordinary exact GP. Probabilistic state,
-    training inputs, likelihood, and fantasies remain owned by ``residual_model``;
-    only posterior means/samples and observed conditioning are translated between
-    residual and original physical-property scales.
+    The wrapper satisfies the BoTorch ``GPyTorchModel`` protocol so it can be
+    combined with ordinary exact GPs in ``ModelListGP``. Probabilistic state,
+    likelihood, and training tensors remain owned by ``residual_model``; only
+    posterior and conditioning values are translated between residual and
+    original physical-property scales.
     """
 
     def __init__(

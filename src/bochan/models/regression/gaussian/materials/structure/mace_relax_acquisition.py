@@ -19,7 +19,7 @@ from .mace_relaxation import MACEStructureRelaxer, OptimizerName
 
 BundleFactory = Callable[[tuple[dict[str, Any], ...]], ModelBundle]
 
-_SUPPORTED_ACQUISITION_NAMES = {
+_SUPPORTED_BO_ACQUISITION_NAMES = {
     "ei",
     "qei",
     "expectedimprovement",
@@ -44,6 +44,33 @@ _SUPPORTED_ACQUISITION_NAMES = {
     "qlognei",
     "lognoisyexpectedimprovement",
     "qlognoisyexpectedimprovement",
+}
+_SUPPORTED_ACTIVE_LEARNING_NAMES = {
+    "variance",
+    "posteriorvariance",
+    "qregressionposteriorvariance",
+    "predictiveentropy",
+    "entropy",
+    "qregressionpredictiveentropy",
+    "bald",
+    "qregressionbald",
+    "nipv",
+    "qnipv",
+    "negintegratedposteriorvariance",
+    "qnegintegratedposteriorvariance",
+    "negativeintegratedposteriorvariance",
+    "qnegativeintegratedposteriorvariance",
+}
+_SUPPORTED_ACQUISITION_NAMES = (
+    _SUPPORTED_BO_ACQUISITION_NAMES | _SUPPORTED_ACTIVE_LEARNING_NAMES
+)
+_NIPV_NAMES = {
+    "nipv",
+    "qnipv",
+    "negintegratedposteriorvariance",
+    "qnegintegratedposteriorvariance",
+    "negativeintegratedposteriorvariance",
+    "qnegativeintegratedposteriorvariance",
 }
 
 
@@ -93,12 +120,21 @@ def _normalize_acquisition_name(value: Any) -> str:
     return "".join(character for character in str(value).lower() if character.isalnum())
 
 
+def _is_active_learning_acquisition(config: AcquisitionConfig) -> bool:
+    return _normalize_acquisition_name(config.name) in _SUPPORTED_ACTIVE_LEARNING_NAMES
+
+
+def _is_nipv_acquisition(config: AcquisitionConfig) -> bool:
+    return _normalize_acquisition_name(config.name) in _NIPV_NAMES
+
+
 def _validate_acquisition_name(config: AcquisitionConfig) -> None:
     normalized = _normalize_acquisition_name(config.name)
     if normalized not in _SUPPORTED_ACQUISITION_NAMES:
         raise ValueError(
-            "Relaxed-structure acquisition selection currently supports "
-            "EI/logEI/PI/UCB/NEI/logNEI and their q aliases. "
+            "Relaxed-structure selection currently supports "
+            "EI/logEI/PI/UCB/NEI/logNEI plus active-learning "
+            "variance/predictive-entropy/BALD/NIPV acquisitions. "
             "KG, MES, JES, lookahead, and multi-objective acquisitions require "
             "specialized discrete-selection semantics and are not enabled in this phase."
         )
@@ -151,7 +187,12 @@ def _resolve_acquisition_config(bundle: ModelBundle, config: AcquisitionConfig) 
     return replace(config, acqf_cls=acqf_cls)
 
 
-def _default_data_context(bundle: ModelBundle, config: AcquisitionConfig) -> DataContext:
+def _default_data_context(
+    bundle: ModelBundle,
+    config: AcquisitionConfig,
+    *,
+    choices: Tensor,
+) -> DataContext:
     train_X = bundle.train_X
     train_Y = bundle.train_Y
     if not torch.is_tensor(train_X):
@@ -162,6 +203,12 @@ def _default_data_context(bundle: ModelBundle, config: AcquisitionConfig) -> Dat
         train_Y = train_Y.unsqueeze(-1)
     if train_Y.ndim != 2 or train_Y.shape[-1] != 1:
         raise ValueError("Automatic acquisition context currently requires scalar train_Y.")
+
+    if _is_active_learning_acquisition(config):
+        return DataContext(
+            X_baseline=train_X,
+            mc_points=choices if _is_nipv_acquisition(config) else None,
+        )
 
     objective_config = config.objective_config
     direction = "maximize" if objective_config is None else str(objective_config.direction)
@@ -203,7 +250,13 @@ def _individual_acquisition_value(acqf: Any, X: Tensor) -> float:
 
 
 class MACERelaxationAcquisitionSelector:
-    """Relax structures with MACE and select a discrete batch using bochan acquisitions."""
+    """Relax structures with MACE and select a discrete batch using bochan acquisitions.
+
+    The selector supports both Bayesian-optimization and active-learning acquisitions.
+    Active-learning mode is useful for choosing relaxed structures that are most
+    informative for a subsequent DFT / experimental label rather than directly
+    optimizing the predicted property.
+    """
 
     def __init__(self, *, relaxer: MACEStructureRelaxer | None = None, **relaxer_kwargs: Any) -> None:
         if relaxer is not None and relaxer_kwargs:
@@ -257,7 +310,13 @@ class MACERelaxationAcquisitionSelector:
         process = _resolve_process_X(process_X, n=len(relaxed_structures))
         choices = _candidate_X(process, n=len(relaxed_structures))
         config = _resolve_acquisition_config(bundle, acquisition_config)
-        context = _default_data_context(bundle, config) if data_context is None else data_context
+        context = (
+            _default_data_context(bundle, config, choices=choices)
+            if data_context is None
+            else data_context
+        )
+        if _is_nipv_acquisition(config) and context.mc_points is None:
+            context = replace(context, mc_points=choices)
         acqf = build_acquisition(bundle=bundle, config=config, data_context=context)
 
         selected, acq_value = optimize_acqf_discrete(

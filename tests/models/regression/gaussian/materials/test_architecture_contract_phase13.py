@@ -117,15 +117,22 @@ def test_phase13_registry_matches_current_material_family_matrix() -> None:
         "gp", "dkl", "mixed_gp", "mixed_dkl", "multitask_gp", "multitask_dkl",
         "mixed_multitask_gp", "mixed_multitask_dkl",
     }
-    for family in ("crabnet", "alignn", "mace"):
+    for family in ("crabnet", "alignn"):
         registration = get_material_family(family)
         assert registration.variants == frozenset(full_matrix)
         assert registration.pretrained.capabilities.direct_prediction is False
         assert registration.pretrained.capabilities.residual_gp is False
 
-    for family in ("chgnet", "m3gnet"):
+    residual_matrix = {
+        *full_matrix,
+        "residual_gp",
+        "mixed_residual_gp",
+        "multitask_residual_gp",
+        "mixed_multitask_residual_gp",
+    }
+    for family in ("chgnet", "m3gnet", "mace"):
         registration = get_material_family(family)
-        assert registration.variants == frozenset({*full_matrix, "residual_gp"})
+        assert registration.variants == frozenset(residual_matrix)
         assert registration.pretrained.capabilities.direct_prediction is True
         assert registration.pretrained.capabilities.residual_gp is True
 

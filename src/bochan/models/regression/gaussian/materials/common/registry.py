@@ -11,6 +11,7 @@ from .pretrained import MaterialDomain, PretrainedMaterialCapabilities, Pretrain
 MaterialModelVariant = Literal[
     "gp", "dkl", "mixed_gp", "mixed_dkl", "multitask_gp", "multitask_dkl",
     "mixed_multitask_gp", "mixed_multitask_dkl", "residual_gp", "mixed_residual_gp",
+    "multitask_residual_gp", "mixed_multitask_residual_gp",
 ]
 
 
@@ -66,8 +67,16 @@ def _capabilities(*, loading_modes: frozenset[str], fine_tuning: bool = True,
     )
 
 
-def _models(namespace: str, family: str, *, full_matrix: bool,
-            residual_gp: bool = False, mixed_residual_gp: bool = False) -> dict[MaterialModelVariant, str]:
+def _models(
+    namespace: str,
+    family: str,
+    *,
+    full_matrix: bool,
+    residual_gp: bool = False,
+    mixed_residual_gp: bool = False,
+    multitask_residual_gp: bool = False,
+    mixed_multitask_residual_gp: bool = False,
+) -> dict[MaterialModelVariant, str]:
     prefixes = {"mace": "MACE", "m3gnet": "M3GNet", "chgnet": "CHGNet", "alignn": "ALIGNN", "crabnet": "CrabNet", "roost": "Roost"}
     prefix = prefixes[family]
     paths: dict[MaterialModelVariant, str] = {"gp": f"{namespace}:{prefix}GPModel", "dkl": f"{namespace}:{prefix}DKLModel"}
@@ -84,6 +93,10 @@ def _models(namespace: str, family: str, *, full_matrix: bool,
         paths["residual_gp"] = f"{namespace}:{prefix}ResidualGPModel"
     if mixed_residual_gp:
         paths["mixed_residual_gp"] = f"{namespace}:{prefix}MixedResidualGPModel"
+    if multitask_residual_gp:
+        paths["multitask_residual_gp"] = f"{namespace}:{prefix}MultiTaskResidualGPModel"
+    if mixed_multitask_residual_gp:
+        paths["mixed_multitask_residual_gp"] = f"{namespace}:{prefix}MixedMultiTaskResidualGPModel"
     return paths
 
 
@@ -94,9 +107,54 @@ MATERIAL_FAMILY_REGISTRY: dict[str, MaterialFamilyRegistration] = {
     "crabnet": MaterialFamilyRegistration("crabnet", "composition", _models(_composition_namespace, "crabnet", full_matrix=True), PretrainedMaterialSpec("crabnet", "composition", _capabilities(loading_modes=frozenset({"checkpoint", "injected"})))),
     "roost": MaterialFamilyRegistration("roost", "composition", _models(_composition_namespace, "roost", full_matrix=False), PretrainedMaterialSpec("roost", "composition", _capabilities(loading_modes=frozenset({"checkpoint", "injected"})))),
     "alignn": MaterialFamilyRegistration("alignn", "structure", _models(_structure_namespace, "alignn", full_matrix=True), PretrainedMaterialSpec("alignn", "structure", _capabilities(loading_modes=frozenset({"checkpoint", "injected"})))),
-    "chgnet": MaterialFamilyRegistration("chgnet", "structure", _models(_structure_namespace, "chgnet", full_matrix=True, residual_gp=True, mixed_residual_gp=True), PretrainedMaterialSpec("chgnet", "structure", _capabilities(loading_modes=frozenset({"checkpoint", "model_name", "injected"}), direct_prediction=True, residual_gp=True), default_model_name="0.3.0")),
-    "m3gnet": MaterialFamilyRegistration("m3gnet", "structure", _models(_structure_namespace, "m3gnet", full_matrix=True, residual_gp=True, mixed_residual_gp=True), PretrainedMaterialSpec("m3gnet", "structure", _capabilities(loading_modes=frozenset({"model_name", "injected"}), direct_prediction=True, residual_gp=True), default_model_name="M3GNet-PES-MatPES-PBE-2025.2")),
-    "mace": MaterialFamilyRegistration("mace", "structure", _models(_structure_namespace, "mace", full_matrix=True, residual_gp=True, mixed_residual_gp=True), PretrainedMaterialSpec("mace", "structure", _capabilities(loading_modes=frozenset({"model_name", "injected"}), direct_prediction=True, residual_gp=True), default_model_name="medium-mpa-0")),
+    "chgnet": MaterialFamilyRegistration(
+        "chgnet", "structure",
+        _models(
+            _structure_namespace, "chgnet", full_matrix=True,
+            residual_gp=True, mixed_residual_gp=True,
+            multitask_residual_gp=True, mixed_multitask_residual_gp=True,
+        ),
+        PretrainedMaterialSpec(
+            "chgnet", "structure",
+            _capabilities(
+                loading_modes=frozenset({"checkpoint", "model_name", "injected"}),
+                direct_prediction=True, residual_gp=True,
+            ),
+            default_model_name="0.3.0",
+        ),
+    ),
+    "m3gnet": MaterialFamilyRegistration(
+        "m3gnet", "structure",
+        _models(
+            _structure_namespace, "m3gnet", full_matrix=True,
+            residual_gp=True, mixed_residual_gp=True,
+            multitask_residual_gp=True, mixed_multitask_residual_gp=True,
+        ),
+        PretrainedMaterialSpec(
+            "m3gnet", "structure",
+            _capabilities(
+                loading_modes=frozenset({"model_name", "injected"}),
+                direct_prediction=True, residual_gp=True,
+            ),
+            default_model_name="M3GNet-PES-MatPES-PBE-2025.2",
+        ),
+    ),
+    "mace": MaterialFamilyRegistration(
+        "mace", "structure",
+        _models(
+            _structure_namespace, "mace", full_matrix=True,
+            residual_gp=True, mixed_residual_gp=True,
+            multitask_residual_gp=True, mixed_multitask_residual_gp=True,
+        ),
+        PretrainedMaterialSpec(
+            "mace", "structure",
+            _capabilities(
+                loading_modes=frozenset({"model_name", "injected"}),
+                direct_prediction=True, residual_gp=True,
+            ),
+            default_model_name="medium-mpa-0",
+        ),
+    ),
 }
 
 

@@ -19,6 +19,33 @@ from .mace_relaxation import MACEStructureRelaxer, OptimizerName
 
 BundleFactory = Callable[[tuple[dict[str, Any], ...]], ModelBundle]
 
+_SUPPORTED_ACQUISITION_NAMES = {
+    "ei",
+    "qei",
+    "expectedimprovement",
+    "qexpectedimprovement",
+    "logei",
+    "qlogei",
+    "logexpectedimprovement",
+    "qlogexpectedimprovement",
+    "pi",
+    "qpi",
+    "probabilityofimprovement",
+    "qprobabilityofimprovement",
+    "ucb",
+    "qucb",
+    "upperconfidencebound",
+    "qupperconfidencebound",
+    "nei",
+    "qnei",
+    "noisyexpectedimprovement",
+    "qnoisyexpectedimprovement",
+    "lognei",
+    "qlognei",
+    "lognoisyexpectedimprovement",
+    "qlognoisyexpectedimprovement",
+}
+
 
 @dataclass(frozen=True)
 class RelaxedStructureAcquisitionCandidate:
@@ -60,6 +87,21 @@ class RelaxedStructureAcquisitionResult:
             "acquisition_value": list(self.acquisition_value),
             "candidates": [candidate.as_dict() for candidate in self.candidates],
         }
+
+
+def _normalize_acquisition_name(value: Any) -> str:
+    return "".join(character for character in str(value).lower() if character.isalnum())
+
+
+def _validate_acquisition_name(config: AcquisitionConfig) -> None:
+    normalized = _normalize_acquisition_name(config.name)
+    if normalized not in _SUPPORTED_ACQUISITION_NAMES:
+        raise ValueError(
+            "Relaxed-structure acquisition selection currently supports "
+            "EI/logEI/PI/UCB/NEI/logNEI and their q aliases. "
+            "KG, MES, JES, lookahead, and multi-objective acquisitions require "
+            "specialized discrete-selection semantics and are not enabled in this phase."
+        )
 
 
 def _validate_structures(structures: Sequence[Any]) -> tuple[Any, ...]:
@@ -191,6 +233,7 @@ class MACERelaxationAcquisitionSelector:
             raise TypeError("bundle_factory must be callable.")
         if not isinstance(acquisition_config, AcquisitionConfig):
             raise TypeError("acquisition_config must be an AcquisitionConfig.")
+        _validate_acquisition_name(acquisition_config)
         if isinstance(q, bool) or not isinstance(q, int) or q <= 0:
             raise ValueError("q must be a positive integer.")
         if q > len(resolved_structures):

@@ -1,6 +1,12 @@
 """Common contracts for material-aware Gaussian models."""
 
 from .base import MaterialEncoder
+from .compatibility import (
+    LEGACY_MATERIAL_MODEL_PATHS,
+    MaterialCompatibilityPath,
+    canonical_material_model_paths,
+    legacy_material_model_paths,
+)
 from .fusion import (
     ConcatFusion,
     MaterialProcessFusion,
@@ -61,7 +67,9 @@ __all__ = [
     "DirectMaterialPredictor",
     "EncoderTrainingMode",
     "EncoderTrainingPolicy",
+    "LEGACY_MATERIAL_MODEL_PATHS",
     "MATERIAL_FAMILY_REGISTRY",
+    "MaterialCompatibilityPath",
     "MaterialDomain",
     "MaterialEncoder",
     "MaterialFamilyRegistration",
@@ -80,9 +88,11 @@ __all__ = [
     "apply_encoder_training_policy",
     "build_material_gaussian_surrogate",
     "build_material_process_fusion",
+    "canonical_material_model_paths",
     "compute_material_residual_targets",
     "configure_encoder_parameters",
     "get_material_family",
+    "legacy_material_model_paths",
     "list_material_families",
     "predict_material_baseline",
     "require_residual_gp_capability",

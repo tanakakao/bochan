@@ -5,11 +5,13 @@ from botorch.models import SingleTaskGP
 from botorch.models.model_list_gp_regression import ModelListGP
 from torch import Tensor
 
+from bochan.api import ModelConfig
 from bochan.models.regression.gaussian.materials.common.residual import (
     DirectMaterialPredictor,
     ResidualMaterialGPModel,
     compute_material_residual_targets,
 )
+from bochan.tabular.structure import material_residual as residual_routing
 from bochan.tabular.structure.material_residual import (
     independent_residual_model_types,
     material_residual_model_types,
@@ -52,6 +54,50 @@ def test_residual_wrapper_is_model_list_gp_compatible() -> None:
     assert torch.allclose(residual.baseline(test_X), predictor(test_X))
     assert residual.likelihood is residual_model.likelihood
     assert residual.train_inputs == residual_model.train_inputs
+
+
+def test_independent_residual_routing_selects_only_one_baseline_output(monkeypatch) -> None:
+    resolved_classes: dict[str, type] = {}
+
+    def fake_resolve(class_name: str) -> type:
+        if class_name not in resolved_classes:
+            resolved_classes[class_name] = type(class_name, (), {})
+        return resolved_classes[class_name]
+
+    monkeypatch.setattr(residual_routing, "_resolve_model_class", fake_resolve)
+    config = ModelConfig(
+        task_type="multi_objective",
+        model_type="mace_multioutput_residual_gp",
+    )
+    structures = (object(), object())
+    resolved = residual_routing._configure_independent_multioutput(
+        config,
+        family="mace",
+        mixed=False,
+        target_names=["energy", "strength", "conductivity"],
+        process_cat_dims=[],
+        model_kwargs={
+            "structures": structures,
+            "model_name": "medium-mpa-0",
+            "pretrained_output_index": 1,
+        },
+    )
+
+    output_configs = list(resolved.multi_output_config.output_configs)
+    assert resolved.task_type == "multi_objective"
+    assert resolved.multi_output_config.use_hybrid is False
+    assert [output.model_type for output in output_configs] == [
+        "mace_gp",
+        "mace_residual_gp",
+        "mace_gp",
+    ]
+    assert [output.model_cls.__name__ for output in output_configs] == [
+        "MACEGPModel",
+        "MACEResidualGPModel",
+        "MACEGPModel",
+    ]
+    assert all(output.model_kwargs["structures"] is structures for output in output_configs)
+    assert all("pretrained_output_index" not in output.model_kwargs for output in output_configs)
 
 
 def test_independent_residual_public_model_types_are_distinct_from_multitask() -> None:

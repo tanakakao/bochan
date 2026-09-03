@@ -14,9 +14,10 @@ from typing import Any
 import torch
 from botorch.acquisition.objective import PosteriorTransform
 from botorch.models.gpytorch import GPyTorchModel
+from botorch.posteriors.gpytorch import GPyTorchPosterior
 from botorch.posteriors.posterior import Posterior
-from botorch.posteriors.transformed import TransformedPosterior
 from botorch.utils.transforms import normalize_indices
+from gpytorch.distributions import MultitaskMultivariateNormal, MultivariateNormal
 from torch import Tensor, nn
 
 from .pretrained import PretrainedMaterialSpec
@@ -105,6 +106,48 @@ def require_residual_gp_capability(spec: PretrainedMaterialSpec) -> None:
     if not isinstance(spec, PretrainedMaterialSpec):
         raise TypeError("spec must be a PretrainedMaterialSpec.")
     spec.capabilities.require_residual_gp()
+
+
+def _shift_gpytorch_posterior(
+    posterior: Posterior,
+    baseline: Tensor,
+) -> GPyTorchPosterior:
+    """Shift only the GP mean while preserving its covariance distribution.
+
+    ``ModelListGP`` requires each Gaussian sub-posterior to expose a GPyTorch
+    ``distribution``. A generic ``TransformedPosterior`` does not satisfy that
+    contract, so deterministic residual baselines are incorporated by rebuilding
+    the same Gaussian distribution with a shifted mean and the original lazy
+    covariance matrix.
+    """
+
+    if not isinstance(posterior, GPyTorchPosterior):
+        raise TypeError(
+            "ResidualMaterialGPModel requires a GPyTorchPosterior from its residual backend."
+        )
+
+    distribution = posterior.distribution
+    shifted_mean = posterior.mean + baseline
+    covariance = distribution.lazy_covariance_matrix
+
+    if isinstance(distribution, MultitaskMultivariateNormal):
+        corrected_distribution = MultitaskMultivariateNormal(
+            shifted_mean,
+            covariance,
+            interleaved=distribution._interleaved,  # noqa: SLF001
+        )
+    elif isinstance(distribution, MultivariateNormal):
+        corrected_distribution = MultivariateNormal(
+            shifted_mean.squeeze(-1),
+            covariance,
+        )
+    else:
+        raise TypeError(
+            "Unsupported residual posterior distribution: "
+            f"{type(distribution).__name__}."
+        )
+
+    return GPyTorchPosterior(corrected_distribution)
 
 
 class ResidualMaterialGPModel(GPyTorchModel):
@@ -209,7 +252,7 @@ class ResidualMaterialGPModel(GPyTorchModel):
         posterior_transform: PosteriorTransform | None = None,
         **kwargs: Any,
     ) -> Posterior:
-        """Return the corrected posterior in the original property scale."""
+        """Return the corrected Gaussian posterior in the original property scale."""
 
         baseline = self.baseline(X)
         indices: list[int] | None = None
@@ -226,12 +269,7 @@ class ResidualMaterialGPModel(GPyTorchModel):
             posterior_transform=None,
             **kwargs,
         )
-        corrected: Posterior = TransformedPosterior(
-            posterior=residual_posterior,
-            sample_transform=lambda samples: samples + baseline,
-            mean_transform=lambda mean, variance: mean + baseline,
-            variance_transform=lambda mean, variance: variance,
-        )
+        corrected: Posterior = _shift_gpytorch_posterior(residual_posterior, baseline)
         if posterior_transform is not None:
             corrected = posterior_transform(corrected)
         return corrected

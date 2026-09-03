@@ -111,7 +111,8 @@ def test_full_bochan_artifact_roundtrip_preserves_multiple_baselines(monkeypatch
     assert before_report.baseline_output_indices == (0, 1)
     assert after_report.baseline_output_indices == (0, 1)
     assert restored_model.output_names == ("energy", "band_gap", "strength")
-    assert [item["family"] for item in restored_model.baseline_metadata] == ["mace", "m3gnet"]
+    assignments = restored_model.baseline_metadata["assignments"]
+    assert [item["baseline"]["family"] for item in assignments] == ["mace", "m3gnet"]
     assert_residual_posterior_equivalent(model, restored_model, X)
 
     before = optimizer.predict(query, return_type="mean")

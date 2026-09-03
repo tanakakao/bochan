@@ -35,7 +35,7 @@ print(best.relaxation.structure)
 
 ## Acquisition-function selection
 
-`MACERelaxationAcquisitionSelector` goes one step further and evaluates bochan acquisition functions over the finite relaxed candidate bank. The supplied `bundle_factory` receives the final relaxed structures and must return a `ModelBundle` configured for that bank.
+`MACERelaxationAcquisitionSelector` evaluates bochan acquisition functions over the finite relaxed candidate bank. The supplied `bundle_factory` receives the final relaxed structures and must return a `ModelBundle` configured for that bank.
 
 ```python
 from bochan.api.configs import AcquisitionConfig, ObjectiveConfig
@@ -61,7 +61,48 @@ result = selector.run(
 
 The selector resolves the acquisition through bochan's acquisition registry, builds it through the public acquisition construction path, and then uses BoTorch `optimize_acqf_discrete` over the relaxed structures. This supports true batch selection rather than sorting only pointwise posterior means.
 
-The intended Phase 15 acquisition family is the finite-candidate BO set: qEI / qLogEI, qPI, qUCB, qNEI / qLogNEI. Acquisitions that require additional terminal sets, fantasies, or specialized one-shot state should be integrated explicitly rather than assumed to work through this simple discrete selector.
+### Bayesian optimization acquisitions
+
+The supported finite-candidate BO family is:
+
+- qEI / qLogEI
+- qPI
+- qUCB
+- qNEI / qLogNEI
+
+### Active learning acquisitions
+
+The same relaxed structure bank can be selected by information value rather than predicted optimum value.
+
+```python
+result = selector.run(
+    initial_structures,
+    bundle_factory=build_bundle_for_relaxed_bank,
+    acquisition_config=AcquisitionConfig(name="variance"),
+    q=2,
+)
+```
+
+Supported active-learning names are:
+
+- `variance` / posterior variance: prioritize uncertain relaxed structures;
+- `predictiveentropy`: prioritize high predictive observation entropy;
+- `bald`: Gaussian-regression mutual-information acquisition, with bochan's variance fallback when noisy posterior semantics are unavailable;
+- `nipv`: negative integrated posterior variance. When `DataContext.mc_points` is not supplied, the relaxed candidate bank itself is used as the integration set.
+
+This enables a workflow such as:
+
+```text
+initial structures
+  -> MACE + ASE relaxation
+  -> relaxed structure bank
+  -> bochan surrogate
+  -> variance / predictive entropy / BALD / NIPV
+  -> choose informative structures
+  -> DFT or experiment
+```
+
+Acquisitions that require additional terminal sets or specialized one-shot state, such as KG, MES, JES, and multi-step lookahead, are deliberately rejected by this selector. Multi-objective acquisitions are also outside this phase.
 
 ## Process variables
 
@@ -75,4 +116,11 @@ The structure index is rebuilt as `0..n-1` for the relaxed bank.
 
 ## Scope
 
-Phase 15 handles scalar posterior ranking and scalar acquisition-based discrete selection after MACE relaxation. Multi-objective acquisition selection and differentiable `MACE + GP residual` relaxation remain separate future work. The relaxation step itself still uses MACE + ASE; bochan decides which relaxed candidates should be evaluated next.
+Phase 15 is the feature boundary for this workflow. It provides:
+
+- pretrained MACE + ASE relaxation;
+- posterior ranking of relaxed structures;
+- finite-candidate Bayesian-optimization selection;
+- finite-candidate active-learning selection with variance, predictive entropy, BALD, and NIPV.
+
+The relaxation step itself still uses MACE + ASE. bochan decides which relaxed candidates should be evaluated next. Multi-objective selection, automatic DFT execution / feedback loops, and differentiable `MACE + GP residual` relaxation are intentionally left outside this feature set.

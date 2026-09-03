@@ -19,6 +19,7 @@ from .mace_relaxation import MACEStructureRelaxer, OptimizerName
 
 BundleFactory = Callable[[tuple[dict[str, Any], ...]], ModelBundle]
 
+_DEFAULT_UCB_BETA = 3.0
 _SUPPORTED_BO_ACQUISITION_NAMES = {
     "ei",
     "qei",
@@ -71,6 +72,12 @@ _NIPV_NAMES = {
     "qnegintegratedposteriorvariance",
     "negativeintegratedposteriorvariance",
     "qnegativeintegratedposteriorvariance",
+}
+_UCB_NAMES = {
+    "ucb",
+    "qucb",
+    "upperconfidencebound",
+    "qupperconfidencebound",
 }
 
 
@@ -176,15 +183,22 @@ def _is_multi_output(bundle: ModelBundle) -> bool:
 
 
 def _resolve_acquisition_config(bundle: ModelBundle, config: AcquisitionConfig) -> AcquisitionConfig:
-    if config.acqf_cls is not None or config.acqf_factory is not None:
-        return config
-    acqf_cls = resolve_acqf_cls(
-        config.name,
-        task_type=str(bundle.task_type),
-        model_type=str(bundle.model_type),
-        multi_output=_is_multi_output(bundle),
-    )
-    return replace(config, acqf_cls=acqf_cls)
+    resolved = config
+    if config.acqf_cls is None and config.acqf_factory is None:
+        acqf_cls = resolve_acqf_cls(
+            config.name,
+            task_type=str(bundle.task_type),
+            model_type=str(bundle.model_type),
+            multi_output=_is_multi_output(bundle),
+        )
+        resolved = replace(config, acqf_cls=acqf_cls)
+
+    normalized = _normalize_acquisition_name(resolved.name)
+    if normalized in _UCB_NAMES and "beta" not in resolved.acqf_kwargs:
+        kwargs = dict(resolved.acqf_kwargs)
+        kwargs["beta"] = _DEFAULT_UCB_BETA
+        resolved = replace(resolved, acqf_kwargs=kwargs)
+    return resolved
 
 
 def _default_data_context(
@@ -205,10 +219,7 @@ def _default_data_context(
         raise ValueError("Automatic acquisition context currently requires scalar train_Y.")
 
     if _is_active_learning_acquisition(config):
-        return DataContext(
-            X_baseline=train_X,
-            mc_points=choices if _is_nipv_acquisition(config) else None,
-        )
+        return DataContext(mc_points=choices if _is_nipv_acquisition(config) else None)
 
     objective_config = config.objective_config
     direction = "maximize" if objective_config is None else str(objective_config.direction)
@@ -217,6 +228,24 @@ def _default_data_context(
     else:
         best_f = train_Y.max()
     return DataContext(X_baseline=train_X, best_f=best_f)
+
+
+def _sanitize_active_learning_context(
+    context: DataContext,
+    *,
+    choices: Tensor,
+    config: AcquisitionConfig,
+) -> DataContext:
+    """Keep only context fields used by the supported regression AL acquisitions."""
+
+    return DataContext(
+        X_pending=context.X_pending,
+        mc_points=(
+            choices
+            if _is_nipv_acquisition(config) and context.mc_points is None
+            else context.mc_points
+        ),
+    )
 
 
 def _acquisition_value_tuple(value: Tensor) -> tuple[float, ...]:
@@ -315,8 +344,12 @@ class MACERelaxationAcquisitionSelector:
             if data_context is None
             else data_context
         )
-        if _is_nipv_acquisition(config) and context.mc_points is None:
-            context = replace(context, mc_points=choices)
+        if _is_active_learning_acquisition(config):
+            context = _sanitize_active_learning_context(
+                context,
+                choices=choices,
+                config=config,
+            )
         acqf = build_acquisition(bundle=bundle, config=config, data_context=context)
 
         selected, acq_value = optimize_acqf_discrete(

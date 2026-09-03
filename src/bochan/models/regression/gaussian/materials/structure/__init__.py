@@ -15,6 +15,17 @@ from .alignn import (
     ALIGNNMultiTaskDKLModel,
     ALIGNNMultiTaskGPModel,
 )
+from .alignn_ff_relax_acquisition import ALIGNNFFRelaxationAcquisitionSelector
+from .alignn_ff_relax_rank import ALIGNNFFRelaxationRanker
+from .alignn_ff_relaxation import ALIGNNFFStructureRelaxer, relax_structure_alignn_ff
+from .alignn_ff_residual import (
+    ALIGNNFFDirectEnergyPredictor,
+    ALIGNNFFDirectForcePredictor,
+    ALIGNNFFDirectStressPredictor,
+    ALIGNNFFEnergyResidualGPModel,
+    ALIGNNFFForceResidualGPModel,
+    ALIGNNFFStressResidualGPModel,
+)
 from .chgnet import (
     CHGNetDKLModel,
     CHGNetGPModel,
@@ -110,6 +121,15 @@ __all__ = [
     "ALIGNNMixedMultiTaskGPModel",
     "ALIGNNMultiTaskDKLModel",
     "ALIGNNMultiTaskGPModel",
+    "ALIGNNFFDirectEnergyPredictor",
+    "ALIGNNFFDirectForcePredictor",
+    "ALIGNNFFDirectStressPredictor",
+    "ALIGNNFFEnergyResidualGPModel",
+    "ALIGNNFFForceResidualGPModel",
+    "ALIGNNFFRelaxationAcquisitionSelector",
+    "ALIGNNFFRelaxationRanker",
+    "ALIGNNFFStressResidualGPModel",
+    "ALIGNNFFStructureRelaxer",
     "CHGNetDKLModel",
     "CHGNetDirectEnergyPredictor",
     "CHGNetDirectForcePredictor",
@@ -179,6 +199,7 @@ __all__ = [
     "RelaxedStructureAcquisitionResult",
     "RelaxedStructureRank",
     "RelaxedStructureRankingResult",
+    "relax_structure_alignn_ff",
     "relax_structure_chgnet",
     "relax_structure_m3gnet",
     "relax_structure_mace",

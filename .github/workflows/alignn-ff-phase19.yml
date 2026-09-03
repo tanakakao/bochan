@@ -1,0 +1,39 @@
+name: ALIGNN-FF Phase 19 smoke
+
+on:
+  pull_request:
+    paths:
+      - "src/bochan/models/regression/gaussian/materials/structure/alignn_ff_residual.py"
+      - "src/bochan/models/regression/gaussian/materials/structure/alignn_ff_relaxation.py"
+      - "src/bochan/models/regression/gaussian/materials/structure/alignn_ff_relax_rank.py"
+      - "src/bochan/models/regression/gaussian/materials/structure/alignn_ff_relax_acquisition.py"
+      - "src/bochan/models/regression/gaussian/materials/structure/__init__.py"
+      - "tests/models/materials/test_alignn_ff_phase19.py"
+      - "pyproject.toml"
+      - ".github/workflows/alignn-ff-phase19.yml"
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install test surface
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[test,materials]"
+          python -m pip install "alignn==2026.8.11" ruff
+      - name: Run ALIGNN-FF Phase 19 tests
+        run: |
+          python -m pytest tests/models/materials/test_alignn_ff_phase19.py -q
+      - name: Ruff
+        run: |
+          ruff check \
+            src/bochan/models/regression/gaussian/materials/structure/alignn_ff_residual.py \
+            src/bochan/models/regression/gaussian/materials/structure/alignn_ff_relaxation.py \
+            src/bochan/models/regression/gaussian/materials/structure/alignn_ff_relax_rank.py \
+            src/bochan/models/regression/gaussian/materials/structure/alignn_ff_relax_acquisition.py \
+            src/bochan/models/regression/gaussian/materials/structure/__init__.py \
+            tests/models/materials/test_alignn_ff_phase19.py

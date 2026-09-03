@@ -25,11 +25,11 @@ from ..schemas.tabular import (
 )
 from .chgnet_tabular import (
     _CHECKPOINT_ROOT_ENV,
-    _model_config_from_request as _chgnet_model_config_from_request,
-)
-from .chgnet_tabular import (
     _normalize_structure_column,
     structure_catalog_from_request,
+)
+from .chgnet_tabular import (
+    _model_config_from_request as _chgnet_model_config_from_request,
 )
 from .tabular import (
     _candidate_direct_kwargs,

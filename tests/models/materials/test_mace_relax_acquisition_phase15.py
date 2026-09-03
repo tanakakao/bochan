@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 
+import pytest
 import torch
 from botorch.models import SingleTaskGP
 
@@ -82,6 +83,33 @@ def test_relaxed_candidates_can_be_selected_with_minimizing_qei() -> None:
     assert len(result.candidates) == 1
     assert result.best.source_index in {0, 1, 2}
     assert math.isfinite(result.best.individual_acquisition_value)
+
+
+@pytest.mark.parametrize("name", ["qlogei", "qpi", "qnei", "qlognei"])
+def test_supported_relaxed_acquisition_families_build_and_select(name: str) -> None:
+    selector = MACERelaxationAcquisitionSelector(relaxer=FakeRelaxer())
+    result = selector.run(
+        [{"index": 0}, {"index": 1}, {"index": 2}],
+        bundle_factory=_bundle_factory,
+        acquisition_config=AcquisitionConfig(name=name),
+        q=1,
+    )
+
+    assert result.acquisition_name == name
+    assert len(result.candidates) == 1
+    assert math.isfinite(result.best.individual_acquisition_value)
+    assert all(math.isfinite(value) for value in result.acquisition_value)
+
+
+def test_specialized_one_shot_acquisition_is_rejected_explicitly() -> None:
+    selector = MACERelaxationAcquisitionSelector(relaxer=FakeRelaxer())
+
+    with pytest.raises(ValueError, match="KG, MES, JES"):
+        selector.run(
+            [{"index": 0}, {"index": 1}, {"index": 2}],
+            bundle_factory=_bundle_factory,
+            acquisition_config=AcquisitionConfig(name="qkg"),
+        )
 
 
 def test_relaxed_acquisition_selection_preserves_process_columns() -> None:

@@ -46,6 +46,15 @@ from .evaluation.cross_validation import (
     clone_model_config_for_evaluation,
 )
 from .factory import prepare_multi_objective_context
+from .registry.material import (
+    material_residual_model_types,
+    register_material_residual_model_types,
+)
+
+# Extend the default lazy registry before public model construction is used.
+# This adds metadata paths only; optional material backends remain unloaded.
+register_material_residual_model_types()
+
 from .modeling.build import build_model, infer_input_type, resolve_model_cls
 from .modeling.fit import fit_model
 from .observation import ExperimentFailureConfig, ObservationData
@@ -111,8 +120,10 @@ __all__ = [
     "compute_feature_importance",
     "fit_model",
     "infer_input_type",
+    "material_residual_model_types",
     "optimize_candidates",
     "prepare_multi_objective_context",
+    "register_material_residual_model_types",
     "resolve_acqf_cls",
     "resolve_model_cls",
     "resolve_optimizer_from_cat_dims",

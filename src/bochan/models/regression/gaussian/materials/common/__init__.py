@@ -70,6 +70,7 @@ from .surrogate import (
     build_material_gaussian_surrogate,
     resolve_material_latent_dim,
 )
+from .tensor_target import TensorTargetKind, TensorTargetLayout
 from .training import (
     EncoderTrainingMode,
     EncoderTrainingPolicy,
@@ -109,6 +110,8 @@ __all__ = [
     "ResidualProductionReport",
     "ResolvedBaselineAssignment",
     "SingleOutputBaselineAdapter",
+    "TensorTargetKind",
+    "TensorTargetLayout",
     "apply_encoder_train_mode",
     "apply_encoder_training_policy",
     "assert_residual_posterior_equivalent",

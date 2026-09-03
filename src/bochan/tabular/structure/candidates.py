@@ -7,6 +7,7 @@ from dataclasses import replace
 from typing import Any
 
 from ..optimizer.candidates import CandidateService
+from .material_multi_baseline import multiple_baseline_residual_model_types
 from .material_residual import material_residual_model_types
 from .scaling import optimize_structure_alternating
 
@@ -23,12 +24,14 @@ _MACE_MODEL_TYPES = frozenset(
     {"mace_gp", "mace_dkl", "mace_multitask", "mace_multitask_dkl"}
 )
 _MATERIAL_RESIDUAL_MODEL_TYPES = frozenset(material_residual_model_types())
+_MULTIPLE_BASELINE_MODEL_TYPES = frozenset(multiple_baseline_residual_model_types())
 _STRUCTURE_MODEL_TYPES = (
     _ALIGNN_MODEL_TYPES
     | _CHGNET_MODEL_TYPES
     | _M3GNET_MODEL_TYPES
     | _MACE_MODEL_TYPES
     | _MATERIAL_RESIDUAL_MODEL_TYPES
+    | _MULTIPLE_BASELINE_MODEL_TYPES
 )
 _ALTERNATING_STRUCTURE_THRESHOLD = 10
 _ALTERNATING_OPTION_KEYS = frozenset(

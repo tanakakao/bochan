@@ -48,6 +48,12 @@ from .mace import (
     MACEMultiTaskGPModel,
 )
 from .mace_residual import MACEDirectEnergyPredictor, MACEResidualGPModel
+from .mace_tensor_residual import (
+    MACEDirectForcePredictor,
+    MACEDirectStressPredictor,
+    MACEForceResidualGPModel,
+    MACEStressResidualGPModel,
+)
 from .mixed_residual import (
     CHGNetMixedResidualGPModel,
     M3GNetMixedResidualGPModel,
@@ -99,6 +105,9 @@ __all__ = [
     "M3GNetResidualGPModel",
     "MACEDKLModel",
     "MACEDirectEnergyPredictor",
+    "MACEDirectForcePredictor",
+    "MACEDirectStressPredictor",
+    "MACEForceResidualGPModel",
     "MACEGPModel",
     "MACEMixedDKLModel",
     "MACEMixedGPModel",
@@ -110,4 +119,5 @@ __all__ = [
     "MACEMultiTaskGPModel",
     "MACEMultiTaskResidualGPModel",
     "MACEResidualGPModel",
+    "MACEStressResidualGPModel",
 ]

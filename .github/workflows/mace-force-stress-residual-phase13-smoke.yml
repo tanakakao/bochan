@@ -1,0 +1,54 @@
+name: MACE force stress residual Phase 13 smoke
+
+on:
+  pull_request:
+    paths:
+      - "src/bochan/models/regression/gaussian/materials/common/**"
+      - "src/bochan/models/regression/gaussian/materials/structure/**"
+      - "tests/models/regression/gaussian/materials/test_mace_force_stress_residual_phase13.py"
+      - "tests/models/materials/test_mace_force_stress_real_phase13.py"
+      - ".github/workflows/mace-force-stress-residual-phase13-smoke.yml"
+  workflow_dispatch:
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install test surface
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[test]"
+          python -m pip install ruff
+      - name: Run force stress residual contract tests
+        run: |
+          python -m pytest tests/models/regression/gaussian/materials/test_mace_force_stress_residual_phase13.py -q
+      - name: Ruff
+        run: |
+          ruff check \
+            src/bochan/models/regression/gaussian/materials/common/tensor_target.py \
+            src/bochan/models/regression/gaussian/materials/common/__init__.py \
+            src/bochan/models/regression/gaussian/materials/structure/mace_tensor_residual.py \
+            src/bochan/models/regression/gaussian/materials/structure/__init__.py \
+            tests/models/regression/gaussian/materials/test_mace_force_stress_residual_phase13.py \
+            tests/models/materials/test_mace_force_stress_real_phase13.py
+
+  real-mace:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install MACE material surface
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[test,materials]"
+      - name: Run real MACE force stress baseline smoke
+        env:
+          BOCHAN_MACE_TENSOR_REAL: "1"
+        run: |
+          python -m pytest tests/models/materials/test_mace_force_stress_real_phase13.py -q

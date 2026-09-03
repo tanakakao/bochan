@@ -119,7 +119,10 @@ def test_create_material_residual_gp_dispatches(
     )
 
     assert isinstance(result, FakeResidual)
-    assert calls["args"] == (train_X, train_Y, None)
+    args = calls["args"]
+    assert args[0] is train_X
+    assert args[1] is train_Y
+    assert args[2] is None
     assert calls["kwargs"]["structures"] == ("s0", "s1")
 
 

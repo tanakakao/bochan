@@ -95,9 +95,14 @@ def create_relaxation_ranker(
     silently ignored configuration.
     """
 
+    resolved_backend = normalize_material_backend(backend)
     if relaxer is not None and backend_kwargs:
         raise ValueError("Pass either relaxer or backend keyword arguments, not both.")
-    resolved = create_structure_relaxer(backend, **backend_kwargs) if relaxer is None else relaxer
+    resolved = (
+        create_structure_relaxer(resolved_backend, **backend_kwargs)
+        if relaxer is None
+        else relaxer
+    )
     return MaterialRelaxationRanker(relaxer=resolved)
 
 
@@ -110,9 +115,14 @@ def create_relaxation_acquisition_selector(
 ) -> MaterialRelaxationAcquisitionSelector:
     """Construct a backend-neutral relax-then-select BO/AL workflow."""
 
+    resolved_backend = normalize_material_backend(backend)
     if relaxer is not None and backend_kwargs:
         raise ValueError("Pass either relaxer or backend keyword arguments, not both.")
-    resolved = create_structure_relaxer(backend, **backend_kwargs) if relaxer is None else relaxer
+    resolved = (
+        create_structure_relaxer(resolved_backend, **backend_kwargs)
+        if relaxer is None
+        else relaxer
+    )
     return MaterialRelaxationAcquisitionSelector(relaxer=resolved)
 
 

@@ -55,6 +55,7 @@ from .registry import (
     get_material_family,
     list_material_families,
 )
+from .relaxation import StructureRelaxationResult
 from .residual import (
     DirectMaterialPredictor,
     ResidualMaterialGPModel,
@@ -110,6 +111,7 @@ __all__ = [
     "ResidualProductionReport",
     "ResolvedBaselineAssignment",
     "SingleOutputBaselineAdapter",
+    "StructureRelaxationResult",
     "TensorTargetKind",
     "TensorTargetLayout",
     "apply_encoder_train_mode",

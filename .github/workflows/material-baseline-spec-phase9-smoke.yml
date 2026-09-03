@@ -1,0 +1,41 @@
+name: Material baseline spec Phase 9 smoke
+
+on:
+  pull_request:
+    paths:
+      - "src/bochan/models/regression/gaussian/materials/common/baseline.py"
+      - "src/bochan/models/regression/gaussian/materials/common/residual.py"
+      - "src/bochan/models/regression/gaussian/materials/common/__init__.py"
+      - "tests/models/regression/gaussian/materials/test_material_baseline_spec_phase9.py"
+      - "docs/material_baseline_spec_phase9.md"
+      - ".github/workflows/material-baseline-spec-phase9-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  baseline-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install test surface
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[test]"
+          python -m pip install ruff
+      - name: Run focused tests
+        run: |
+          python -m pytest \
+            tests/models/regression/gaussian/materials/test_material_baseline_spec_phase9.py \
+            -q
+      - name: Ruff
+        run: |
+          ruff check \
+            src/bochan/models/regression/gaussian/materials/common/baseline.py \
+            src/bochan/models/regression/gaussian/materials/common/residual.py \
+            src/bochan/models/regression/gaussian/materials/common/__init__.py \
+            tests/models/regression/gaussian/materials/test_material_baseline_spec_phase9.py

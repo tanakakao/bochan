@@ -6,6 +6,8 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from bochan.tabular.structure.material_residual import material_residual_model_types
+
 from ..converters import model_metadata, to_fit_config
 from ..dependencies import (
     FileOptimizerStore,
@@ -46,22 +48,7 @@ from ..services.tabular_artifacts import (
 
 TABULAR_STORE_DEP = Depends(get_tabular_optimizer_store)
 FILE_STORE_DEP = Depends(get_file_optimizer_store)
-_RESIDUAL_MODEL_TYPES = frozenset(
-    {
-        "chgnet_residual_gp",
-        "chgnet_mixed_residual_gp",
-        "chgnet_multitask_residual_gp",
-        "chgnet_mixed_multitask_residual_gp",
-        "m3gnet_residual_gp",
-        "m3gnet_mixed_residual_gp",
-        "m3gnet_multitask_residual_gp",
-        "m3gnet_mixed_multitask_residual_gp",
-        "mace_residual_gp",
-        "mace_mixed_residual_gp",
-        "mace_multitask_residual_gp",
-        "mace_mixed_multitask_residual_gp",
-    }
-)
+_RESIDUAL_MODEL_TYPES = frozenset(material_residual_model_types())
 
 router = APIRouter(
     prefix="/tabular/material-residual/models",
@@ -106,7 +93,7 @@ def fit_material_residual_model(
     request: MaterialResidualTabularFitModelRequest,
     store: TabularOptimizerStore = TABULAR_STORE_DEP,
 ) -> TabularModelFitResponse:
-    """Fit/store a pretrained-baseline + exact GP residual model."""
+    """Fit/store a pretrained-baseline + GP residual workflow."""
 
     try:
         optimizer = fit_material_residual_tabular_optimizer(request)
@@ -124,7 +111,7 @@ def tell_material_residual_model(
     request: TabularTellRequest,
     store: TabularOptimizerStore = TABULAR_STORE_DEP,
 ) -> TabularModelFitResponse:
-    """Append structure/process observations and optionally refit the residual GP."""
+    """Append structure/process observations and optionally refit."""
 
     optimizer = _get_optimizer(store, model_id)
     try:

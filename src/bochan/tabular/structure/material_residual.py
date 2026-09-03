@@ -4,52 +4,78 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
-from typing import Any
+from typing import Any, Literal
 
+ResidualOutputMode = Literal["scalar", "multitask", "multioutput"]
+ResidualModelSpec = tuple[str, bool, ResidualOutputMode, str | None]
 
-_RESIDUAL_MODEL_SPECS: dict[str, tuple[str, bool, bool, str]] = {
-    "chgnet_residual_gp": ("chgnet", False, False, "CHGNetResidualGPModel"),
-    "chgnet_mixed_residual_gp": ("chgnet", True, False, "CHGNetMixedResidualGPModel"),
+_RESIDUAL_MODEL_SPECS: dict[str, ResidualModelSpec] = {
+    "chgnet_residual_gp": ("chgnet", False, "scalar", "CHGNetResidualGPModel"),
+    "chgnet_mixed_residual_gp": ("chgnet", True, "scalar", "CHGNetMixedResidualGPModel"),
     "chgnet_multitask_residual_gp": (
         "chgnet",
         False,
-        True,
+        "multitask",
         "CHGNetMultiTaskResidualGPModel",
     ),
     "chgnet_mixed_multitask_residual_gp": (
         "chgnet",
         True,
-        True,
+        "multitask",
         "CHGNetMixedMultiTaskResidualGPModel",
     ),
-    "m3gnet_residual_gp": ("m3gnet", False, False, "M3GNetResidualGPModel"),
-    "m3gnet_mixed_residual_gp": ("m3gnet", True, False, "M3GNetMixedResidualGPModel"),
+    "chgnet_multioutput_residual_gp": ("chgnet", False, "multioutput", None),
+    "chgnet_mixed_multioutput_residual_gp": ("chgnet", True, "multioutput", None),
+    "m3gnet_residual_gp": ("m3gnet", False, "scalar", "M3GNetResidualGPModel"),
+    "m3gnet_mixed_residual_gp": ("m3gnet", True, "scalar", "M3GNetMixedResidualGPModel"),
     "m3gnet_multitask_residual_gp": (
         "m3gnet",
         False,
-        True,
+        "multitask",
         "M3GNetMultiTaskResidualGPModel",
     ),
     "m3gnet_mixed_multitask_residual_gp": (
         "m3gnet",
         True,
-        True,
+        "multitask",
         "M3GNetMixedMultiTaskResidualGPModel",
     ),
-    "mace_residual_gp": ("mace", False, False, "MACEResidualGPModel"),
-    "mace_mixed_residual_gp": ("mace", True, False, "MACEMixedResidualGPModel"),
+    "m3gnet_multioutput_residual_gp": ("m3gnet", False, "multioutput", None),
+    "m3gnet_mixed_multioutput_residual_gp": ("m3gnet", True, "multioutput", None),
+    "mace_residual_gp": ("mace", False, "scalar", "MACEResidualGPModel"),
+    "mace_mixed_residual_gp": ("mace", True, "scalar", "MACEMixedResidualGPModel"),
     "mace_multitask_residual_gp": (
         "mace",
         False,
-        True,
+        "multitask",
         "MACEMultiTaskResidualGPModel",
     ),
     "mace_mixed_multitask_residual_gp": (
         "mace",
         True,
-        True,
+        "multitask",
         "MACEMixedMultiTaskResidualGPModel",
     ),
+    "mace_multioutput_residual_gp": ("mace", False, "multioutput", None),
+    "mace_mixed_multioutput_residual_gp": ("mace", True, "multioutput", None),
+}
+
+_ORDINARY_MODEL_CLASSES: dict[tuple[str, bool], str] = {
+    ("chgnet", False): "CHGNetGPModel",
+    ("chgnet", True): "CHGNetMixedGPModel",
+    ("m3gnet", False): "M3GNetGPModel",
+    ("m3gnet", True): "M3GNetMixedGPModel",
+    ("mace", False): "MACEGPModel",
+    ("mace", True): "MACEMixedGPModel",
+}
+
+_SCALAR_RESIDUAL_MODEL_CLASSES: dict[tuple[str, bool], str] = {
+    ("chgnet", False): "CHGNetResidualGPModel",
+    ("chgnet", True): "CHGNetMixedResidualGPModel",
+    ("m3gnet", False): "M3GNetResidualGPModel",
+    ("m3gnet", True): "M3GNetMixedResidualGPModel",
+    ("mace", False): "MACEResidualGPModel",
+    ("mace", True): "MACEMixedResidualGPModel",
 }
 
 
@@ -57,6 +83,18 @@ def material_residual_model_types() -> tuple[str, ...]:
     """Return stable public tabular model types for structure residual GPs."""
 
     return tuple(sorted(_RESIDUAL_MODEL_SPECS))
+
+
+def independent_residual_model_types() -> tuple[str, ...]:
+    """Return public model types using independent ModelList output semantics."""
+
+    return tuple(
+        sorted(
+            model_type
+            for model_type, (_, _, mode, _) in _RESIDUAL_MODEL_SPECS.items()
+            if mode == "multioutput"
+        )
+    )
 
 
 def _target_names(target_cols: Any) -> list[Any] | None:
@@ -90,7 +128,7 @@ def _validate_model_kwargs(
     config: Any,
     *,
     structures: tuple[Any, ...],
-    multitask: bool,
+    output_mode: ResidualOutputMode,
     n_targets: int,
 ) -> dict[str, Any]:
     if config.input_transform is not None:
@@ -123,7 +161,7 @@ def _validate_model_kwargs(
             "encoder_training and trainable_encoder_layers are not supported."
         )
 
-    if multitask:
+    if output_mode in {"multitask", "multioutput"}:
         value = model_kwargs.get("pretrained_output_index", 0)
         if isinstance(value, bool) or not isinstance(value, int):
             raise ValueError("pretrained_output_index must be an integer.")
@@ -135,19 +173,116 @@ def _validate_model_kwargs(
         model_kwargs["pretrained_output_index"] = value
     elif "pretrained_output_index" in model_kwargs:
         raise ValueError(
-            "pretrained_output_index is only valid for correlated multitask residual GP models."
+            "pretrained_output_index is only valid for multitask or multioutput residual GP models."
         )
 
     model_kwargs["structures"] = structures
     return model_kwargs
 
 
+def _single_output_config(
+    config: Any,
+    *,
+    family: str,
+    mixed: bool,
+    model_cls: type,
+    model_type: str,
+    model_kwargs: dict[str, Any],
+    process_cat_dims: list[int],
+) -> Any:
+    return replace(
+        config,
+        task_type="regression",
+        model_type=model_type,
+        model_cls=model_cls,
+        model_factory=None,
+        input_type="mixed" if mixed else "normal",
+        cat_dims=process_cat_dims,
+        input_transform=None,
+        input_transform_config=None,
+        pass_cat_dims=mixed,
+        pass_input_transform=False,
+        model_kwargs=model_kwargs,
+        multi_output_config=None,
+    )
+
+
+def _configure_independent_multioutput(
+    config: Any,
+    *,
+    family: str,
+    mixed: bool,
+    target_names: list[Any],
+    process_cat_dims: list[int],
+    model_kwargs: dict[str, Any],
+) -> Any:
+    """Build a ModelList config with one residual output and ordinary GP peers."""
+
+    from bochan.api import MultiOutputConfig
+
+    baseline_index = int(model_kwargs["pretrained_output_index"])
+    shared_kwargs = dict(model_kwargs)
+    shared_kwargs.pop("pretrained_output_index", None)
+
+    residual_cls = _resolve_model_class(_SCALAR_RESIDUAL_MODEL_CLASSES[(family, mixed)])
+    ordinary_cls = _resolve_model_class(_ORDINARY_MODEL_CLASSES[(family, mixed)])
+    residual_type = f"{family}_{'mixed_' if mixed else ''}residual_gp"
+    ordinary_type = f"{family}_gp"
+
+    output_configs = []
+    for index, _ in enumerate(target_names):
+        if index == baseline_index:
+            output_configs.append(
+                _single_output_config(
+                    config,
+                    family=family,
+                    mixed=mixed,
+                    model_cls=residual_cls,
+                    model_type=residual_type,
+                    model_kwargs=dict(shared_kwargs),
+                    process_cat_dims=process_cat_dims,
+                )
+            )
+        else:
+            output_configs.append(
+                _single_output_config(
+                    config,
+                    family=family,
+                    mixed=mixed,
+                    model_cls=ordinary_cls,
+                    model_type=ordinary_type,
+                    model_kwargs=dict(shared_kwargs),
+                    process_cat_dims=process_cat_dims,
+                )
+            )
+
+    return replace(
+        config,
+        task_type="multi_objective",
+        model_cls=None,
+        model_factory=None,
+        input_type="mixed" if mixed else "normal",
+        cat_dims=process_cat_dims,
+        input_transform=None,
+        input_transform_config=None,
+        pass_cat_dims=mixed,
+        pass_input_transform=False,
+        model_kwargs={},
+        multi_output_config=MultiOutputConfig(
+            output_configs=output_configs,
+            output_names=[str(name) for name in target_names],
+            use_hybrid=False,
+        ),
+    )
+
+
 def configure_tabular_material_residual(owner: Any) -> bool:
     """Configure CHGNet/M3GNet/MACE residual GP structure/process contracts.
 
-    The structure feature remains a discrete bank index at feature 0.  Numeric
-    and categorical process variables are learned only by the GP correction;
-    the deterministic pretrained baseline is structure-only.
+    ``multitask`` variants keep all targets in one correlated GP. ``multioutput``
+    variants build independent ModelList submodels: the target selected by
+    ``pretrained_output_index`` uses a residual GP while the remaining targets
+    use ordinary family GP models.
     """
 
     config = owner.model_config
@@ -156,15 +291,15 @@ def configure_tabular_material_residual(owner: Any) -> bool:
     if spec is None:
         return False
 
-    family, mixed, multitask, class_name = spec
+    family, mixed, output_mode, class_name = spec
     if str(config.task_type) not in {"regression", "multi_objective"}:
         raise ValueError(
             f"{family.upper()} residual tabular models support regression or multi_objective only."
         )
     if config.multi_output_config is not None:
         raise ValueError(
-            "Residual structure models use one scalar or one correlated multitask model; "
-            "do not provide multi_output_config."
+            "Residual structure models derive scalar, correlated multitask, or independent "
+            "ModelList output structure from model_type; do not provide multi_output_config."
         )
     if owner.composition.enabled:
         raise ValueError(
@@ -184,9 +319,9 @@ def configure_tabular_material_residual(owner: Any) -> bool:
     if not target_names:
         raise ValueError("Residual structure models require at least one target column.")
     n_targets = len(target_names)
-    if multitask:
+    if output_mode in {"multitask", "multioutput"}:
         if n_targets < 2:
-            fallback = model_type.replace("_multitask", "")
+            fallback = model_type.replace("_multitask", "").replace("_multioutput", "")
             raise ValueError(
                 f"{model_type} requires at least two continuous target columns. "
                 f"Use model_type={fallback!r} for a single target."
@@ -194,7 +329,7 @@ def configure_tabular_material_residual(owner: Any) -> bool:
     elif n_targets != 1:
         raise ValueError(
             f"{model_type} is a scalar residual GP and requires exactly one target column. "
-            "Use the corresponding multitask_residual_gp model for correlated wide targets."
+            "Use a multioutput_residual_gp or multitask_residual_gp model for wide targets."
         )
 
     source = owner.source_data_config
@@ -228,10 +363,9 @@ def configure_tabular_material_residual(owner: Any) -> bool:
             f"Use model_type={counterpart!r} for mixed process inputs."
         )
 
-    if config.input_type not in (None, "mixed" if mixed else "normal"):
-        raise ValueError(
-            f"{model_type} requires input_type={'mixed' if mixed else 'normal'!r}."
-        )
+    expected_input_type = "mixed" if mixed else "normal"
+    if config.input_type not in (None, expected_input_type):
+        raise ValueError(f"{model_type} requires input_type={expected_input_type!r}.")
     configured_cat_dims = [] if config.cat_dims is None else list(config.cat_dims)
     if configured_cat_dims:
         raise ValueError(
@@ -274,17 +408,30 @@ def configure_tabular_material_residual(owner: Any) -> bool:
     model_kwargs = _validate_model_kwargs(
         config,
         structures=structures,
-        multitask=multitask,
+        output_mode=output_mode,
         n_targets=n_targets,
     )
-    model_cls = _resolve_model_class(class_name)
 
+    if output_mode == "multioutput":
+        owner.model_config = _configure_independent_multioutput(
+            config,
+            family=family,
+            mixed=mixed,
+            target_names=target_names,
+            process_cat_dims=process_cat_dims,
+            model_kwargs=model_kwargs,
+        )
+        return True
+
+    if class_name is None:
+        raise RuntimeError(f"No model class is registered for model_type={model_type!r}.")
+    model_cls = _resolve_model_class(class_name)
     owner.model_config = replace(
         config,
-        task_type="multi_objective" if multitask else "regression",
+        task_type="multi_objective" if output_mode == "multitask" else "regression",
         model_cls=model_cls,
         model_factory=None,
-        input_type="mixed" if mixed else "normal",
+        input_type=expected_input_type,
         cat_dims=process_cat_dims,
         input_transform=None,
         input_transform_config=None,
@@ -296,4 +443,8 @@ def configure_tabular_material_residual(owner: Any) -> bool:
     return True
 
 
-__all__ = ["configure_tabular_material_residual", "material_residual_model_types"]
+__all__ = [
+    "configure_tabular_material_residual",
+    "independent_residual_model_types",
+    "material_residual_model_types",
+]

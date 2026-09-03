@@ -101,6 +101,38 @@ def test_supported_relaxed_acquisition_families_build_and_select(name: str) -> N
     assert all(math.isfinite(value) for value in result.acquisition_value)
 
 
+@pytest.mark.parametrize("name", ["variance", "predictiveentropy", "bald"])
+def test_active_learning_acquisitions_select_relaxed_structures(name: str) -> None:
+    selector = MACERelaxationAcquisitionSelector(relaxer=FakeRelaxer())
+    result = selector.run(
+        [{"index": 0}, {"index": 1}, {"index": 2}],
+        bundle_factory=_bundle_factory,
+        acquisition_config=AcquisitionConfig(name=name),
+        q=1,
+    )
+
+    assert result.acquisition_name == name
+    assert len(result.candidates) == 1
+    assert result.best.source_index in {0, 1, 2}
+    assert math.isfinite(result.best.individual_acquisition_value)
+    assert all(math.isfinite(value) for value in result.acquisition_value)
+
+
+def test_nipv_uses_relaxed_candidate_bank_as_default_mc_points() -> None:
+    selector = MACERelaxationAcquisitionSelector(relaxer=FakeRelaxer())
+    result = selector.run(
+        [{"index": 0}, {"index": 1}, {"index": 2}],
+        bundle_factory=_bundle_factory,
+        acquisition_config=AcquisitionConfig(name="nipv"),
+        q=1,
+    )
+
+    assert result.acquisition_name == "nipv"
+    assert len(result.candidates) == 1
+    assert math.isfinite(result.best.individual_acquisition_value)
+    assert all(math.isfinite(value) for value in result.acquisition_value)
+
+
 def test_specialized_one_shot_acquisition_is_rejected_explicitly() -> None:
     selector = MACERelaxationAcquisitionSelector(relaxer=FakeRelaxer())
 
@@ -140,7 +172,7 @@ def test_relaxed_acquisition_selection_preserves_process_columns() -> None:
     result = selector.run(
         [{"index": 0}, {"index": 1}, {"index": 2}],
         bundle_factory=bundle_factory,
-        acquisition_config=AcquisitionConfig(name="qucb"),
+        acquisition_config=AcquisitionConfig(name="variance"),
         process_X=torch.tensor([[300.0], [500.0], [700.0]], dtype=torch.double),
     )
 

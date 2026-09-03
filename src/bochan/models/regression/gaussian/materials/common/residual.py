@@ -1,9 +1,9 @@
 """Residual-GP composition for pretrained material predictors.
 
 A residual GP treats a compatible pretrained direct predictor as a deterministic
-baseline and learns only the correction to observed targets.  This module is
-backend-neutral: concrete MACE / CHGNet / M3GNet adapters can opt in later by
-providing an ``nn.Module`` predictor with the standard tensor contract.
+baseline and learns only the correction to observed targets. This module stays
+backend-neutral: concrete material families provide direct predictors and may
+route those predictions into one or more wide output columns.
 """
 
 from __future__ import annotations
@@ -37,6 +37,53 @@ class DirectMaterialPredictor(nn.Module, ABC):
         """Return predictions with shape ``[*X.shape[:-1], output_dim]``."""
 
         raise NotImplementedError
+
+
+class RoutedDirectMaterialPredictor(DirectMaterialPredictor):
+    """Route a scalar pretrained prediction into one wide-output column.
+
+    Outputs that do not have a pretrained baseline are filled with zero. This
+    lets a correlated multi-output residual GP correct one physically compatible
+    pretrained property while learning the remaining properties directly.
+
+    Args:
+        predictor: Scalar pretrained material predictor.
+        output_dim: Total number of wide target columns.
+        output_index: Target column receiving the pretrained prediction.
+    """
+
+    def __init__(
+        self,
+        predictor: DirectMaterialPredictor,
+        *,
+        output_dim: int,
+        output_index: int,
+    ) -> None:
+        super().__init__()
+        if not isinstance(predictor, DirectMaterialPredictor):
+            raise TypeError("predictor must implement DirectMaterialPredictor.")
+        if predictor.output_dim != 1:
+            raise ValueError("RoutedDirectMaterialPredictor currently requires a scalar predictor.")
+        if isinstance(output_dim, bool) or not isinstance(output_dim, int) or output_dim < 2:
+            raise ValueError("output_dim must be an integer greater than or equal to 2.")
+        if isinstance(output_index, bool) or not isinstance(output_index, int):
+            raise TypeError("output_index must be an integer.")
+        resolved_index = output_index + output_dim if output_index < 0 else output_index
+        if resolved_index < 0 or resolved_index >= output_dim:
+            raise ValueError("output_index is outside the configured output range.")
+        self.predictor = predictor
+        self._output_dim = output_dim
+        self.output_index = resolved_index
+
+    @property
+    def output_dim(self) -> int:
+        return self._output_dim
+
+    def forward(self, X: Tensor) -> Tensor:
+        scalar = predict_material_baseline(self.predictor, X)
+        baseline = scalar.new_zeros(*scalar.shape[:-1], self.output_dim)
+        baseline[..., self.output_index] = scalar[..., 0]
+        return baseline
 
 
 def validate_direct_material_predictions(
@@ -84,7 +131,7 @@ def compute_material_residual_targets(
 ) -> Tensor:
     """Return ``train_Y - pretrained_prediction`` without masking observations.
 
-    Missing/partial observations are intentionally preserved.  For example, a
+    Missing/partial observations are intentionally preserved. For example, a
     NaN in ``train_Y`` remains NaN in the returned residual tensor so the
     established observation-aware Gaussian path remains the single owner of
     missing-target semantics.
@@ -116,11 +163,9 @@ def require_residual_gp_capability(spec: PretrainedMaterialSpec) -> None:
 class ResidualMaterialGPModel(Model):
     """Expose ``pretrained baseline + residual GP`` as one BoTorch model.
 
-    The wrapped ``residual_model`` is fitted against residual targets.  At
+    The wrapped ``residual_model`` is fitted against residual targets. At
     posterior time its samples and mean are shifted by the deterministic
-    pretrained prediction while variance is left unchanged.  This preserves the
-    epistemic/observation uncertainty learned by the GP and lets standard BoTorch
-    acquisition functions consume the corrected property posterior directly.
+    pretrained prediction while variance is left unchanged.
     """
 
     def __init__(
@@ -222,6 +267,7 @@ class ResidualMaterialGPModel(Model):
 __all__ = [
     "DirectMaterialPredictor",
     "ResidualMaterialGPModel",
+    "RoutedDirectMaterialPredictor",
     "compute_material_residual_targets",
     "predict_material_baseline",
     "require_residual_gp_capability",

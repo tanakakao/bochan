@@ -6,6 +6,8 @@ from importlib import import_module
 from math import sqrt
 from typing import Any, Literal
 
+from torch import nn
+
 from bochan.composition import CHGNetEncoder
 from bochan.composition.encoders.chgnet import Checkpoint
 from bochan.structure.adapter import StructureAdapter
@@ -86,7 +88,7 @@ class CHGNetStructureRelaxer:
         *,
         model_name: str = _DEFAULT_MODEL_NAME,
         device: str = "cpu",
-        encoder: CHGNetEncoder | Any | None = None,
+        encoder: CHGNetEncoder | nn.Module | None = None,
         checkpoint: Checkpoint | None = None,
         encoder_output_dim: int | None = None,
         strict_checkpoint: bool = True,

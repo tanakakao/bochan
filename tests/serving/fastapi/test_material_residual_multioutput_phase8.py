@@ -3,8 +3,9 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from bochan.serving.fastapi.schemas.material_residual import MaterialResidualTabularFitModelRequest
-
+from bochan.serving.fastapi.schemas.material_residual import (
+    MaterialResidualTabularFitModelRequest,
+)
 
 _STRUCTURE = {
     "format": "mapping",

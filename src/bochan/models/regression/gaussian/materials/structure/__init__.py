@@ -48,6 +48,11 @@ from .mace import (
     MACEMultiTaskGPModel,
 )
 from .mace_residual import MACEDirectEnergyPredictor, MACEResidualGPModel
+from .mixed_residual import (
+    CHGNetMixedResidualGPModel,
+    M3GNetMixedResidualGPModel,
+    MACEMixedResidualGPModel,
+)
 
 __all__ = [
     "ALIGNNDKLModel",
@@ -65,6 +70,7 @@ __all__ = [
     "CHGNetMixedGPModel",
     "CHGNetMixedMultiTaskDKLModel",
     "CHGNetMixedMultiTaskGPModel",
+    "CHGNetMixedResidualGPModel",
     "CHGNetMultiTaskDKLModel",
     "CHGNetMultiTaskGPModel",
     "CHGNetResidualGPModel",
@@ -75,6 +81,7 @@ __all__ = [
     "M3GNetMixedGPModel",
     "M3GNetMixedMultiTaskDKLModel",
     "M3GNetMixedMultiTaskGPModel",
+    "M3GNetMixedResidualGPModel",
     "M3GNetMultiTaskDKLModel",
     "M3GNetMultiTaskGPModel",
     "M3GNetResidualGPModel",
@@ -85,6 +92,7 @@ __all__ = [
     "MACEMixedGPModel",
     "MACEMixedMultiTaskDKLModel",
     "MACEMixedMultiTaskGPModel",
+    "MACEMixedResidualGPModel",
     "MACEMultiTaskDKLModel",
     "MACEMultiTaskGPModel",
     "MACEResidualGPModel",

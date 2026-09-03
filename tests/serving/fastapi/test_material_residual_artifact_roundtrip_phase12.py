@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pandas as pd
 import torch
+from tests._material_residual_hardening_utils import resolve_toy_material_model
 
 from bochan.models.regression.gaussian.materials.common import (
     MaterialBaselineSpec,
@@ -16,7 +17,6 @@ from bochan.serving.fastapi.services.tabular_artifacts import (
 )
 from bochan.serving.fastapi.stores import FileOptimizerStore
 from bochan.tabular import TabularBayesianOptimizer
-from tests._material_residual_hardening_utils import resolve_toy_material_model
 
 _STRUCTURE = {
     "lattice_mat": [[3.0, 0.0, 0.0], [0.0, 3.0, 0.0], [0.0, 0.0, 3.0]],

@@ -47,6 +47,7 @@ from .residual import (
     require_residual_gp_capability,
     validate_direct_material_predictions,
 )
+from .residual_multitask import SingleOutputBaselineAdapter
 from .surrogate import (
     MaterialSurrogateKind,
     MaterialSurrogateSpec,
@@ -84,6 +85,7 @@ __all__ = [
     "PretrainedMaterialCapabilities",
     "PretrainedMaterialSpec",
     "ResidualMaterialGPModel",
+    "SingleOutputBaselineAdapter",
     "apply_encoder_train_mode",
     "apply_encoder_training_policy",
     "build_material_gaussian_surrogate",

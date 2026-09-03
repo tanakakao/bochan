@@ -19,6 +19,12 @@ from .process import (
     resolve_mixed_process_layout,
     select_continuous_process_branch,
 )
+from .surrogate import (
+    MaterialSurrogateKind,
+    MaterialSurrogateSpec,
+    build_material_gaussian_surrogate,
+    resolve_material_latent_dim,
+)
 from .training import (
     EncoderTrainingMode,
     EncoderTrainingPolicy,
@@ -35,12 +41,16 @@ __all__ = [
     "MaterialEncoder",
     "MaterialMultiTaskSpec",
     "MaterialProcessFusion",
+    "MaterialSurrogateKind",
+    "MaterialSurrogateSpec",
     "MaterialTaskMode",
     "MixedProcessLayout",
     "apply_encoder_train_mode",
     "apply_encoder_training_policy",
+    "build_material_gaussian_surrogate",
     "build_material_process_fusion",
     "configure_encoder_parameters",
+    "resolve_material_latent_dim",
     "resolve_mixed_process_input_transform",
     "resolve_mixed_process_layout",
     "select_continuous_process_branch",

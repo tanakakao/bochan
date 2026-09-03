@@ -1,21 +1,33 @@
 """Common contracts for material-aware Gaussian models."""
 
 from .base import MaterialEncoder
-from .baseline import BaselineAggregation, MaterialBaselineSpec, MaterialPropertyContract
+from .baseline import (
+    BaselineAggregation,
+    MaterialBaselineSpec,
+    MaterialPropertyContract,
+)
 from .compatibility import (
     LEGACY_MATERIAL_MODEL_PATHS,
     MaterialCompatibilityPath,
     canonical_material_model_paths,
     legacy_material_model_paths,
 )
-from .fusion import ConcatFusion, MaterialProcessFusion, build_material_process_fusion
+from .fusion import (
+    ConcatFusion,
+    MaterialProcessFusion,
+    build_material_process_fusion,
+)
 from .hardening import (
     ResidualProductionReport,
     assert_residual_posterior_equivalent,
     shared_parameter_aliases,
     validate_residual_production_model,
 )
-from .multi_baseline import MaterialBaselinePlan, MultipleBaselineModelListGP, ResolvedBaselineAssignment
+from .multi_baseline import (
+    MaterialBaselinePlan,
+    MultipleBaselineModelListGP,
+    ResolvedBaselineAssignment,
+)
 from .multitask import (
     MaterialMultiTaskSpec,
     MaterialTaskMode,
@@ -43,7 +55,11 @@ from .registry import (
     get_material_family,
     list_material_families,
 )
-from .relaxation import MaterialStructureRelaxer, StructureRelaxationResult, validate_structure_relaxer
+from .relaxation import (
+    MaterialStructureRelaxer,
+    StructureRelaxationResult,
+    validate_structure_relaxer,
+)
 from .residual import (
     DirectMaterialPredictor,
     ResidualMaterialGPModel,
@@ -70,21 +86,63 @@ from .training import (
 )
 
 __all__ = [
-    "BaselineAggregation", "ConcatFusion", "DirectMaterialPredictor", "EncoderTrainingMode",
-    "EncoderTrainingPolicy", "LEGACY_MATERIAL_MODEL_PATHS", "MATERIAL_FAMILY_REGISTRY",
-    "MaterialBaselinePlan", "MaterialBaselineSpec", "MaterialCompatibilityPath", "MaterialDomain",
-    "MaterialEncoder", "MaterialFamilyRegistration", "MaterialModelVariant", "MaterialMultiTaskSpec",
-    "MaterialProcessFusion", "MaterialPropertyContract", "MaterialStructureRelaxer", "MaterialSurrogateKind",
-    "MaterialSurrogateSpec", "MaterialTaskMode", "MixedProcessLayout", "MultipleBaselineModelListGP",
-    "PretrainedLoadingMode", "PretrainedMaterialCapabilities", "PretrainedMaterialSpec", "ResidualMaterialGPModel",
-    "ResidualProductionReport", "ResolvedBaselineAssignment", "SingleOutputBaselineAdapter",
-    "StructureRelaxationResult", "TensorTargetKind", "TensorTargetLayout", "apply_encoder_train_mode",
-    "apply_encoder_training_policy", "assert_residual_posterior_equivalent", "build_material_gaussian_surrogate",
-    "build_material_process_fusion", "canonical_material_model_paths", "compute_material_residual_targets",
-    "configure_encoder_parameters", "get_material_family", "legacy_material_model_paths", "list_material_families",
-    "predict_material_baseline", "require_residual_gp_capability", "resolve_material_latent_dim",
-    "resolve_mixed_process_input_transform", "resolve_mixed_process_layout", "resolve_pretrained_loading_mode",
-    "select_continuous_process_branch", "shared_parameter_aliases", "task_covar_module", "unique_module_parameters",
-    "validate_correlated_task_kernel", "validate_direct_material_predictions", "validate_residual_production_model",
-    "validate_structure_relaxer", "validate_wide_material_targets",
+    "BaselineAggregation",
+    "ConcatFusion",
+    "DirectMaterialPredictor",
+    "EncoderTrainingMode",
+    "EncoderTrainingPolicy",
+    "LEGACY_MATERIAL_MODEL_PATHS",
+    "MATERIAL_FAMILY_REGISTRY",
+    "MaterialBaselinePlan",
+    "MaterialBaselineSpec",
+    "MaterialCompatibilityPath",
+    "MaterialDomain",
+    "MaterialEncoder",
+    "MaterialFamilyRegistration",
+    "MaterialModelVariant",
+    "MaterialMultiTaskSpec",
+    "MaterialProcessFusion",
+    "MaterialPropertyContract",
+    "MaterialStructureRelaxer",
+    "MaterialSurrogateKind",
+    "MaterialSurrogateSpec",
+    "MaterialTaskMode",
+    "MixedProcessLayout",
+    "MultipleBaselineModelListGP",
+    "PretrainedLoadingMode",
+    "PretrainedMaterialCapabilities",
+    "PretrainedMaterialSpec",
+    "ResidualMaterialGPModel",
+    "ResidualProductionReport",
+    "ResolvedBaselineAssignment",
+    "SingleOutputBaselineAdapter",
+    "StructureRelaxationResult",
+    "TensorTargetKind",
+    "TensorTargetLayout",
+    "apply_encoder_train_mode",
+    "apply_encoder_training_policy",
+    "assert_residual_posterior_equivalent",
+    "build_material_gaussian_surrogate",
+    "build_material_process_fusion",
+    "canonical_material_model_paths",
+    "compute_material_residual_targets",
+    "configure_encoder_parameters",
+    "get_material_family",
+    "legacy_material_model_paths",
+    "list_material_families",
+    "predict_material_baseline",
+    "require_residual_gp_capability",
+    "resolve_material_latent_dim",
+    "resolve_mixed_process_input_transform",
+    "resolve_mixed_process_layout",
+    "resolve_pretrained_loading_mode",
+    "select_continuous_process_branch",
+    "shared_parameter_aliases",
+    "task_covar_module",
+    "unique_module_parameters",
+    "validate_correlated_task_kernel",
+    "validate_direct_material_predictions",
+    "validate_residual_production_model",
+    "validate_structure_relaxer",
+    "validate_wide_material_targets",
 ]

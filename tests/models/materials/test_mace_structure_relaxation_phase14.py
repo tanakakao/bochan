@@ -46,7 +46,7 @@ def test_mace_relaxer_moves_structure_and_reports_convergence() -> None:
     assert result.converged is True
     assert result.n_steps > 0
     assert result.energy < result.initial_energy
-    assert result.max_force <= pytest.approx(0.01, abs=1e-6)
+    assert result.max_force <= 0.010001
     assert result.backend == "mace"
     assert result.model_name == "test-harmonic"
     assert result.relax_cell is False

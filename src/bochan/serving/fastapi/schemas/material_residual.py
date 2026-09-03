@@ -13,19 +13,29 @@ _RESIDUAL_MODEL_TYPES = frozenset(
         "chgnet_mixed_residual_gp",
         "chgnet_multitask_residual_gp",
         "chgnet_mixed_multitask_residual_gp",
+        "chgnet_multioutput_residual_gp",
+        "chgnet_mixed_multioutput_residual_gp",
         "m3gnet_residual_gp",
         "m3gnet_mixed_residual_gp",
         "m3gnet_multitask_residual_gp",
         "m3gnet_mixed_multitask_residual_gp",
+        "m3gnet_multioutput_residual_gp",
+        "m3gnet_mixed_multioutput_residual_gp",
         "mace_residual_gp",
         "mace_mixed_residual_gp",
         "mace_multitask_residual_gp",
         "mace_mixed_multitask_residual_gp",
+        "mace_multioutput_residual_gp",
+        "mace_mixed_multioutput_residual_gp",
     }
 )
 _MULTITASK_MODEL_TYPES = frozenset(
     model_type for model_type in _RESIDUAL_MODEL_TYPES if "multitask_residual_gp" in model_type
 )
+_MULTIOUTPUT_MODEL_TYPES = frozenset(
+    model_type for model_type in _RESIDUAL_MODEL_TYPES if "multioutput_residual_gp" in model_type
+)
+_WIDE_MODEL_TYPES = _MULTITASK_MODEL_TYPES | _MULTIOUTPUT_MODEL_TYPES
 _MIXED_MODEL_TYPES = frozenset(
     model_type for model_type in _RESIDUAL_MODEL_TYPES if "_mixed_" in model_type
 )
@@ -57,7 +67,7 @@ def _validate_checkpoint_identifier(value: object) -> str:
 
 
 class MaterialResidualTabularFitModelRequest(TabularFitModelRequest):
-    """Fit a structure-aware pretrained-baseline + residual GP model."""
+    """Fit scalar, correlated, or independent structure-aware residual GP models."""
 
     structure_col: str
     structure_catalog: dict[str, CrystalStructureRequest]
@@ -68,7 +78,7 @@ class MaterialResidualTabularFitModelRequest(TabularFitModelRequest):
         if model_type not in _RESIDUAL_MODEL_TYPES:
             raise ValueError(
                 "Material residual FastAPI requires one of the public "
-                "CHGNet/M3GNet/MACE *_residual_gp model types."
+                "CHGNet/M3GNet/MACE residual GP model types."
             )
         family = _family(model_type)
         task_type = str(self.bo_model_config.task_type).lower()
@@ -76,17 +86,17 @@ class MaterialResidualTabularFitModelRequest(TabularFitModelRequest):
             raise ValueError("Material residual FastAPI supports regression only.")
 
         targets = list(self.target_cols) if isinstance(self.target_cols, list) else [self.target_cols]
-        multitask = model_type in _MULTITASK_MODEL_TYPES
-        if multitask and len(targets) < 2:
+        wide = model_type in _WIDE_MODEL_TYPES
+        if wide and len(targets) < 2:
             raise ValueError(f"{model_type} requires at least two continuous target columns.")
-        if not multitask and len(targets) != 1:
+        if not wide and len(targets) != 1:
             raise ValueError(f"{model_type} requires exactly one target column.")
         if task_type == "multi_objective" and len(targets) < 2:
             raise ValueError("task_type='multi_objective' requires at least two target columns.")
         if self.multi_output_config is not None or self.bo_model_config.multi_output_config is not None:
             raise ValueError(
-                "Residual models are scalar or correlated multitask models; "
-                "do not provide multi_output_config."
+                "Residual output structure is derived from model_type; "
+                "do not provide multi_output_config explicitly."
             )
         if self.target_categorical_cols:
             raise ValueError("Material residual FastAPI requires continuous regression targets.")
@@ -116,7 +126,7 @@ class MaterialResidualTabularFitModelRequest(TabularFitModelRequest):
         has_process_categories = bool(process_categorical)
         if (model_type in _MIXED_MODEL_TYPES) != has_process_categories:
             raise ValueError(
-                "The *_mixed_residual_gp model types require categorical process columns, "
+                "Mixed residual model types require categorical process columns, "
                 "while non-mixed residual model types require continuous-only process inputs."
             )
         continuous_process_cols = [
@@ -183,7 +193,7 @@ class MaterialResidualTabularFitModelRequest(TabularFitModelRequest):
                 "encoder_training is not supported."
             )
 
-        if multitask:
+        if wide:
             pretrained_output_index = model_kwargs.get("pretrained_output_index", 0)
             if isinstance(pretrained_output_index, bool) or not isinstance(pretrained_output_index, int):
                 raise ValueError("pretrained_output_index must be an integer.")
@@ -195,7 +205,7 @@ class MaterialResidualTabularFitModelRequest(TabularFitModelRequest):
             model_kwargs["pretrained_output_index"] = pretrained_output_index
         elif "pretrained_output_index" in model_kwargs:
             raise ValueError(
-                "pretrained_output_index is only valid for multitask residual GP models."
+                "pretrained_output_index is only valid for multitask or multioutput residual models."
             )
 
         if family == "chgnet":

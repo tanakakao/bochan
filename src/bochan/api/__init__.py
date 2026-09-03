@@ -46,21 +46,16 @@ from .evaluation.cross_validation import (
     clone_model_config_for_evaluation,
 )
 from .factory import prepare_multi_objective_context
-from .registry.material import (
-    material_residual_model_types,
-    register_material_residual_model_types,
-)
-
-# Extend the default lazy registry before public model construction is used.
-# This adds metadata paths only; optional material backends remain unloaded.
-register_material_residual_model_types()
-
 from .modeling.build import build_model, infer_input_type, resolve_model_cls
 from .modeling.fit import fit_model
 from .observation import ExperimentFailureConfig, ObservationData
 from .optimizer import BayesianOptimizer
 from .optimizer.service import optimize_candidates
 from .registry.acquisition import available_acqf_names, resolve_acqf_cls
+from .registry.material import (
+    material_residual_model_types,
+    register_material_residual_model_types,
+)
 from .registry.model import DEFAULT_MODEL_REGISTRY, MODEL_REGISTRY, LazyModelRegistry
 from .study import CandidateBatch, StudySnapshot, StudySuggestion, Trial, TrialState
 from .study.controls import (
@@ -70,6 +65,10 @@ from .study.controls import (
     GenerationStep,
     StopDecision,
 )
+
+# Extend the default lazy registry with metadata-only material paths.  Concrete
+# optional material backends remain unloaded until a model type is resolved.
+register_material_residual_model_types()
 
 __all__ = [
     "AcquisitionConfig",

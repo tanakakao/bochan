@@ -45,7 +45,16 @@ from .m3gnet import (
     M3GNetMultiTaskDKLModel,
     M3GNetMultiTaskGPModel,
 )
+from .m3gnet_relax_acquisition import M3GNetRelaxationAcquisitionSelector
+from .m3gnet_relax_rank import M3GNetRelaxationRanker
+from .m3gnet_relaxation import M3GNetStructureRelaxer, relax_structure_m3gnet
 from .m3gnet_residual import M3GNetDirectPredictor, M3GNetResidualGPModel
+from .m3gnet_tensor_residual import (
+    M3GNetDirectForcePredictor,
+    M3GNetDirectStressPredictor,
+    M3GNetForceResidualGPModel,
+    M3GNetStressResidualGPModel,
+)
 from .mace import (
     MACEDKLModel,
     MACEGPModel,
@@ -122,7 +131,10 @@ __all__ = [
     "CHGNetStressResidualGPModel",
     "CHGNetStructureRelaxer",
     "M3GNetDKLModel",
+    "M3GNetDirectForcePredictor",
     "M3GNetDirectPredictor",
+    "M3GNetDirectStressPredictor",
+    "M3GNetForceResidualGPModel",
     "M3GNetGPModel",
     "M3GNetMixedDKLModel",
     "M3GNetMixedGPModel",
@@ -133,7 +145,11 @@ __all__ = [
     "M3GNetMultiTaskDKLModel",
     "M3GNetMultiTaskGPModel",
     "M3GNetMultiTaskResidualGPModel",
+    "M3GNetRelaxationAcquisitionSelector",
+    "M3GNetRelaxationRanker",
     "M3GNetResidualGPModel",
+    "M3GNetStressResidualGPModel",
+    "M3GNetStructureRelaxer",
     "MACEDKLModel",
     "MACEDirectEnergyPredictor",
     "MACEDirectForcePredictor",
@@ -164,5 +180,6 @@ __all__ = [
     "RelaxedStructureRank",
     "RelaxedStructureRankingResult",
     "relax_structure_chgnet",
+    "relax_structure_m3gnet",
     "relax_structure_mace",
 ]

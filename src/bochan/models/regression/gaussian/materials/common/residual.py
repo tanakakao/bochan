@@ -1,9 +1,9 @@
 """Residual-GP composition for pretrained material predictors.
 
 A residual GP treats a compatible pretrained direct predictor as a deterministic
-baseline and learns only the correction to observed targets.  This module is
-backend-neutral: concrete MACE / CHGNet / M3GNet adapters can opt in later by
-providing an ``nn.Module`` predictor with the standard tensor contract.
+baseline and learns only the correction to observed targets. This module is
+backend-neutral: concrete MACE / CHGNet / M3GNet adapters provide a deterministic
+predictor and an exact Gaussian-process backend.
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ from typing import Any
 
 import torch
 from botorch.acquisition.objective import PosteriorTransform
+from botorch.models.gpytorch import GPyTorchModel
 from botorch.models.model import Model
 from botorch.posteriors.posterior import Posterior
 from botorch.posteriors.transformed import TransformedPosterior
@@ -82,13 +83,7 @@ def compute_material_residual_targets(
     train_Y: Tensor,
     predictor: DirectMaterialPredictor,
 ) -> Tensor:
-    """Return ``train_Y - pretrained_prediction`` without masking observations.
-
-    Missing/partial observations are intentionally preserved.  For example, a
-    NaN in ``train_Y`` remains NaN in the returned residual tensor so the
-    established observation-aware Gaussian path remains the single owner of
-    missing-target semantics.
-    """
+    """Return ``train_Y - pretrained_prediction`` without masking observations."""
 
     if not torch.is_tensor(train_Y):
         raise TypeError("train_Y must be a Tensor.")
@@ -113,28 +108,28 @@ def require_residual_gp_capability(spec: PretrainedMaterialSpec) -> None:
     spec.capabilities.require_residual_gp()
 
 
-class ResidualMaterialGPModel(Model):
-    """Expose ``pretrained baseline + residual GP`` as one BoTorch model.
+class ResidualMaterialGPModel(GPyTorchModel):
+    """Expose ``pretrained baseline + residual GP`` as one GPyTorch-compatible model.
 
-    The wrapped ``residual_model`` is fitted against residual targets.  At
-    posterior time its samples and mean are shifted by the deterministic
-    pretrained prediction while variance is left unchanged.  This preserves the
-    epistemic/observation uncertainty learned by the GP and lets standard BoTorch
-    acquisition functions consume the corrected property posterior directly.
+    The wrapper deliberately satisfies :class:`GPyTorchModel` so it can participate
+    in BoTorch ``ModelListGP`` just like an ordinary exact GP. Probabilistic state,
+    training inputs, likelihood, and fantasies remain owned by ``residual_model``;
+    only posterior means/samples and observed conditioning are translated between
+    residual and original physical-property scales.
     """
 
     def __init__(
         self,
         *,
         predictor: DirectMaterialPredictor,
-        residual_model: Model,
+        residual_model: GPyTorchModel,
         pretrained_spec: PretrainedMaterialSpec | None = None,
     ) -> None:
         super().__init__()
         if not isinstance(predictor, DirectMaterialPredictor):
             raise TypeError("predictor must implement DirectMaterialPredictor.")
-        if not isinstance(residual_model, Model):
-            raise TypeError("residual_model must be a BoTorch Model.")
+        if not isinstance(residual_model, GPyTorchModel):
+            raise TypeError("residual_model must implement BoTorch GPyTorchModel.")
         if pretrained_spec is not None:
             require_residual_gp_capability(pretrained_spec)
 
@@ -161,8 +156,30 @@ class ResidualMaterialGPModel(Model):
         return self.residual_model.batch_shape
 
     @property
+    def train_inputs(self) -> tuple[Tensor, ...]:
+        """Expose residual-GP training inputs for ModelList/fantasy protocols."""
+
+        train_inputs = getattr(self.residual_model, "train_inputs", None)
+        if train_inputs is None:
+            raise AttributeError("The residual GP backend does not expose train_inputs.")
+        return train_inputs
+
+    @train_inputs.setter
+    def train_inputs(self, value: tuple[Tensor, ...]) -> None:
+        self._train_inputs = value
+
+    @property
+    def train_targets(self) -> Tensor:
+        """Expose backend residual targets for BoTorch model-list bookkeeping."""
+
+        train_targets = getattr(self.residual_model, "train_targets", None)
+        if train_targets is None:
+            raise AttributeError("The residual GP backend does not expose train_targets.")
+        return train_targets
+
+    @property
     def likelihood(self) -> Any:
-        """Expose the residual GP likelihood for fitting and diagnostics."""
+        """Expose the residual GP likelihood for fitting and ModelListGP."""
 
         likelihood = getattr(self.residual_model, "likelihood", None)
         if likelihood is None:
@@ -170,13 +187,7 @@ class ResidualMaterialGPModel(Model):
         return likelihood
 
     def make_mll(self, **kwargs: Any) -> Any:
-        """Build an exact marginal log likelihood for the residual GP backend.
-
-        The deterministic pretrained predictor is not an independently fitted
-        probabilistic component.  The MLL therefore owns ``residual_model`` and
-        its likelihood directly while the wrapper remains the public BoTorch
-        posterior surface.
-        """
+        """Build an exact marginal log likelihood for the residual GP backend."""
 
         from gpytorch.mlls import ExactMarginalLogLikelihood
 
@@ -236,8 +247,8 @@ class ResidualMaterialGPModel(Model):
 
         residual_Y = compute_material_residual_targets(X, Y, self.predictor)
         conditioned = self.residual_model.condition_on_observations(X=X, Y=residual_Y, **kwargs)
-        if not isinstance(conditioned, Model):
-            raise TypeError("condition_on_observations must return a BoTorch Model.")
+        if not isinstance(conditioned, GPyTorchModel):
+            raise TypeError("condition_on_observations must return a GPyTorchModel.")
         return ResidualMaterialGPModel(
             predictor=self.predictor,
             residual_model=conditioned,

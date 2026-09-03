@@ -55,7 +55,6 @@ mace = [
 ]
 
 materials = [
-  "alignn>=2026.8.11,<2027",
   "aviary-models>=1.2.1,<2",
   "chgnet>=0.4.2,<0.5",
   "crabnet @ git+https://github.com/sparks-baird/CrabNet.git@d6906fed634a34d9a7cb5f35db2199629fdfd939",
@@ -141,7 +140,6 @@ dev = [
 ]
 
 all = [
-  "alignn>=2026.8.11,<2027",
   "aviary-models>=1.2.1,<2",
   "cma>=3.3",
   "chgnet>=0.4.2,<0.5",
@@ -171,7 +169,7 @@ Repository = "https://github.com/tanakakao/bochan"
 Issues = "https://github.com/tanakakao/bochan/issues"
 
 [tool.setuptools]
-package-dir = {"" = "src"}
+package-dir = {"" = "src" ]
 include-package-data = true
 
 [tool.setuptools.packages.find]

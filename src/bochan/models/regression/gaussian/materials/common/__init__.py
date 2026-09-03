@@ -17,6 +17,11 @@ from .fusion import (
     MaterialProcessFusion,
     build_material_process_fusion,
 )
+from .multi_baseline import (
+    MaterialBaselinePlan,
+    MultipleBaselineModelListGP,
+    ResolvedBaselineAssignment,
+)
 from .multitask import (
     MaterialMultiTaskSpec,
     MaterialTaskMode,
@@ -76,6 +81,7 @@ __all__ = [
     "EncoderTrainingPolicy",
     "LEGACY_MATERIAL_MODEL_PATHS",
     "MATERIAL_FAMILY_REGISTRY",
+    "MaterialBaselinePlan",
     "MaterialBaselineSpec",
     "MaterialCompatibilityPath",
     "MaterialDomain",
@@ -89,10 +95,12 @@ __all__ = [
     "MaterialSurrogateSpec",
     "MaterialTaskMode",
     "MixedProcessLayout",
+    "MultipleBaselineModelListGP",
     "PretrainedLoadingMode",
     "PretrainedMaterialCapabilities",
     "PretrainedMaterialSpec",
     "ResidualMaterialGPModel",
+    "ResolvedBaselineAssignment",
     "SingleOutputBaselineAdapter",
     "apply_encoder_train_mode",
     "apply_encoder_training_policy",

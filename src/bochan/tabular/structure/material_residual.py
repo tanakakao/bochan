@@ -6,7 +6,6 @@ from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from typing import Any, Literal
 
-
 ResidualOutputMode = Literal["scalar", "multitask", "multioutput"]
 ResidualModelSpec = tuple[str, bool, ResidualOutputMode, str | None]
 

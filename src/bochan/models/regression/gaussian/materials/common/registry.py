@@ -174,10 +174,13 @@ MATERIAL_FAMILY_REGISTRY: dict[str, MaterialFamilyRegistration] = {
     ),
     "mace": MaterialFamilyRegistration(
         family="mace", domain="structure",
-        model_paths=_models(_structure_namespace, "mace", full_matrix=True),
+        model_paths=_models(_structure_namespace, "mace", full_matrix=True, residual_gp=True),
         pretrained=PretrainedMaterialSpec(
             family="mace", domain="structure",
-            capabilities=_capabilities(loading_modes=frozenset({"model_name", "injected"})),
+            capabilities=_capabilities(
+                loading_modes=frozenset({"model_name", "injected"}),
+                direct_prediction=True, residual_gp=True,
+            ),
             default_model_name="medium-mpa-0",
         ),
     ),

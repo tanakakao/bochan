@@ -9,7 +9,7 @@ providing an ``nn.Module`` predictor with the standard tensor contract.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, cast
+from typing import Any
 
 import torch
 from botorch.acquisition.objective import PosteriorTransform

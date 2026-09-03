@@ -160,6 +160,32 @@ class ResidualMaterialGPModel(Model):
 
         return self.residual_model.batch_shape
 
+    @property
+    def likelihood(self) -> Any:
+        """Expose the residual GP likelihood for fitting and diagnostics."""
+
+        likelihood = getattr(self.residual_model, "likelihood", None)
+        if likelihood is None:
+            raise AttributeError("The residual GP backend does not expose a likelihood.")
+        return likelihood
+
+    def make_mll(self, **kwargs: Any) -> Any:
+        """Build an exact marginal log likelihood for the residual GP backend.
+
+        The deterministic pretrained predictor is not an independently fitted
+        probabilistic component.  The MLL therefore owns ``residual_model`` and
+        its likelihood directly while the wrapper remains the public BoTorch
+        posterior surface.
+        """
+
+        from gpytorch.mlls import ExactMarginalLogLikelihood
+
+        return ExactMarginalLogLikelihood(
+            self.likelihood,
+            self.residual_model,
+            **kwargs,
+        )
+
     def baseline(self, X: Tensor) -> Tensor:
         """Return validated deterministic pretrained predictions."""
 

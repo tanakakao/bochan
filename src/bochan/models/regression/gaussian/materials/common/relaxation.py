@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 
 @dataclass(frozen=True)
@@ -19,7 +19,7 @@ class StructureRelaxationResult:
         max_force: Maximum Euclidean force norm over atoms.
         n_steps: Number of optimizer steps executed.
         converged: Whether the optimizer satisfied the requested force threshold.
-        optimizer: ASE optimizer name.
+        optimizer: Optimizer name reported by the backend.
         fmax: Requested maximum-force convergence threshold.
         relax_cell: Whether lattice degrees of freedom were relaxed.
         backend: Material potential backend identifier.
@@ -71,4 +71,39 @@ class StructureRelaxationResult:
         }
 
 
-__all__ = ["StructureRelaxationResult"]
+@runtime_checkable
+class MaterialStructureRelaxer(Protocol):
+    """Backend-neutral contract for relaxing one periodic structure.
+
+    Implementations may delegate to ASE or to a backend-native optimizer. The
+    generic ranking and acquisition layers rely only on this public contract and
+    on :class:`StructureRelaxationResult`.
+    """
+
+    def relax(
+        self,
+        structure: Any,
+        *,
+        optimizer: str = "FIRE",
+        fmax: float = 0.05,
+        max_steps: int = 200,
+        relax_cell: bool = False,
+    ) -> StructureRelaxationResult:
+        """Relax one structure and return canonical diagnostics."""
+
+        ...
+
+
+def validate_structure_relaxer(relaxer: Any) -> MaterialStructureRelaxer:
+    """Validate and return an object implementing the relaxer contract."""
+
+    if not callable(getattr(relaxer, "relax", None)):
+        raise TypeError("relaxer must expose relax(structure, ...).")
+    return relaxer
+
+
+__all__ = [
+    "MaterialStructureRelaxer",
+    "StructureRelaxationResult",
+    "validate_structure_relaxer",
+]

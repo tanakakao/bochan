@@ -1,0 +1,51 @@
+name: MLIP relax common Phase 16 smoke
+
+on:
+  pull_request:
+    paths:
+      - "src/bochan/models/regression/gaussian/materials/common/relaxation.py"
+      - "src/bochan/models/regression/gaussian/materials/common/__init__.py"
+      - "src/bochan/models/regression/gaussian/materials/structure/relax_rank.py"
+      - "src/bochan/models/regression/gaussian/materials/structure/relax_acquisition.py"
+      - "src/bochan/models/regression/gaussian/materials/structure/mace_relax_rank.py"
+      - "src/bochan/models/regression/gaussian/materials/structure/mace_relax_acquisition.py"
+      - "src/bochan/models/regression/gaussian/materials/structure/__init__.py"
+      - "tests/models/materials/test_relaxation_common_phase16.py"
+      - "tests/models/materials/test_relaxation_selector_common_phase16.py"
+      - "tests/models/materials/test_mace_relax_rank_phase15.py"
+      - "tests/models/materials/test_mace_relax_acquisition_phase15.py"
+      - ".github/workflows/mlip-relax-common-phase16.yml"
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install test surface
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[test,mace]"
+          python -m pip install ruff
+      - name: Run common and MACE compatibility tests
+        run: |
+          python -m pytest \
+            tests/models/materials/test_relaxation_common_phase16.py \
+            tests/models/materials/test_relaxation_selector_common_phase16.py \
+            tests/models/materials/test_mace_relax_rank_phase15.py \
+            tests/models/materials/test_mace_relax_acquisition_phase15.py \
+            -q
+      - name: Ruff
+        run: |
+          ruff check \
+            src/bochan/models/regression/gaussian/materials/common/relaxation.py \
+            src/bochan/models/regression/gaussian/materials/common/__init__.py \
+            src/bochan/models/regression/gaussian/materials/structure/relax_rank.py \
+            src/bochan/models/regression/gaussian/materials/structure/relax_acquisition.py \
+            src/bochan/models/regression/gaussian/materials/structure/mace_relax_rank.py \
+            src/bochan/models/regression/gaussian/materials/structure/mace_relax_acquisition.py \
+            src/bochan/models/regression/gaussian/materials/structure/__init__.py \
+            tests/models/materials/test_relaxation_common_phase16.py \
+            tests/models/materials/test_relaxation_selector_common_phase16.py

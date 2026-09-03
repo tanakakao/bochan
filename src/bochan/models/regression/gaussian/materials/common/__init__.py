@@ -55,7 +55,11 @@ from .registry import (
     get_material_family,
     list_material_families,
 )
-from .relaxation import StructureRelaxationResult
+from .relaxation import (
+    MaterialStructureRelaxer,
+    StructureRelaxationResult,
+    validate_structure_relaxer,
+)
 from .residual import (
     DirectMaterialPredictor,
     ResidualMaterialGPModel,
@@ -99,6 +103,7 @@ __all__ = [
     "MaterialMultiTaskSpec",
     "MaterialProcessFusion",
     "MaterialPropertyContract",
+    "MaterialStructureRelaxer",
     "MaterialSurrogateKind",
     "MaterialSurrogateSpec",
     "MaterialTaskMode",
@@ -138,5 +143,6 @@ __all__ = [
     "validate_correlated_task_kernel",
     "validate_direct_material_predictions",
     "validate_residual_production_model",
+    "validate_structure_relaxer",
     "validate_wide_material_targets",
 ]

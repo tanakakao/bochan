@@ -36,6 +36,7 @@ from .m3gnet import (
     M3GNetMultiTaskDKLModel,
     M3GNetMultiTaskGPModel,
 )
+from .m3gnet_residual import M3GNetDirectPredictor, M3GNetResidualGPModel
 from .mace import (
     MACEDKLModel,
     MACEGPModel,
@@ -67,6 +68,7 @@ __all__ = [
     "CHGNetMultiTaskGPModel",
     "CHGNetResidualGPModel",
     "M3GNetDKLModel",
+    "M3GNetDirectPredictor",
     "M3GNetGPModel",
     "M3GNetMixedDKLModel",
     "M3GNetMixedGPModel",
@@ -74,6 +76,7 @@ __all__ = [
     "M3GNetMixedMultiTaskGPModel",
     "M3GNetMultiTaskDKLModel",
     "M3GNetMultiTaskGPModel",
+    "M3GNetResidualGPModel",
     "MACEDKLModel",
     "MACEGPModel",
     "MACEMixedDKLModel",

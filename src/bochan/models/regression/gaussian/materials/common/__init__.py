@@ -26,6 +26,13 @@ from .process import (
     resolve_mixed_process_layout,
     select_continuous_process_branch,
 )
+from .registry import (
+    MATERIAL_FAMILY_REGISTRY,
+    MaterialFamilyRegistration,
+    MaterialModelVariant,
+    get_material_family,
+    list_material_families,
+)
 from .residual import (
     DirectMaterialPredictor,
     ResidualMaterialGPModel,
@@ -54,8 +61,11 @@ __all__ = [
     "DirectMaterialPredictor",
     "EncoderTrainingMode",
     "EncoderTrainingPolicy",
+    "MATERIAL_FAMILY_REGISTRY",
     "MaterialDomain",
     "MaterialEncoder",
+    "MaterialFamilyRegistration",
+    "MaterialModelVariant",
     "MaterialMultiTaskSpec",
     "MaterialProcessFusion",
     "MaterialSurrogateKind",
@@ -72,6 +82,8 @@ __all__ = [
     "build_material_process_fusion",
     "compute_material_residual_targets",
     "configure_encoder_parameters",
+    "get_material_family",
+    "list_material_families",
     "predict_material_baseline",
     "require_residual_gp_capability",
     "resolve_material_latent_dim",

@@ -42,6 +42,7 @@ from .registry import (
 from .residual import (
     DirectMaterialPredictor,
     ResidualMaterialGPModel,
+    RoutedDirectMaterialPredictor,
     compute_material_residual_targets,
     predict_material_baseline,
     require_residual_gp_capability,
@@ -84,6 +85,7 @@ __all__ = [
     "PretrainedMaterialCapabilities",
     "PretrainedMaterialSpec",
     "ResidualMaterialGPModel",
+    "RoutedDirectMaterialPredictor",
     "apply_encoder_train_mode",
     "apply_encoder_training_policy",
     "build_material_gaussian_surrogate",

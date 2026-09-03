@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi.testclient import TestClient
+from tests._material_residual_hardening_utils import resolve_toy_material_model
 
 from bochan.serving.fastapi.app import create_app
 from bochan.serving.fastapi.dependencies import (
@@ -11,7 +12,6 @@ from bochan.serving.fastapi.stores import (
     FileOptimizerStore,
     InMemoryTabularOptimizerStore,
 )
-from tests._material_residual_hardening_utils import resolve_toy_material_model
 
 _STRUCTURE = {
     "format": "mapping",

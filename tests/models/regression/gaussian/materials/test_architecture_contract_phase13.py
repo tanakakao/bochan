@@ -49,16 +49,10 @@ def _resolve(path: str):
 
 
 def test_phase13_public_contracts_compose_without_backend_specific_setup() -> None:
-    """Core neutral contracts should compose through the public materials API."""
-
     assert MaterialEncoder is LegacyMaterialEncoder
     assert MaterialProcessFusion is LegacyMaterialProcessFusion
 
-    layout = resolve_mixed_process_layout(
-        input_dim=5,
-        cat_dims=(4,),
-        material_dims=(0,),
-    )
+    layout = resolve_mixed_process_layout(input_dim=5, cat_dims=(4,), material_dims=(0,))
     assert layout.material_dims == (0,)
     assert layout.numeric_process_dims == (1, 2, 3)
     assert layout.categorical_dims == (4,)
@@ -73,20 +67,14 @@ def test_phase13_public_contracts_compose_without_backend_specific_setup() -> No
 
 
 def test_phase13_partial_observations_survive_residual_target_construction() -> None:
-    """Residual preprocessing must preserve missing observations for the GP layer."""
-
     train_X = torch.tensor([[1.0], [2.0], [3.0]])
     train_Y = torch.tensor([[2.0, 3.0], [float("nan"), 4.0], [5.0, 6.0]])
-
     residual = compute_material_residual_targets(train_X, train_Y, _Predictor())
-
     assert torch.isnan(residual[1, 0])
     assert torch.allclose(residual[[0, 2]], torch.tensor([[1.0, 1.0], [2.0, 2.0]]))
 
 
 def test_phase13_pretrained_capability_semantics_match_residual_boundary() -> None:
-    """Residual-GP support must require a verified direct prediction capability."""
-
     representation_only = PretrainedMaterialSpec(
         family="example",
         domain="structure",
@@ -117,54 +105,36 @@ def test_phase13_pretrained_capability_semantics_match_residual_boundary() -> No
 
 
 def test_phase13_registry_matches_current_material_family_matrix() -> None:
-    """Registry metadata should describe the concrete family matrix conservatively."""
-
     assert list_material_families() == (
-        "crabnet",
-        "roost",
-        "alignn",
-        "chgnet",
-        "m3gnet",
-        "mace",
+        "crabnet", "roost", "alignn", "chgnet", "m3gnet", "mace",
     )
     assert list_material_families(domain="composition") == ("crabnet", "roost")
     assert list_material_families(domain="structure") == (
-        "alignn",
-        "chgnet",
-        "m3gnet",
-        "mace",
+        "alignn", "chgnet", "m3gnet", "mace",
     )
 
     full_matrix = {
-        "gp",
-        "dkl",
-        "mixed_gp",
-        "mixed_dkl",
-        "multitask_gp",
-        "multitask_dkl",
-        "mixed_multitask_gp",
-        "mixed_multitask_dkl",
+        "gp", "dkl", "mixed_gp", "mixed_dkl", "multitask_gp", "multitask_dkl",
+        "mixed_multitask_gp", "mixed_multitask_dkl",
     }
-    for family in ("crabnet", "alignn", "m3gnet", "mace"):
+    for family in ("crabnet", "alignn", "mace"):
         registration = get_material_family(family)
         assert registration.variants == frozenset(full_matrix)
         assert registration.pretrained.capabilities.direct_prediction is False
         assert registration.pretrained.capabilities.residual_gp is False
 
-    chgnet = get_material_family("chgnet")
-    assert chgnet.variants == frozenset({*full_matrix, "residual_gp"})
-    assert chgnet.pretrained.capabilities.direct_prediction is True
-    assert chgnet.pretrained.capabilities.residual_gp is True
+    for family in ("chgnet", "m3gnet"):
+        registration = get_material_family(family)
+        assert registration.variants == frozenset({*full_matrix, "residual_gp"})
+        assert registration.pretrained.capabilities.direct_prediction is True
+        assert registration.pretrained.capabilities.residual_gp is True
 
     assert get_material_family("roost").variants == frozenset({"gp", "dkl"})
 
 
 def test_phase13_registry_classes_and_legacy_paths_share_identity() -> None:
-    """Canonical, registry, and historical imports must keep identical class objects."""
-
     compatibility_by_class = {
-        item.canonical.rsplit(":", 1)[1]: item
-        for item in LEGACY_MATERIAL_MODEL_PATHS
+        item.canonical.rsplit(":", 1)[1]: item for item in LEGACY_MATERIAL_MODEL_PATHS
     }
 
     for family in list_material_families():
@@ -174,9 +144,6 @@ def test_phase13_registry_classes_and_legacy_paths_share_identity() -> None:
             compatibility = compatibility_by_class[registered_class.__name__]
             canonical_class = _resolve(compatibility.canonical)
             legacy_class = _resolve(compatibility.legacy)
-
             assert registered_class is canonical_class is legacy_class
-            assert registered_class.__module__.startswith(
-                "bochan.models.regression.gaussian.deep."
-            )
+            assert registered_class.__module__.startswith("bochan.models.regression.gaussian.deep.")
             assert pickle.loads(pickle.dumps(registered_class)) is registered_class

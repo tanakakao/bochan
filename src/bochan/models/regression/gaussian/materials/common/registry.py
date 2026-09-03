@@ -11,29 +11,16 @@ from dataclasses import dataclass
 from importlib import import_module
 from typing import Literal
 
-from .pretrained import (
-    MaterialDomain,
-    PretrainedMaterialCapabilities,
-    PretrainedMaterialSpec,
-)
+from .pretrained import MaterialDomain, PretrainedMaterialCapabilities, PretrainedMaterialSpec
 
 MaterialModelVariant = Literal[
-    "gp",
-    "dkl",
-    "mixed_gp",
-    "mixed_dkl",
-    "multitask_gp",
-    "multitask_dkl",
-    "mixed_multitask_gp",
-    "mixed_multitask_dkl",
-    "residual_gp",
+    "gp", "dkl", "mixed_gp", "mixed_dkl", "multitask_gp", "multitask_dkl",
+    "mixed_multitask_gp", "mixed_multitask_dkl", "residual_gp",
 ]
 
 
 @dataclass(frozen=True)
 class MaterialFamilyRegistration:
-    """Describe one material-model family without importing its backend."""
-
     family: str
     domain: MaterialDomain
     model_paths: dict[MaterialModelVariant, str]
@@ -52,24 +39,16 @@ class MaterialFamilyRegistration:
             raise ValueError("model_paths must contain at least one model variant.")
         for variant, path in self.model_paths.items():
             if not isinstance(path, str) or ":" not in path:
-                raise ValueError(
-                    f"Model path for {variant!r} must use 'module:attribute' syntax."
-                )
+                raise ValueError(f"Model path for {variant!r} must use 'module:attribute' syntax.")
 
     @property
     def variants(self) -> frozenset[MaterialModelVariant]:
-        """Return all model variants currently implemented by Bochan."""
-
         return frozenset(self.model_paths)
 
     def supports(self, variant: MaterialModelVariant) -> bool:
-        """Return whether the family exposes one Bochan model variant."""
-
         return variant in self.model_paths
 
     def model_path(self, variant: MaterialModelVariant) -> str:
-        """Return the lazy import path for one model variant."""
-
         try:
             return self.model_paths[variant]
         except KeyError as error:
@@ -78,8 +57,6 @@ class MaterialFamilyRegistration:
             ) from error
 
     def resolve_model_class(self, variant: MaterialModelVariant) -> type:
-        """Import and return one concrete model class on demand."""
-
         path = self.model_path(variant)
         module_name, attribute = path.split(":", 1)
         module = import_module(module_name)
@@ -96,8 +73,6 @@ def _capabilities(
     direct_prediction: bool = False,
     residual_gp: bool = False,
 ) -> PretrainedMaterialCapabilities:
-    """Build capability metadata for one currently supported material adapter."""
-
     return PretrainedMaterialCapabilities(
         representation=True,
         direct_prediction=direct_prediction,
@@ -116,18 +91,15 @@ def _models(
     full_matrix: bool,
     residual_gp: bool = False,
 ) -> dict[MaterialModelVariant, str]:
-    prefix = family.upper() if family != "mace" else "MACE"
-    if family == "m3gnet":
-        prefix = "M3GNet"
-    elif family == "chgnet":
-        prefix = "CHGNet"
-    elif family == "alignn":
-        prefix = "ALIGNN"
-    elif family == "crabnet":
-        prefix = "CrabNet"
-    elif family == "roost":
-        prefix = "Roost"
-
+    prefixes = {
+        "mace": "MACE",
+        "m3gnet": "M3GNet",
+        "chgnet": "CHGNet",
+        "alignn": "ALIGNN",
+        "crabnet": "CrabNet",
+        "roost": "Roost",
+    }
+    prefix = prefixes[family]
     paths: dict[MaterialModelVariant, str] = {
         "gp": f"{namespace}:{prefix}GPModel",
         "dkl": f"{namespace}:{prefix}DKLModel",
@@ -148,106 +120,64 @@ def _models(
     return paths
 
 
+_structure_namespace = "bochan.models.regression.gaussian.materials.structure"
+_composition_namespace = "bochan.models.regression.gaussian.materials.composition"
+
 MATERIAL_FAMILY_REGISTRY: dict[str, MaterialFamilyRegistration] = {
     "crabnet": MaterialFamilyRegistration(
-        family="crabnet",
-        domain="composition",
-        model_paths=_models(
-            "bochan.models.regression.gaussian.materials.composition",
-            "crabnet",
-            full_matrix=True,
-        ),
+        family="crabnet", domain="composition",
+        model_paths=_models(_composition_namespace, "crabnet", full_matrix=True),
         pretrained=PretrainedMaterialSpec(
-            family="crabnet",
-            domain="composition",
-            capabilities=_capabilities(
-                loading_modes=frozenset({"checkpoint", "injected"})
-            ),
+            family="crabnet", domain="composition",
+            capabilities=_capabilities(loading_modes=frozenset({"checkpoint", "injected"})),
         ),
     ),
     "roost": MaterialFamilyRegistration(
-        family="roost",
-        domain="composition",
-        model_paths=_models(
-            "bochan.models.regression.gaussian.materials.composition",
-            "roost",
-            full_matrix=False,
-        ),
+        family="roost", domain="composition",
+        model_paths=_models(_composition_namespace, "roost", full_matrix=False),
         pretrained=PretrainedMaterialSpec(
-            family="roost",
-            domain="composition",
-            capabilities=_capabilities(
-                loading_modes=frozenset({"checkpoint", "injected"})
-            ),
+            family="roost", domain="composition",
+            capabilities=_capabilities(loading_modes=frozenset({"checkpoint", "injected"})),
         ),
     ),
     "alignn": MaterialFamilyRegistration(
-        family="alignn",
-        domain="structure",
-        model_paths=_models(
-            "bochan.models.regression.gaussian.materials.structure",
-            "alignn",
-            full_matrix=True,
-        ),
+        family="alignn", domain="structure",
+        model_paths=_models(_structure_namespace, "alignn", full_matrix=True),
         pretrained=PretrainedMaterialSpec(
-            family="alignn",
-            domain="structure",
-            capabilities=_capabilities(
-                loading_modes=frozenset({"checkpoint", "injected"})
-            ),
+            family="alignn", domain="structure",
+            capabilities=_capabilities(loading_modes=frozenset({"checkpoint", "injected"})),
         ),
     ),
     "chgnet": MaterialFamilyRegistration(
-        family="chgnet",
-        domain="structure",
-        model_paths=_models(
-            "bochan.models.regression.gaussian.materials.structure",
-            "chgnet",
-            full_matrix=True,
-            residual_gp=True,
-        ),
+        family="chgnet", domain="structure",
+        model_paths=_models(_structure_namespace, "chgnet", full_matrix=True, residual_gp=True),
         pretrained=PretrainedMaterialSpec(
-            family="chgnet",
-            domain="structure",
+            family="chgnet", domain="structure",
             capabilities=_capabilities(
                 loading_modes=frozenset({"checkpoint", "model_name", "injected"}),
-                direct_prediction=True,
-                residual_gp=True,
+                direct_prediction=True, residual_gp=True,
             ),
             default_model_name="0.3.0",
         ),
     ),
     "m3gnet": MaterialFamilyRegistration(
-        family="m3gnet",
-        domain="structure",
-        model_paths=_models(
-            "bochan.models.regression.gaussian.materials.structure",
-            "m3gnet",
-            full_matrix=True,
-        ),
+        family="m3gnet", domain="structure",
+        model_paths=_models(_structure_namespace, "m3gnet", full_matrix=True, residual_gp=True),
         pretrained=PretrainedMaterialSpec(
-            family="m3gnet",
-            domain="structure",
+            family="m3gnet", domain="structure",
             capabilities=_capabilities(
-                loading_modes=frozenset({"model_name", "injected"})
+                loading_modes=frozenset({"model_name", "injected"}),
+                direct_prediction=True, residual_gp=True,
             ),
             default_model_name="M3GNet-PES-MatPES-PBE-2025.2",
         ),
     ),
     "mace": MaterialFamilyRegistration(
-        family="mace",
-        domain="structure",
-        model_paths=_models(
-            "bochan.models.regression.gaussian.materials.structure",
-            "mace",
-            full_matrix=True,
-        ),
+        family="mace", domain="structure",
+        model_paths=_models(_structure_namespace, "mace", full_matrix=True),
         pretrained=PretrainedMaterialSpec(
-            family="mace",
-            domain="structure",
-            capabilities=_capabilities(
-                loading_modes=frozenset({"model_name", "injected"})
-            ),
+            family="mace", domain="structure",
+            capabilities=_capabilities(loading_modes=frozenset({"model_name", "injected"})),
             default_model_name="medium-mpa-0",
         ),
     ),
@@ -255,8 +185,6 @@ MATERIAL_FAMILY_REGISTRY: dict[str, MaterialFamilyRegistration] = {
 
 
 def get_material_family(family: str) -> MaterialFamilyRegistration:
-    """Return one registered family by stable lowercase identifier."""
-
     if not isinstance(family, str) or not family.strip():
         raise ValueError("family must be a non-empty string.")
     key = family.strip().lower()
@@ -269,21 +197,15 @@ def get_material_family(family: str) -> MaterialFamilyRegistration:
 
 
 def list_material_families(*, domain: MaterialDomain | None = None) -> tuple[str, ...]:
-    """List registered family names, optionally restricted by domain."""
-
     if domain is not None and domain not in {"composition", "structure"}:
         raise ValueError("domain must be 'composition', 'structure', or None.")
     return tuple(
-        family
-        for family, registration in MATERIAL_FAMILY_REGISTRY.items()
+        family for family, registration in MATERIAL_FAMILY_REGISTRY.items()
         if domain is None or registration.domain == domain
     )
 
 
 __all__ = [
-    "MATERIAL_FAMILY_REGISTRY",
-    "MaterialFamilyRegistration",
-    "MaterialModelVariant",
-    "get_material_family",
-    "list_material_families",
+    "MATERIAL_FAMILY_REGISTRY", "MaterialFamilyRegistration", "MaterialModelVariant",
+    "get_material_family", "list_material_families",
 ]

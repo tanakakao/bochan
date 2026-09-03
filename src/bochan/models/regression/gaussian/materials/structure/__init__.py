@@ -47,6 +47,7 @@ from .mace import (
     MACEMultiTaskDKLModel,
     MACEMultiTaskGPModel,
 )
+from .mace_relaxation import MACEStructureRelaxer, OptimizerName, relax_structure_mace
 from .mace_residual import MACEDirectEnergyPredictor, MACEResidualGPModel
 from .mace_tensor_residual import (
     MACEDirectForcePredictor,
@@ -120,4 +121,7 @@ __all__ = [
     "MACEMultiTaskResidualGPModel",
     "MACEResidualGPModel",
     "MACEStressResidualGPModel",
+    "MACEStructureRelaxer",
+    "OptimizerName",
+    "relax_structure_mace",
 ]

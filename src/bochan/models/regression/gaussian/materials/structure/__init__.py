@@ -107,6 +107,13 @@ from .multitask_residual import (
     MACEMixedMultiTaskResidualGPModel,
     MACEMultiTaskResidualGPModel,
 )
+from .property_factory import (
+    SUPPORTED_MATERIAL_QUANTITIES,
+    MaterialQuantity,
+    create_direct_material_predictor,
+    create_material_residual_gp,
+    normalize_material_quantity,
+)
 from .relax_acquisition import (
     MaterialRelaxationAcquisitionSelector,
     RelaxedStructureAcquisitionCandidate,
@@ -199,6 +206,7 @@ __all__ = [
     "MACEStressResidualGPModel",
     "MACEStructureRelaxer",
     "MaterialMLIPBackend",
+    "MaterialQuantity",
     "MaterialRelaxationAcquisitionSelector",
     "MaterialRelaxationRanker",
     "OptimizerName",
@@ -208,11 +216,15 @@ __all__ = [
     "RelaxedStructureAcquisitionResult",
     "RelaxedStructureRank",
     "RelaxedStructureRankingResult",
+    "SUPPORTED_MATERIAL_QUANTITIES",
     "SUPPORTED_MLIP_BACKENDS",
+    "create_direct_material_predictor",
+    "create_material_residual_gp",
     "create_relaxation_acquisition_selector",
     "create_relaxation_ranker",
     "create_structure_relaxer",
     "normalize_material_backend",
+    "normalize_material_quantity",
     "relax_structure_alignn_ff",
     "relax_structure_chgnet",
     "relax_structure_m3gnet",

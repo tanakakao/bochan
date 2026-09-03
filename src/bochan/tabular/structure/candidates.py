@@ -21,8 +21,28 @@ _M3GNET_MODEL_TYPES = frozenset(
 _MACE_MODEL_TYPES = frozenset(
     {"mace_gp", "mace_dkl", "mace_multitask", "mace_multitask_dkl"}
 )
+_MATERIAL_RESIDUAL_MODEL_TYPES = frozenset(
+    {
+        "chgnet_residual_gp",
+        "chgnet_mixed_residual_gp",
+        "chgnet_multitask_residual_gp",
+        "chgnet_mixed_multitask_residual_gp",
+        "m3gnet_residual_gp",
+        "m3gnet_mixed_residual_gp",
+        "m3gnet_multitask_residual_gp",
+        "m3gnet_mixed_multitask_residual_gp",
+        "mace_residual_gp",
+        "mace_mixed_residual_gp",
+        "mace_multitask_residual_gp",
+        "mace_mixed_multitask_residual_gp",
+    }
+)
 _STRUCTURE_MODEL_TYPES = (
-    _ALIGNN_MODEL_TYPES | _CHGNET_MODEL_TYPES | _M3GNET_MODEL_TYPES | _MACE_MODEL_TYPES
+    _ALIGNN_MODEL_TYPES
+    | _CHGNET_MODEL_TYPES
+    | _M3GNET_MODEL_TYPES
+    | _MACE_MODEL_TYPES
+    | _MATERIAL_RESIDUAL_MODEL_TYPES
 )
 _ALTERNATING_STRUCTURE_THRESHOLD = 10
 _ALTERNATING_OPTION_KEYS = frozenset(

@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Sequence
 
-from botorch.models.model_list_gp_regression import ModelListGP
 from botorch.models.model import Model
+from botorch.models.model_list_gp_regression import ModelListGP
 
 from .baseline import MaterialBaselineSpec
 from .residual import ResidualMaterialGPModel

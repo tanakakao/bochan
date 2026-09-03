@@ -25,7 +25,16 @@ from .chgnet import (
     CHGNetMultiTaskDKLModel,
     CHGNetMultiTaskGPModel,
 )
+from .chgnet_relax_acquisition import CHGNetRelaxationAcquisitionSelector
+from .chgnet_relax_rank import CHGNetRelaxationRanker
+from .chgnet_relaxation import CHGNetStructureRelaxer, relax_structure_chgnet
 from .chgnet_residual import CHGNetDirectEnergyPredictor, CHGNetResidualGPModel
+from .chgnet_tensor_residual import (
+    CHGNetDirectForcePredictor,
+    CHGNetDirectStressPredictor,
+    CHGNetForceResidualGPModel,
+    CHGNetStressResidualGPModel,
+)
 from .m3gnet import (
     M3GNetDKLModel,
     M3GNetGPModel,
@@ -94,6 +103,9 @@ __all__ = [
     "ALIGNNMultiTaskGPModel",
     "CHGNetDKLModel",
     "CHGNetDirectEnergyPredictor",
+    "CHGNetDirectForcePredictor",
+    "CHGNetDirectStressPredictor",
+    "CHGNetForceResidualGPModel",
     "CHGNetGPModel",
     "CHGNetMixedDKLModel",
     "CHGNetMixedGPModel",
@@ -104,7 +116,11 @@ __all__ = [
     "CHGNetMultiTaskDKLModel",
     "CHGNetMultiTaskGPModel",
     "CHGNetMultiTaskResidualGPModel",
+    "CHGNetRelaxationAcquisitionSelector",
+    "CHGNetRelaxationRanker",
     "CHGNetResidualGPModel",
+    "CHGNetStressResidualGPModel",
+    "CHGNetStructureRelaxer",
     "M3GNetDKLModel",
     "M3GNetDirectPredictor",
     "M3GNetGPModel",
@@ -147,5 +163,6 @@ __all__ = [
     "RelaxedStructureAcquisitionResult",
     "RelaxedStructureRank",
     "RelaxedStructureRankingResult",
+    "relax_structure_chgnet",
     "relax_structure_mace",
 ]

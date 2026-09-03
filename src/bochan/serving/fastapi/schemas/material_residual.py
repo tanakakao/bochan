@@ -175,9 +175,10 @@ class MaterialBaselineRouteRequest(BaseModel):
             self.output_name = self.output_name.strip()
             if not self.output_name:
                 raise ValueError("output_name must be non-empty when provided.")
-        if self.output_index is not None:
-            if isinstance(self.output_index, bool) or self.output_index < 0:
-                raise ValueError("output_index must be a non-negative integer when provided.")
+        if self.output_index is not None and (
+            isinstance(self.output_index, bool) or self.output_index < 0
+        ):
+            raise ValueError("output_index must be a non-negative integer when provided.")
         if self.output_name is not None and self.output_index is not None:
             raise ValueError("Specify at most one of output_name and output_index.")
         normalized_kwargs, resolved_name = _normalize_family_kwargs(

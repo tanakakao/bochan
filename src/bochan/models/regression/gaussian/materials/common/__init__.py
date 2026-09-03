@@ -26,6 +26,14 @@ from .process import (
     resolve_mixed_process_layout,
     select_continuous_process_branch,
 )
+from .residual import (
+    DirectMaterialPredictor,
+    ResidualMaterialGPModel,
+    compute_material_residual_targets,
+    predict_material_baseline,
+    require_residual_gp_capability,
+    validate_direct_material_predictions,
+)
 from .surrogate import (
     MaterialSurrogateKind,
     MaterialSurrogateSpec,
@@ -43,6 +51,7 @@ from .training import (
 
 __all__ = [
     "ConcatFusion",
+    "DirectMaterialPredictor",
     "EncoderTrainingMode",
     "EncoderTrainingPolicy",
     "MaterialDomain",
@@ -56,11 +65,15 @@ __all__ = [
     "PretrainedLoadingMode",
     "PretrainedMaterialCapabilities",
     "PretrainedMaterialSpec",
+    "ResidualMaterialGPModel",
     "apply_encoder_train_mode",
     "apply_encoder_training_policy",
     "build_material_gaussian_surrogate",
     "build_material_process_fusion",
+    "compute_material_residual_targets",
     "configure_encoder_parameters",
+    "predict_material_baseline",
+    "require_residual_gp_capability",
     "resolve_material_latent_dim",
     "resolve_mixed_process_input_transform",
     "resolve_mixed_process_layout",
@@ -69,5 +82,6 @@ __all__ = [
     "task_covar_module",
     "unique_module_parameters",
     "validate_correlated_task_kernel",
+    "validate_direct_material_predictions",
     "validate_wide_material_targets",
 ]

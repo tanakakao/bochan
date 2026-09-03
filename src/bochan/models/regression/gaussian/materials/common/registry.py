@@ -93,21 +93,29 @@ def _capabilities(
     *,
     loading_modes: frozenset[str],
     fine_tuning: bool = True,
+    direct_prediction: bool = False,
+    residual_gp: bool = False,
 ) -> PretrainedMaterialCapabilities:
-    """Build conservative representation-only capabilities for current adapters."""
+    """Build capability metadata for one currently supported material adapter."""
 
     return PretrainedMaterialCapabilities(
         representation=True,
-        direct_prediction=False,
+        direct_prediction=direct_prediction,
         loading_modes=loading_modes,  # type: ignore[arg-type]
         device_aware=True,
         dtype_aware=True,
         fine_tuning=fine_tuning,
-        residual_gp=False,
+        residual_gp=residual_gp,
     )
 
 
-def _models(namespace: str, family: str, *, full_matrix: bool) -> dict[MaterialModelVariant, str]:
+def _models(
+    namespace: str,
+    family: str,
+    *,
+    full_matrix: bool,
+    residual_gp: bool = False,
+) -> dict[MaterialModelVariant, str]:
     prefix = family.upper() if family != "mace" else "MACE"
     if family == "m3gnet":
         prefix = "M3GNet"
@@ -135,6 +143,8 @@ def _models(namespace: str, family: str, *, full_matrix: bool) -> dict[MaterialM
                 "mixed_multitask_dkl": f"{namespace}:{prefix}MixedMultiTaskDKLModel",
             }
         )
+    if residual_gp:
+        paths["residual_gp"] = f"{namespace}:{prefix}ResidualGPModel"
     return paths
 
 
@@ -194,12 +204,15 @@ MATERIAL_FAMILY_REGISTRY: dict[str, MaterialFamilyRegistration] = {
             "bochan.models.regression.gaussian.materials.structure",
             "chgnet",
             full_matrix=True,
+            residual_gp=True,
         ),
         pretrained=PretrainedMaterialSpec(
             family="chgnet",
             domain="structure",
             capabilities=_capabilities(
-                loading_modes=frozenset({"checkpoint", "model_name", "injected"})
+                loading_modes=frozenset({"checkpoint", "model_name", "injected"}),
+                direct_prediction=True,
+                residual_gp=True,
             ),
             default_model_name="0.3.0",
         ),

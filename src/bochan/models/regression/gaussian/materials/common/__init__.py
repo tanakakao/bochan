@@ -17,6 +17,12 @@ from .fusion import (
     MaterialProcessFusion,
     build_material_process_fusion,
 )
+from .hardening import (
+    ResidualProductionReport,
+    assert_residual_posterior_equivalent,
+    shared_parameter_aliases,
+    validate_residual_production_model,
+)
 from .multi_baseline import (
     MaterialBaselinePlan,
     MultipleBaselineModelListGP,
@@ -100,10 +106,12 @@ __all__ = [
     "PretrainedMaterialCapabilities",
     "PretrainedMaterialSpec",
     "ResidualMaterialGPModel",
+    "ResidualProductionReport",
     "ResolvedBaselineAssignment",
     "SingleOutputBaselineAdapter",
     "apply_encoder_train_mode",
     "apply_encoder_training_policy",
+    "assert_residual_posterior_equivalent",
     "build_material_gaussian_surrogate",
     "build_material_process_fusion",
     "canonical_material_model_paths",
@@ -119,9 +127,11 @@ __all__ = [
     "resolve_mixed_process_layout",
     "resolve_pretrained_loading_mode",
     "select_continuous_process_branch",
+    "shared_parameter_aliases",
     "task_covar_module",
     "unique_module_parameters",
     "validate_correlated_task_kernel",
     "validate_direct_material_predictions",
+    "validate_residual_production_model",
     "validate_wide_material_targets",
 ]

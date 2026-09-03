@@ -47,6 +47,18 @@ from .mace import (
     MACEMultiTaskDKLModel,
     MACEMultiTaskGPModel,
 )
+from .mace_relax_acquisition import (
+    MACERelaxationAcquisitionSelector,
+    RelaxedStructureAcquisitionCandidate,
+    RelaxedStructureAcquisitionResult,
+)
+from .mace_relax_rank import (
+    MACERelaxationRanker,
+    RankingCriterion,
+    RankingDirection,
+    RelaxedStructureRank,
+    RelaxedStructureRankingResult,
+)
 from .mace_relaxation import MACEStructureRelaxer, OptimizerName, relax_structure_mace
 from .mace_residual import MACEDirectEnergyPredictor, MACEResidualGPModel
 from .mace_tensor_residual import (
@@ -119,9 +131,17 @@ __all__ = [
     "MACEMultiTaskDKLModel",
     "MACEMultiTaskGPModel",
     "MACEMultiTaskResidualGPModel",
+    "MACERelaxationAcquisitionSelector",
+    "MACERelaxationRanker",
     "MACEResidualGPModel",
     "MACEStressResidualGPModel",
     "MACEStructureRelaxer",
     "OptimizerName",
+    "RankingCriterion",
+    "RankingDirection",
+    "RelaxedStructureAcquisitionCandidate",
+    "RelaxedStructureAcquisitionResult",
+    "RelaxedStructureRank",
+    "RelaxedStructureRankingResult",
     "relax_structure_mace",
 ]

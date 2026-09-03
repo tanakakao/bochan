@@ -1,0 +1,43 @@
+name: Material residual real backends Phase 12
+
+on:
+  pull_request:
+    paths:
+      - "src/bochan/composition/encoders/chgnet.py"
+      - "src/bochan/composition/encoders/m3gnet.py"
+      - "src/bochan/composition/encoders/mace.py"
+      - "src/bochan/models/regression/gaussian/materials/structure/**"
+      - "src/bochan/models/regression/gaussian/materials/common/**"
+      - "tests/models/materials/test_residual_real_backends_phase12.py"
+      - ".github/workflows/material-residual-real-backends-phase12.yml"
+  workflow_dispatch:
+
+jobs:
+  real-backend:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - backend: chgnet
+            package: "chgnet>=0.4.2,<0.5"
+          - backend: m3gnet
+            package: "matgl>=4.0.3,<5"
+          - backend: mace
+            package: "mace-torch>=0.3.16,<0.4"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      BOCHAN_MATERIAL_BACKEND: ${{ matrix.backend }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install bochan and backend
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[test,tabular]"
+          python -m pip install "${{ matrix.package }}"
+      - name: Run real backend residual smoke
+        run: |
+          python -m pytest tests/models/materials/test_residual_real_backends_phase12.py -q -m slow

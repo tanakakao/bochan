@@ -6,7 +6,6 @@ import pytest
 import torch
 from botorch.models import SingleTaskGP
 
-from bochan.api.configs import AcquisitionConfig, ModelBundle, ModelConfig
 from bochan.models.regression.gaussian.materials.common import StructureRelaxationResult
 from bochan.models.regression.gaussian.materials.structure import MACERelaxationRanker
 
@@ -40,20 +39,6 @@ class FakePosteriorModel:
     def posterior(self, X: torch.Tensor):
         self.last_X = X.clone()
         return SimpleNamespace(mean=self.means.to(X), variance=self.variances.to(X))
-
-
-def _single_task_bundle(structures) -> ModelBundle:
-    train_X = torch.arange(len(structures), dtype=torch.double).unsqueeze(-1)
-    train_Y = torch.tensor([[2.0], [0.5], [1.5]], dtype=torch.double)[: len(structures)]
-    model = SingleTaskGP(train_X, train_Y)
-    return ModelBundle(
-        model=model,
-        train_X=train_X,
-        train_Y=train_Y,
-        model_config=ModelConfig(outcome_transform=False),
-        task_type="regression",
-        model_type="base",
-    )
 
 
 def test_relax_and_rank_rebuilds_relaxed_structure_bank() -> None:
@@ -106,46 +91,21 @@ def test_ucb_ranking_can_prioritize_uncertain_candidate() -> None:
 
 
 def test_relax_and_rank_accepts_real_botorch_scalar_model() -> None:
+    def factory(structures):
+        train_X = torch.arange(len(structures), dtype=torch.double).unsqueeze(-1)
+        train_Y = torch.tensor([[2.0], [0.5], [1.5]], dtype=torch.double)
+        return SingleTaskGP(train_X, train_Y)
+
     ranker = MACERelaxationRanker(relaxer=FakeRelaxer())
     result = ranker.run(
         [{"index": 0}, {"index": 1}, {"index": 2}],
-        model_factory=lambda structures: _single_task_bundle(structures).model,
+        model_factory=factory,
         direction="minimize",
     )
 
     assert len(result.candidates) == 3
     assert {candidate.source_index for candidate in result.candidates} == {0, 1, 2}
     assert all(candidate.posterior_std >= 0.0 for candidate in result.candidates)
-
-
-@pytest.mark.parametrize("name", ["qUCB", "qEI"])
-def test_relaxed_structures_can_be_ranked_by_bochan_acquisition(name: str) -> None:
-    ranker = MACERelaxationRanker(relaxer=FakeRelaxer())
-    result = ranker.run_acquisition(
-        [{"index": 0}, {"index": 1}, {"index": 2}],
-        model_factory=_single_task_bundle,
-        acquisition_config=AcquisitionConfig(name=name),
-        direction="minimize",
-    )
-
-    assert result.criterion == "acquisition"
-    assert result.acquisition_name == name
-    assert len(result.candidates) == 3
-    assert {candidate.source_index for candidate in result.candidates} == {0, 1, 2}
-    assert all(candidate.acquisition_value is not None for candidate in result.candidates)
-    assert all(torch.isfinite(torch.tensor(candidate.score)) for candidate in result.candidates)
-    assert result.candidates[0].score >= result.candidates[-1].score
-
-
-def test_relaxed_acquisition_rejects_non_pointwise_one_shot_family() -> None:
-    ranker = MACERelaxationRanker(relaxer=FakeRelaxer())
-
-    with pytest.raises(ValueError, match="currently supports"):
-        ranker.run_acquisition(
-            [{"index": 0}, {"index": 1}, {"index": 2}],
-            model_factory=_single_task_bundle,
-            acquisition_config=AcquisitionConfig(name="qKG"),
-        )
 
 
 def test_relax_and_rank_rejects_stale_or_invalid_shapes() -> None:

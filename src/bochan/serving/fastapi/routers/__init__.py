@@ -13,6 +13,7 @@ from . import (
     health,
     m3gnet_tabular,
     mace_tabular,
+    material_residual,
     models,
     predictions,
     studies,
@@ -32,6 +33,7 @@ def create_api_router(*, prefix: str = "") -> APIRouter:
     router.include_router(chgnet_tabular.router)
     router.include_router(m3gnet_tabular.router)
     router.include_router(mace_tabular.router)
+    router.include_router(material_residual.router)
     router.include_router(tabular_artifacts.router)
     router.include_router(studies.router)
     router.include_router(suggestions.router)

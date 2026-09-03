@@ -46,6 +46,14 @@ from .chgnet_tensor_residual import (
     CHGNetForceResidualGPModel,
     CHGNetStressResidualGPModel,
 )
+from .factory import (
+    SUPPORTED_MLIP_BACKENDS,
+    MaterialMLIPBackend,
+    create_relaxation_acquisition_selector,
+    create_relaxation_ranker,
+    create_structure_relaxer,
+    normalize_material_backend,
+)
 from .m3gnet import (
     M3GNetDKLModel,
     M3GNetGPModel,
@@ -190,6 +198,7 @@ __all__ = [
     "MACEResidualGPModel",
     "MACEStressResidualGPModel",
     "MACEStructureRelaxer",
+    "MaterialMLIPBackend",
     "MaterialRelaxationAcquisitionSelector",
     "MaterialRelaxationRanker",
     "OptimizerName",
@@ -199,6 +208,11 @@ __all__ = [
     "RelaxedStructureAcquisitionResult",
     "RelaxedStructureRank",
     "RelaxedStructureRankingResult",
+    "SUPPORTED_MLIP_BACKENDS",
+    "create_relaxation_acquisition_selector",
+    "create_relaxation_ranker",
+    "create_structure_relaxer",
+    "normalize_material_backend",
     "relax_structure_alignn_ff",
     "relax_structure_chgnet",
     "relax_structure_m3gnet",

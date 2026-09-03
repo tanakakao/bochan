@@ -1,8 +1,8 @@
 """Structure-model namespace for material-aware Gaussian models.
 
 ALIGNN, CHGNet, M3GNet, and MACE are exposed from this canonical namespace.
-Their implementation modules remain under ``gaussian.deep`` during the staged
-migration so existing pickle paths and internal relative imports stay stable.
+Historical GP/DKL implementations remain under ``gaussian.deep`` for saved-model
+compatibility; newly introduced residual models may live directly here.
 """
 
 from .alignn import (
@@ -25,6 +25,7 @@ from .chgnet import (
     CHGNetMultiTaskDKLModel,
     CHGNetMultiTaskGPModel,
 )
+from .chgnet_residual import CHGNetDirectEnergyPredictor, CHGNetResidualGPModel
 from .m3gnet import (
     M3GNetDKLModel,
     M3GNetGPModel,
@@ -56,6 +57,7 @@ __all__ = [
     "ALIGNNMultiTaskDKLModel",
     "ALIGNNMultiTaskGPModel",
     "CHGNetDKLModel",
+    "CHGNetDirectEnergyPredictor",
     "CHGNetGPModel",
     "CHGNetMixedDKLModel",
     "CHGNetMixedGPModel",
@@ -63,6 +65,7 @@ __all__ = [
     "CHGNetMixedMultiTaskGPModel",
     "CHGNetMultiTaskDKLModel",
     "CHGNetMultiTaskGPModel",
+    "CHGNetResidualGPModel",
     "M3GNetDKLModel",
     "M3GNetGPModel",
     "M3GNetMixedDKLModel",

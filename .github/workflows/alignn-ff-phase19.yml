@@ -24,7 +24,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e ".[test,materials]"
-          python -m pip install ruff
+          python -m pip install "alignn==2026.8.11" ruff
       - name: Run ALIGNN-FF Phase 19 tests
         run: |
           python -m pytest tests/models/materials/test_alignn_ff_phase19.py -q

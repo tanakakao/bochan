@@ -1,9 +1,15 @@
-"""FastAPI application service for CHGNet/M3GNet/MACE residual GP models."""
+"""FastAPI application service for material pretrained residual GP models."""
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
 from typing import Any
 
+from bochan.models.regression.gaussian.materials.common import (
+    MaterialBaselineSpec,
+    MaterialPropertyContract,
+)
 from bochan.tabular import TabularBayesianOptimizer
 
 from ..converters import to_serializable
@@ -18,6 +24,7 @@ from ..schemas.tabular import (
     TabularPredictResponse,
 )
 from .chgnet_tabular import (
+    _CHECKPOINT_ROOT_ENV,
     _model_config_from_request as _chgnet_model_config_from_request,
 )
 from .chgnet_tabular import (
@@ -54,10 +61,79 @@ _INDEPENDENT_RESIDUAL_TYPES = frozenset(
         "mace_mixed_multioutput_residual_gp",
     }
 )
+_MULTIPLE_BASELINE_TYPES = frozenset(
+    {
+        "material_multi_baseline_residual_gp",
+        "material_mixed_multi_baseline_residual_gp",
+    }
+)
 
 
 def _family(model_type: str) -> str:
+    if model_type in _MULTIPLE_BASELINE_TYPES:
+        return "multiple"
     return model_type.split("_", 1)[0]
+
+
+def _resolve_chgnet_checkpoint_kwargs(model_kwargs: dict[str, Any]) -> dict[str, Any]:
+    """Resolve one allowlisted CHGNet checkpoint identifier below the server root."""
+
+    resolved = dict(model_kwargs)
+    checkpoint_id = resolved.get("checkpoint")
+    if checkpoint_id is None:
+        return resolved
+
+    root_value = os.environ.get(_CHECKPOINT_ROOT_ENV)
+    if not root_value:
+        raise ValueError(
+            "CHGNet checkpoint loading over FastAPI is disabled. Configure "
+            f"{_CHECKPOINT_ROOT_ENV} on the server and pass only a checkpoint filename."
+        )
+    root = Path(root_value).expanduser().resolve()
+    if not root.is_dir():
+        raise RuntimeError(f"Server checkpoint root from {_CHECKPOINT_ROOT_ENV} is not a directory.")
+    checkpoint_path = (root / str(checkpoint_id)).resolve()
+    if checkpoint_path.parent != root:
+        raise ValueError("Checkpoint identifier resolved outside the configured checkpoint root.")
+    if not checkpoint_path.is_file():
+        raise ValueError("Unknown CHGNet checkpoint identifier.")
+    resolved["checkpoint"] = str(checkpoint_path)
+    return resolved
+
+
+def _multiple_baseline_model_config_from_request(
+    request: MaterialResidualTabularFitModelRequest,
+) -> dict[str, Any]:
+    config = _schema_dict(request.bo_model_config)
+    routes = []
+    for route in request.baseline_specs or []:
+        model_kwargs = dict(route.model_kwargs)
+        if route.family == "chgnet":
+            model_kwargs = _resolve_chgnet_checkpoint_kwargs(model_kwargs)
+        spec = MaterialBaselineSpec(
+            family=route.family,
+            property=MaterialPropertyContract(
+                quantity=route.quantity,
+                unit=route.unit,
+                aggregation=route.aggregation,
+            ),
+            output_name=route.output_name,
+            output_index=route.output_index,
+            model_name=route.model_name,
+            enabled=route.enabled,
+        )
+        routes.append({"spec": spec, "model_kwargs": model_kwargs})
+
+    ordinary_kwargs = dict(request.ordinary_model_kwargs)
+    if request.ordinary_family == "chgnet":
+        ordinary_kwargs = _resolve_chgnet_checkpoint_kwargs(ordinary_kwargs)
+
+    config["model_kwargs"] = {
+        "baseline_routes": routes,
+        "ordinary_family": request.ordinary_family,
+        "ordinary_model_kwargs": ordinary_kwargs,
+    }
+    return config
 
 
 def _model_config_from_request(
@@ -66,6 +142,8 @@ def _model_config_from_request(
     """Resolve one API-safe residual model configuration."""
 
     model_type = str(request.bo_model_config.model_type).lower()
+    if model_type in _MULTIPLE_BASELINE_TYPES:
+        return _multiple_baseline_model_config_from_request(request)
     if _family(model_type) == "chgnet":
         return _chgnet_model_config_from_request(request)  # type: ignore[arg-type]
     return _schema_dict(request.bo_model_config)
@@ -122,8 +200,11 @@ def fit_material_residual_tabular_optimizer(
     return optimizer
 
 
-def _independent_output_metadata(bundle: Any, target_names: list[str]) -> tuple[list[dict[str, Any]], int]:
-    """Describe ModelList outputs and locate the unique pretrained residual output."""
+def _independent_output_metadata(
+    bundle: Any,
+    target_names: list[str],
+) -> tuple[list[dict[str, Any]], list[int]]:
+    """Describe independent ModelList outputs and all pretrained residual outputs."""
 
     sub_bundles = list((getattr(bundle, "metadata", {}) or {}).get("sub_bundles", []))
     if len(sub_bundles) != len(target_names):
@@ -142,6 +223,7 @@ def _independent_output_metadata(bundle: Any, target_names: list[str]) -> tuple[
         residual_model = getattr(model, "residual_model", None)
         if encoder is None and residual_model is not None:
             encoder = getattr(residual_model, "material_encoder", None)
+        baseline_spec = getattr(model, "baseline_spec", None)
         rows.append(
             {
                 "index": index,
@@ -153,13 +235,10 @@ def _independent_output_metadata(bundle: Any, target_names: list[str]) -> tuple[
                 "residual_model_cls": (
                     None if residual_model is None else residual_model.__class__.__name__
                 ),
+                "baseline": None if baseline_spec is None else baseline_spec.as_dict(),
             }
         )
-    if len(residual_indices) != 1:
-        raise RuntimeError(
-            "Independent residual ModelList must contain exactly one residual output model."
-        )
-    return rows, residual_indices[0]
+    return rows, residual_indices
 
 
 def build_material_residual_fit_response(
@@ -177,7 +256,8 @@ def build_material_residual_fit_response(
     model_type = str(bundle.model_type).lower()
     family = _family(model_type)
     multitask = model_type in _MULTITASK_RESIDUAL_TYPES
-    independent = model_type in _INDEPENDENT_RESIDUAL_TYPES
+    independent = model_type in _INDEPENDENT_RESIDUAL_TYPES or model_type in _MULTIPLE_BASELINE_TYPES
+    multiple_baseline = model_type in _MULTIPLE_BASELINE_TYPES
 
     dataset = optimizer.dataset
     feature_names = list(getattr(dataset, "feature_names", None) or [])
@@ -196,18 +276,29 @@ def build_material_residual_fit_response(
     ]
 
     output_models: list[dict[str, Any]] = []
+    baseline_plan = None
     if independent:
-        output_models, pretrained_output_index = _independent_output_metadata(
-            bundle,
-            target_names,
-        )
-        residual_submodel = list(bundle.metadata["sub_bundles"])[pretrained_output_index].model
-        residual_model = getattr(residual_submodel, "residual_model", None)
-        predictor = getattr(residual_submodel, "predictor", None)
-        encoder = getattr(residual_submodel, "material_encoder", None)
-        if encoder is None and residual_model is not None:
-            encoder = getattr(residual_model, "material_encoder", None)
-        output_dependency = "independent"
+        output_models, residual_indices = _independent_output_metadata(bundle, target_names)
+        if multiple_baseline:
+            pretrained_output_index = None
+            residual_model = None
+            predictor = None
+            encoder = None
+            baseline_plan = getattr(model, "baseline_metadata", None)
+            output_dependency = "independent_multiple_baselines"
+        else:
+            if len(residual_indices) != 1:
+                raise RuntimeError(
+                    "Single-family independent residual ModelList must contain exactly one residual output."
+                )
+            pretrained_output_index = residual_indices[0]
+            residual_submodel = list(bundle.metadata["sub_bundles"])[pretrained_output_index].model
+            residual_model = getattr(residual_submodel, "residual_model", None)
+            predictor = getattr(residual_submodel, "predictor", None)
+            encoder = getattr(residual_submodel, "material_encoder", None)
+            if encoder is None and residual_model is not None:
+                encoder = getattr(residual_model, "material_encoder", None)
+            output_dependency = "independent"
         num_outputs = len(output_models)
     else:
         residual_model = getattr(model, "residual_model", None)
@@ -228,8 +319,13 @@ def build_material_residual_fit_response(
             "residual_gp": True,
             "baseline_deterministic": True,
             "baseline_process_dependent": False,
-            "baseline_property": "energy" if family in {"chgnet", "mace"} else "pretrained_scalar",
+            "baseline_property": (
+                None
+                if multiple_baseline
+                else "energy" if family in {"chgnet", "mace"} else "pretrained_scalar"
+            ),
             "pretrained_output_index": pretrained_output_index,
+            "baseline_plan": baseline_plan,
             "output_dependency": output_dependency,
             "num_outputs": num_outputs,
             "output_names": target_names,

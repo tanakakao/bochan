@@ -52,6 +52,10 @@ from .observation import ExperimentFailureConfig, ObservationData
 from .optimizer import BayesianOptimizer
 from .optimizer.service import optimize_candidates
 from .registry.acquisition import available_acqf_names, resolve_acqf_cls
+from .registry.material import (
+    material_residual_model_types,
+    register_material_residual_model_types,
+)
 from .registry.model import DEFAULT_MODEL_REGISTRY, MODEL_REGISTRY, LazyModelRegistry
 from .study import CandidateBatch, StudySnapshot, StudySuggestion, Trial, TrialState
 from .study.controls import (
@@ -61,6 +65,10 @@ from .study.controls import (
     GenerationStep,
     StopDecision,
 )
+
+# Extend the default lazy registry with metadata-only material paths.  Concrete
+# optional material backends remain unloaded until a model type is resolved.
+register_material_residual_model_types()
 
 __all__ = [
     "AcquisitionConfig",
@@ -111,8 +119,10 @@ __all__ = [
     "compute_feature_importance",
     "fit_model",
     "infer_input_type",
+    "material_residual_model_types",
     "optimize_candidates",
     "prepare_multi_objective_context",
+    "register_material_residual_model_types",
     "resolve_acqf_cls",
     "resolve_model_cls",
     "resolve_optimizer_from_cat_dims",

@@ -72,19 +72,17 @@ class MaterialBackendCapabilities:
         elif resolved_model_mode == "residual_gp":
             if resolved_quantity is not None and resolved_quantity not in self.residual_quantities:
                 return False
-        elif resolved_quantity is not None:
-            if (
-                resolved_quantity not in self.direct_quantities
-                and resolved_quantity not in self.residual_quantities
-            ):
-                return False
-
-        if (
-            resolved_workflow_mode is not None
-            and resolved_workflow_mode not in self.workflow_modes
+        elif (
+            resolved_quantity is not None
+            and resolved_quantity not in self.direct_quantities
+            and resolved_quantity not in self.residual_quantities
         ):
             return False
-        return True
+
+        return not (
+            resolved_workflow_mode is not None
+            and resolved_workflow_mode not in self.workflow_modes
+        )
 
     def requirements(
         self,

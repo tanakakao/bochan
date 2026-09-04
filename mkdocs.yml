@@ -24,6 +24,7 @@ nav:
       - Response distribution and noise model selection: theory/ja/28_non_gaussian_and_noise_model_selection.md
       - Multi-fidelity, multi-task, transfer and residual learning: theory/ja/29_multifidelity_multitask_transfer_residual.md
       - Multi-fidelity Bayesian Optimization: theory/ja/30_multifidelity_bayesian_optimization.md
+      - Robust Bayesian Optimization: theory/ja/31_robust_bayesian_optimization.md
       - Acquisition selection and implementation: theory/ja/25_acquisition_selection_and_implementation.md
       - Active Learning selection and implementation: theory/ja/26_active_learning_selection_and_implementation.md
       - Materials informatics and representations: theory/ja/17_materials_informatics_and_representations.md

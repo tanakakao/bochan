@@ -24,6 +24,10 @@ nav:
       - Machine-learning interatomic potentials: theory/ja/18_machine_learning_interatomic_potentials.md
       - MLIP + Residual Gaussian Process: theory/ja/19_mlip_residual_gaussian_process.md
       - Structure relaxation, BO and Active Learning: theory/ja/20_structure_relaxation_and_bayesian_optimization.md
+      - Composition models — CrabNet and Roost: theory/ja/21_composition_models.md
+      - From composition to crystal structure: theory/ja/22_composition_to_structure.md
+      - Composition, structure and process optimization: theory/ja/23_composition_structure_process_optimization.md
+      - Materials model and workflow selection: theory/ja/24_materials_model_selection.md
   - Materials:
       - Unified MLIP workflows: materials/mlip-workflows.md
       - ALIGNN structure input: alignn_structure_input.md

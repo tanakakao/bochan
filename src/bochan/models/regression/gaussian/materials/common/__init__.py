@@ -19,6 +19,10 @@ from .explicit_task import (
     stack_material_task_observations,
     validate_explicit_material_task_data,
 )
+from .explicit_task_surrogate import (
+    MaterialExplicitTaskFeatureTransform,
+    build_material_explicit_task_surrogate,
+)
 from .fusion import (
     ConcatFusion,
     MaterialProcessFusion,
@@ -105,6 +109,7 @@ __all__ = [
     "MaterialCompatibilityPath",
     "MaterialDomain",
     "MaterialEncoder",
+    "MaterialExplicitTaskFeatureTransform",
     "MaterialExplicitTaskSpec",
     "MaterialFamilyRegistration",
     "MaterialModelVariant",
@@ -130,6 +135,7 @@ __all__ = [
     "apply_encoder_train_mode",
     "apply_encoder_training_policy",
     "assert_residual_posterior_equivalent",
+    "build_material_explicit_task_surrogate",
     "build_material_gaussian_surrogate",
     "build_material_process_fusion",
     "canonical_material_model_paths",

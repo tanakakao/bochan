@@ -1,0 +1,29 @@
+name: MLIP hardening Phase 29 smoke
+
+on:
+  pull_request:
+    paths:
+      - "src/bochan/models/regression/gaussian/materials/structure/alignn_ff_residual.py"
+      - "tests/models/materials/test_alignn_ff_hardening_phase29.py"
+      - ".github/workflows/mlip-hardening-phase29.yml"
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[test]"
+          python -m pip install ruff
+      - name: Test ALIGNN-FF hardening
+        run: python -m pytest tests/models/materials/test_alignn_ff_hardening_phase29.py -q
+      - name: Ruff
+        run: |
+          ruff check src/bochan/models/regression/gaussian/materials/structure/alignn_ff_residual.py \
+            tests/models/materials/test_alignn_ff_hardening_phase29.py

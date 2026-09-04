@@ -13,8 +13,12 @@ from bochan.models.regression.gaussian.materials import surrogate_factory
     (
         ("gp", "continuous", "scalar", "gp"),
         ("dkl", "continuous", "scalar", "dkl"),
+        ("gp", "continuous", "independent", "gp"),
+        ("dkl", "continuous", "independent", "dkl"),
         ("gp", "mixed", "scalar", "mixed_gp"),
         ("dkl", "mixed", "scalar", "mixed_dkl"),
+        ("gp", "mixed", "independent", "mixed_gp"),
+        ("dkl", "mixed", "independent", "mixed_dkl"),
         ("gp", "continuous", "correlated", "multitask_gp"),
         ("dkl", "continuous", "correlated", "multitask_dkl"),
         ("gp", "mixed", "correlated", "mixed_multitask_gp"),
@@ -32,6 +36,7 @@ def test_material_model_variant_matrix(kind, input_mode, output_mode, variant) -
 def test_output_aliases_preserve_historical_multitask_name() -> None:
     assert surrogate_factory.normalize_material_output_mode("multi-output") == "correlated"
     assert surrogate_factory.normalize_material_output_mode("multitask") == "correlated"
+    assert surrogate_factory.normalize_material_output_mode("model-list") == "independent"
     assert (
         surrogate_factory.material_model_variant(
             kind="gp",
@@ -45,12 +50,12 @@ def test_output_aliases_preserve_historical_multitask_name() -> None:
 @pytest.mark.parametrize(
     ("family", "count"),
     (
-        ("crabnet", 8),
-        ("alignn", 8),
-        ("chgnet", 8),
-        ("m3gnet", 8),
-        ("mace", 8),
-        ("roost", 8),
+        ("crabnet", 12),
+        ("alignn", 12),
+        ("chgnet", 12),
+        ("m3gnet", 12),
+        ("mace", 12),
+        ("roost", 12),
     ),
 )
 def test_registered_family_capability_matrix(family: str, count: int) -> None:
@@ -71,6 +76,12 @@ def test_roost_accepts_mixed_and_correlated_variants() -> None:
         output_mode="correlated",
     )
     assert correlated.variant == "multitask_gp"
+
+    independent = surrogate_factory.RegisteredMaterialSurrogateSpec(
+        family="roost",
+        output_mode="independent",
+    )
+    assert independent.variant == "gp"
 
     combined = surrogate_factory.RegisteredMaterialSurrogateSpec(
         family="roost",

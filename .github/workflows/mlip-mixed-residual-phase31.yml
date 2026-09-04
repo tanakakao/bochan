@@ -1,0 +1,34 @@
+name: MLIP mixed residual Phase 31
+
+on:
+  pull_request:
+    paths:
+      - "src/bochan/models/regression/gaussian/materials/structure/capabilities.py"
+      - "src/bochan/models/regression/gaussian/materials/structure/mixed_residual.py"
+      - "src/bochan/models/regression/gaussian/materials/structure/property_factory.py"
+      - "tests/test_material_mixed_residual_factory.py"
+      - ".github/workflows/mlip-mixed-residual-phase31.yml"
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install test surface
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+          python -m pip install pytest ruff
+      - name: Run mixed residual tests
+        run: pytest -q tests/test_material_mixed_residual_factory.py
+      - name: Ruff
+        run: |
+          ruff check \
+            src/bochan/models/regression/gaussian/materials/structure/capabilities.py \
+            src/bochan/models/regression/gaussian/materials/structure/mixed_residual.py \
+            src/bochan/models/regression/gaussian/materials/structure/property_factory.py \
+            tests/test_material_mixed_residual_factory.py

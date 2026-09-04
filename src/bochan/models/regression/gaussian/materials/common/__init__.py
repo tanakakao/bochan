@@ -12,6 +12,13 @@ from .compatibility import (
     canonical_material_model_paths,
     legacy_material_model_paths,
 )
+from .explicit_task import (
+    MaterialExplicitTaskSpec,
+    normalize_material_task_feature,
+    split_material_task_feature,
+    stack_material_task_observations,
+    validate_explicit_material_task_data,
+)
 from .fusion import (
     ConcatFusion,
     MaterialProcessFusion,
@@ -98,6 +105,7 @@ __all__ = [
     "MaterialCompatibilityPath",
     "MaterialDomain",
     "MaterialEncoder",
+    "MaterialExplicitTaskSpec",
     "MaterialFamilyRegistration",
     "MaterialModelVariant",
     "MaterialMultiTaskSpec",
@@ -130,6 +138,7 @@ __all__ = [
     "get_material_family",
     "legacy_material_model_paths",
     "list_material_families",
+    "normalize_material_task_feature",
     "predict_material_baseline",
     "require_residual_gp_capability",
     "resolve_material_latent_dim",
@@ -138,10 +147,13 @@ __all__ = [
     "resolve_pretrained_loading_mode",
     "select_continuous_process_branch",
     "shared_parameter_aliases",
+    "split_material_task_feature",
+    "stack_material_task_observations",
     "task_covar_module",
     "unique_module_parameters",
     "validate_correlated_task_kernel",
     "validate_direct_material_predictions",
+    "validate_explicit_material_task_data",
     "validate_residual_production_model",
     "validate_structure_relaxer",
     "validate_wide_material_targets",

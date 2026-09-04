@@ -194,9 +194,10 @@ def test_real_registry_reports_all_material_families() -> None:
     for family, capability in capabilities.items():
         assert capability["family"] == family
         assert capability["task_mode"] == "explicit"
-        assert capability["input_modes"] == ["continuous"]
+        assert capability["input_modes"] == ["continuous", "mixed"]
         assert capability["gaussian_kinds"] == ["gp", "dkl"]
-        assert capability["mixed_explicit_task"] is False
+        assert capability["mixed_gaussian_kinds"] == ["gp", "dkl"]
+        assert capability["mixed_explicit_task"] is True
 
 
 def test_factory_rejects_wide_targets(dummy_registry) -> None:

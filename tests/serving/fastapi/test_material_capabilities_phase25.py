@@ -60,7 +60,7 @@ def test_material_capability_backend_endpoint_returns_404_for_unknown_backend() 
     response = _client().get("/api/v1/materials/mlip/capabilities/unknown")
 
     assert response.status_code == 404
-    assert "Unsupported material MLIP backend" in response.json()["detail"]
+    assert "Unsupported material backend" in response.json()["detail"]
 
 
 def test_material_capability_routes_are_in_openapi() -> None:

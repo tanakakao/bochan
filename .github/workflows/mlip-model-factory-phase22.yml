@@ -1,0 +1,31 @@
+name: MLIP model factory Phase 22 smoke
+
+on:
+  pull_request:
+    paths:
+      - "src/bochan/models/regression/gaussian/materials/structure/model_factory.py"
+      - "src/bochan/models/regression/gaussian/materials/structure/__init__.py"
+      - "tests/models/materials/test_mlip_model_factory_phase22.py"
+      - ".github/workflows/mlip-model-factory-phase22.yml"
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[test]"
+          python -m pip install ruff
+      - name: Run Phase 22 tests
+        run: |
+          python -m pytest tests/models/materials/test_mlip_model_factory_phase22.py -q
+      - name: Ruff
+        run: |
+          python -m ruff check \
+            src/bochan/models/regression/gaussian/materials/structure/model_factory.py \
+            tests/models/materials/test_mlip_model_factory_phase22.py

@@ -1,0 +1,60 @@
+site_name: bochan
+site_description: BoTorch-oriented Bayesian optimization, active learning, and materials-informatics toolkit
+repo_url: https://github.com/tanakakao/bochan
+repo_name: tanakakao/bochan
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - tables
+
+nav:
+  - Home: index.md
+  - Theory:
+      - Overview: theory/ja/00_overview.md
+      - GP model selection: theory/ja/27_gp_model_selection.md
+      - Response distribution and noise model selection: theory/ja/28_non_gaussian_and_noise_model_selection.md
+      - Acquisition selection and implementation: theory/ja/25_acquisition_selection_and_implementation.md
+      - Active Learning selection and implementation: theory/ja/26_active_learning_selection_and_implementation.md
+      - Materials informatics and representations: theory/ja/17_materials_informatics_and_representations.md
+      - Machine-learning interatomic potentials: theory/ja/18_machine_learning_interatomic_potentials.md
+      - MLIP + Residual Gaussian Process: theory/ja/19_mlip_residual_gaussian_process.md
+      - Structure relaxation, BO and Active Learning: theory/ja/20_structure_relaxation_and_bayesian_optimization.md
+      - Composition models — CrabNet and Roost: theory/ja/21_composition_models.md
+      - From composition to crystal structure: theory/ja/22_composition_to_structure.md
+      - Composition, structure and process optimization: theory/ja/23_composition_structure_process_optimization.md
+      - Materials model and workflow selection: theory/ja/24_materials_model_selection.md
+  - Materials:
+      - Unified MLIP workflows: materials/mlip-workflows.md
+      - ALIGNN structure input: alignn_structure_input.md
+      - ALIGNN multi-output: alignn_multioutput.md
+      - ALIGNN multitask: alignn_multitask.md
+      - ALIGNN scaling: alignn_scaling.md
+      - Composition best subset: composition_best_subset.md
+  - API Reference:
+      - FastAPI overview: reference/fastapi.md
+      - ALIGNN FastAPI: alignn_fastapi.md
+      - CHGNet FastAPI: chgnet_fastapi.md
+      - M3GNet FastAPI: m3gnet_fastapi.md
+      - MACE FastAPI: mace_fastapi.md
+      - CrabNet FastAPI / Web: crabnet_fastapi_web.md
+  - Model Notes:
+      - Beta regression: beta-regression.md
+      - Beta models: beta_models.md
+      - Gamma models: gamma_models.md
+  - LLM:
+      - Overview: llm/README.md
+      - Candidate explanation: llm/candidate_explanation.md
+      - Hybrid constraints: llm/hybrid_constraints.md
+      - Selected acquisition: llm_selected_acquisition.md
+  - Maintenance: maintenance.md
+
+strict: true

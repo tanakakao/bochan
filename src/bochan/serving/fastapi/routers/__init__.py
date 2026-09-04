@@ -15,6 +15,7 @@ from . import (
     mace_tabular,
     material_capabilities,
     material_residual,
+    material_workflow,
     models,
     predictions,
     studies,
@@ -35,6 +36,7 @@ def create_api_router(*, prefix: str = "") -> APIRouter:
     router.include_router(m3gnet_tabular.router)
     router.include_router(mace_tabular.router)
     router.include_router(material_capabilities.router)
+    router.include_router(material_workflow.router)
     router.include_router(material_residual.router)
     router.include_router(tabular_artifacts.router)
     router.include_router(studies.router)

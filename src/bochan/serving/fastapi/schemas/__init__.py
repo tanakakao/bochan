@@ -20,6 +20,11 @@ from .material_capabilities import (
     MaterialBackendCapabilitiesResponse,
     MaterialCapabilityCatalogResponse,
 )
+from .material_workflow import (
+    MaterialWorkflowSpecRequest,
+    MaterialWorkflowSpecResponse,
+    MaterialWorkflowValidationResponse,
+)
 from .requests import (
     APIRequest,
     AutoCandidateRequest,
@@ -115,6 +120,9 @@ __all__ = [
     "LoadModelResponse",
     "MaterialBackendCapabilitiesResponse",
     "MaterialCapabilityCatalogResponse",
+    "MaterialWorkflowSpecRequest",
+    "MaterialWorkflowSpecResponse",
+    "MaterialWorkflowValidationResponse",
     "ModelConfigSchema",
     "ModelDeleteResponse",
     "ModelFitResponse",

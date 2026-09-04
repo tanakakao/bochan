@@ -105,7 +105,7 @@ _composition_namespace = "bochan.models.regression.gaussian.materials.compositio
 
 MATERIAL_FAMILY_REGISTRY: dict[str, MaterialFamilyRegistration] = {
     "crabnet": MaterialFamilyRegistration("crabnet", "composition", _models(_composition_namespace, "crabnet", full_matrix=True), PretrainedMaterialSpec("crabnet", "composition", _capabilities(loading_modes=frozenset({"checkpoint", "injected"})))),
-    "roost": MaterialFamilyRegistration("roost", "composition", _models(_composition_namespace, "roost", full_matrix=False), PretrainedMaterialSpec("roost", "composition", _capabilities(loading_modes=frozenset({"checkpoint", "injected"})))),
+    "roost": MaterialFamilyRegistration("roost", "composition", _models(_composition_namespace, "roost", full_matrix=True), PretrainedMaterialSpec("roost", "composition", _capabilities(loading_modes=frozenset({"checkpoint", "injected"})))),
     "alignn": MaterialFamilyRegistration("alignn", "structure", _models(_structure_namespace, "alignn", full_matrix=True), PretrainedMaterialSpec("alignn", "structure", _capabilities(loading_modes=frozenset({"checkpoint", "injected"})))),
     "chgnet": MaterialFamilyRegistration(
         "chgnet", "structure",

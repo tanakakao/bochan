@@ -42,25 +42,43 @@ def test_output_aliases_preserve_historical_multitask_name() -> None:
     )
 
 
-@pytest.mark.parametrize(("family", "count"), (("crabnet", 8), ("alignn", 8), ("chgnet", 8), ("m3gnet", 8), ("mace", 8), ("roost", 2)))
+@pytest.mark.parametrize(
+    ("family", "count"),
+    (
+        ("crabnet", 8),
+        ("alignn", 8),
+        ("chgnet", 8),
+        ("m3gnet", 8),
+        ("mace", 8),
+        ("roost", 8),
+    ),
+)
 def test_registered_family_capability_matrix(family: str, count: int) -> None:
     capability = surrogate_factory.material_surrogate_capabilities(family)
     assert capability["family"] == family
     assert len(capability["configurations"]) == count
 
 
-def test_roost_rejects_unimplemented_mixed_and_correlated_variants() -> None:
-    with pytest.raises(ValueError, match="does not support"):
-        surrogate_factory.RegisteredMaterialSurrogateSpec(
-            family="roost",
-            input_mode="mixed",
-        )
+def test_roost_accepts_mixed_and_correlated_variants() -> None:
+    mixed = surrogate_factory.RegisteredMaterialSurrogateSpec(
+        family="roost",
+        input_mode="mixed",
+    )
+    assert mixed.variant == "mixed_gp"
 
-    with pytest.raises(ValueError, match="does not support"):
-        surrogate_factory.RegisteredMaterialSurrogateSpec(
-            family="roost",
-            output_mode="correlated",
-        )
+    correlated = surrogate_factory.RegisteredMaterialSurrogateSpec(
+        family="roost",
+        output_mode="correlated",
+    )
+    assert correlated.variant == "multitask_gp"
+
+    combined = surrogate_factory.RegisteredMaterialSurrogateSpec(
+        family="roost",
+        kind="dkl",
+        input_mode="mixed",
+        output_mode="correlated",
+    )
+    assert combined.variant == "mixed_multitask_dkl"
 
 
 def test_factory_resolves_registry_class_and_delegates_kwargs(monkeypatch) -> None:

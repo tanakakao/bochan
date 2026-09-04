@@ -10,7 +10,16 @@ from .crabnet import (
     CrabNetMultiTaskDKLModel,
     CrabNetMultiTaskGPModel,
 )
-from .roost import RoostDKLModel, RoostGPModel
+from .roost import (
+    RoostDKLModel,
+    RoostGPModel,
+    RoostMixedDKLModel,
+    RoostMixedGPModel,
+    RoostMixedMultiTaskDKLModel,
+    RoostMixedMultiTaskGPModel,
+    RoostMultiTaskDKLModel,
+    RoostMultiTaskGPModel,
+)
 
 __all__ = [
     "CrabNetDKLModel",
@@ -23,4 +32,10 @@ __all__ = [
     "CrabNetMultiTaskGPModel",
     "RoostDKLModel",
     "RoostGPModel",
+    "RoostMixedDKLModel",
+    "RoostMixedGPModel",
+    "RoostMixedMultiTaskDKLModel",
+    "RoostMixedMultiTaskGPModel",
+    "RoostMultiTaskDKLModel",
+    "RoostMultiTaskGPModel",
 ]

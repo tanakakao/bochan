@@ -22,6 +22,19 @@ nav:
       - Overview: theory/ja/00_overview.md
       - GP model selection: theory/ja/27_gp_model_selection.md
       - Response distribution and noise model selection: theory/ja/28_non_gaussian_and_noise_model_selection.md
+      - Multi-fidelity, multi-task, transfer and residual learning: theory/ja/29_multifidelity_multitask_transfer_residual.md
+      - Multi-fidelity Bayesian Optimization: theory/ja/30_multifidelity_bayesian_optimization.md
+      - Robust Bayesian Optimization: theory/ja/31_robust_bayesian_optimization.md
+      - Constrained Bayesian Optimization: theory/ja/32_constrained_bayesian_optimization.md
+      - Multi-objective BO practice: theory/ja/33_multiobjective_bo_practice.md
+      - Batch and Parallel BO: theory/ja/34_batch_parallel_bayesian_optimization.md
+      - Lookahead and Non-myopic BO: theory/ja/35_lookahead_nonmyopic_bo.md
+      - Information-theoretic BO: theory/ja/36_information_theoretic_bo.md
+      - Classification and Ordinal BO practice: theory/ja/37_classification_ordinal_bo_practice.md
+      - Level-set and Boundary Search: theory/ja/38_level_set_boundary_search.md
+      - Mixed, Discrete and Combinatorial BO: theory/ja/39_mixed_discrete_combinatorial_bo.md
+      - High-dimensional Bayesian Optimization: theory/ja/40_high_dimensional_bayesian_optimization.md
+      - BO diagnostics and failure modes: theory/ja/41_bo_diagnostics_and_failure_modes.md
       - Acquisition selection and implementation: theory/ja/25_acquisition_selection_and_implementation.md
       - Active Learning selection and implementation: theory/ja/26_active_learning_selection_and_implementation.md
       - Materials informatics and representations: theory/ja/17_materials_informatics_and_representations.md
@@ -32,6 +45,11 @@ nav:
       - From composition to crystal structure: theory/ja/22_composition_to_structure.md
       - Composition, structure and process optimization: theory/ja/23_composition_structure_process_optimization.md
       - Materials model and workflow selection: theory/ja/24_materials_model_selection.md
+      - Composition-space exploration: theory/ja/42_composition_space_exploration.md
+      - Crystal-structure exploration: theory/ja/43_crystal_structure_exploration.md
+      - Hierarchical MLIP, DFT and experiment workflow: theory/ja/44_hierarchical_mlip_dft_experiment.md
+      - Materials Active Learning: theory/ja/45_materials_active_learning.md
+      - Closed-loop Materials Discovery: theory/ja/46_closed_loop_materials_discovery.md
   - Materials:
       - Unified MLIP workflows: materials/mlip-workflows.md
       - ALIGNN structure input: alignn_structure_input.md

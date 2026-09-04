@@ -6,12 +6,12 @@ during the staged migration so historical serialization paths remain valid.
 """
 
 from .common import (
+    LEGACY_MATERIAL_MODEL_PATHS,
+    MATERIAL_FAMILY_REGISTRY,
     ConcatFusion,
     DirectMaterialPredictor,
     EncoderTrainingMode,
     EncoderTrainingPolicy,
-    LEGACY_MATERIAL_MODEL_PATHS,
-    MATERIAL_FAMILY_REGISTRY,
     MaterialCompatibilityPath,
     MaterialDomain,
     MaterialEncoder,
@@ -51,13 +51,13 @@ from .common import (
     validate_wide_material_targets,
 )
 from .surrogate_factory import (
+    SUPPORTED_MATERIAL_GAUSSIAN_KINDS,
+    SUPPORTED_MATERIAL_INPUT_MODES,
+    SUPPORTED_MATERIAL_OUTPUT_MODES,
     MaterialGaussianKind,
     MaterialInputMode,
     MaterialOutputMode,
     RegisteredMaterialSurrogateSpec,
-    SUPPORTED_MATERIAL_GAUSSIAN_KINDS,
-    SUPPORTED_MATERIAL_INPUT_MODES,
-    SUPPORTED_MATERIAL_OUTPUT_MODES,
     create_material_surrogate,
     material_model_variant,
     material_surrogate_capabilities,

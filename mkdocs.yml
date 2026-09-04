@@ -20,6 +20,8 @@ nav:
   - Home: index.md
   - Theory:
       - Overview: theory/ja/00_overview.md
+      - Acquisition selection and implementation: theory/ja/25_acquisition_selection_and_implementation.md
+      - Active Learning selection and implementation: theory/ja/26_active_learning_selection_and_implementation.md
       - Materials informatics and representations: theory/ja/17_materials_informatics_and_representations.md
       - Machine-learning interatomic potentials: theory/ja/18_machine_learning_interatomic_potentials.md
       - MLIP + Residual Gaussian Process: theory/ja/19_mlip_residual_gaussian_process.md

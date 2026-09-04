@@ -9,6 +9,7 @@ from torch import Tensor
 
 from ..common.relaxation import MaterialStructureRelaxer
 from .factory import (
+    MaterialMLIPBackend,
     create_relaxation_acquisition_selector,
     create_relaxation_ranker,
 )
@@ -18,7 +19,6 @@ from .model_factory import (
     create_material_model,
 )
 from .property_factory import MaterialQuantity
-from .factory import MaterialMLIPBackend
 from .relax_acquisition import MaterialRelaxationAcquisitionSelector
 from .relax_rank import MaterialRelaxationRanker
 

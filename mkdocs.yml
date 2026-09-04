@@ -45,6 +45,11 @@ nav:
       - From composition to crystal structure: theory/ja/22_composition_to_structure.md
       - Composition, structure and process optimization: theory/ja/23_composition_structure_process_optimization.md
       - Materials model and workflow selection: theory/ja/24_materials_model_selection.md
+      - Composition-space exploration: theory/ja/42_composition_space_exploration.md
+      - Crystal-structure exploration: theory/ja/43_crystal_structure_exploration.md
+      - Hierarchical MLIP, DFT and experiment workflow: theory/ja/44_hierarchical_mlip_dft_experiment.md
+      - Materials Active Learning: theory/ja/45_materials_active_learning.md
+      - Closed-loop Materials Discovery: theory/ja/46_closed_loop_materials_discovery.md
   - Materials:
       - Unified MLIP workflows: materials/mlip-workflows.md
       - ALIGNN structure input: alignn_structure_input.md

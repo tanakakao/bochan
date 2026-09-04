@@ -46,8 +46,12 @@ def test_roost_registry_exposes_full_matrix() -> None:
     (
         ("gp", "continuous", "scalar", "gp"),
         ("dkl", "continuous", "scalar", "dkl"),
+        ("gp", "continuous", "independent", "gp"),
+        ("dkl", "continuous", "independent", "dkl"),
         ("gp", "mixed", "scalar", "mixed_gp"),
         ("dkl", "mixed", "scalar", "mixed_dkl"),
+        ("gp", "mixed", "independent", "mixed_gp"),
+        ("dkl", "mixed", "independent", "mixed_dkl"),
         ("gp", "continuous", "correlated", "multitask_gp"),
         ("dkl", "continuous", "correlated", "multitask_dkl"),
         ("gp", "mixed", "correlated", "mixed_multitask_gp"),
@@ -67,8 +71,13 @@ def test_roost_capabilities_match_full_matrix() -> None:
     assert capabilities["family"] == "roost"
     assert capabilities["domain"] == "composition"
     configurations = capabilities["configurations"]
-    assert len(configurations) == len(EXPECTED)
+    assert len(configurations) == 12
     assert {configuration["variant"] for configuration in configurations} == EXPECTED.keys()
+    assert {configuration["output_mode"] for configuration in configurations} == {
+        "scalar",
+        "independent",
+        "correlated",
+    }
 
 
 def test_factory_resolves_roost_mixed_correlated_class_before_construction(monkeypatch) -> None:

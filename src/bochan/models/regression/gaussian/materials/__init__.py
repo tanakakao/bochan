@@ -60,6 +60,7 @@ from .common import (
 from .explicit_task_factory import (
     RegisteredMaterialExplicitTaskSpec,
     RegisteredMaterialFeatureExtractor,
+    RegisteredMixedMaterialFeatureExtractor,
     create_registered_material_explicit_task_surrogate,
     registered_material_explicit_task_capabilities,
 )
@@ -108,6 +109,7 @@ __all__ = [
     "RegisteredMaterialExplicitTaskSpec",
     "RegisteredMaterialFeatureExtractor",
     "RegisteredMaterialSurrogateSpec",
+    "RegisteredMixedMaterialFeatureExtractor",
     "ResidualMaterialGPModel",
     "SUPPORTED_MATERIAL_GAUSSIAN_KINDS",
     "SUPPORTED_MATERIAL_INPUT_MODES",

@@ -5,8 +5,7 @@ from types import SimpleNamespace
 import pytest
 import torch
 
-from bochan.models.regression.gaussian.materials.structure import capabilities
-from bochan.models.regression.gaussian.materials.structure import property_factory
+from bochan.models.regression.gaussian.materials.structure import capabilities, property_factory
 
 
 def test_residual_factory_routes_cat_dims_to_mixed_creator(monkeypatch) -> None:

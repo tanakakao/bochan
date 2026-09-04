@@ -56,7 +56,8 @@ def _load_alignn_ff_calculator(model_name: str) -> Any:
         module = import_module("alignn.ff.ff")
     except ImportError as error:
         raise ImportError(
-            "ALIGNN-FF support requires alignn>=2026.8.11. Install bochan[materials]."
+            "ALIGNN-FF support requires alignn>=2026.8.11. Install it explicitly, for example "
+            "with `python -m pip install alignn==2026.8.11`."
         ) from error
     calculator_class = getattr(module, "AlignnAtomwiseCalculator", None)
     if not isinstance(calculator_class, type):
@@ -79,7 +80,9 @@ def _structure_indices(X: Tensor, *, num_structures: int) -> tuple[Tensor, torch
     if not torch.equal(raw, rounded):
         raise ValueError("Structure indices must be integer-valued.")
     indices = rounded.to(dtype=torch.long)
-    if indices.numel() and (int(indices.min()) < 0 or int(indices.max()) >= num_structures):
+    if indices.numel() and (
+        int(indices.min().item()) < 0 or int(indices.max().item()) >= num_structures
+    ):
         raise ValueError("Structure index is outside the configured structure bank.")
     return indices, X.shape[:-1]
 

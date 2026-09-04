@@ -16,6 +16,10 @@ from .configs import (
     OutcomeConstraintConfigSchema,
     OutputConfigSchema,
 )
+from .material_capabilities import (
+    MaterialBackendCapabilitiesResponse,
+    MaterialCapabilityCatalogResponse,
+)
 from .requests import (
     APIRequest,
     AutoCandidateRequest,
@@ -109,6 +113,8 @@ __all__ = [
     "LLMPlanRequest",
     "LoadModelRequest",
     "LoadModelResponse",
+    "MaterialBackendCapabilitiesResponse",
+    "MaterialCapabilityCatalogResponse",
     "ModelConfigSchema",
     "ModelDeleteResponse",
     "ModelFitResponse",

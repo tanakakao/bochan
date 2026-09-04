@@ -1,8 +1,8 @@
-"""Pydantic schemas for material MLIP workflow validation and configuration."""
+"""Pydantic schemas for material MLIP workflow validation, configuration, and execution."""
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -57,13 +57,33 @@ class MaterialWorkflowValidationResponse(BaseModel):
 
 
 class MaterialWorkflowConfigResponse(MaterialWorkflowValidationResponse):
-    """Canonical workflow configuration ready for a later execution phase."""
+    """Canonical workflow configuration ready for runtime execution."""
 
     relaxation: MaterialRelaxationConfig | None
 
 
+class MaterialRelaxationExecutionRequest(MaterialWorkflowConfigRequest):
+    """Execute the relaxation stage for one configured material workflow."""
+
+    structures: list[dict[str, Any]] = Field(min_length=1, max_length=100)
+    backend_options: dict[str, Any] = Field(default_factory=dict)
+
+
+class MaterialRelaxationExecutionResponse(BaseModel):
+    """Serializable results produced by the common MLIP relaxation runtime."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    spec: MaterialWorkflowSpecResponse
+    relaxation: MaterialRelaxationConfig
+    backend_options: dict[str, Any]
+    results: list[dict[str, Any]]
+
+
 __all__ = [
     "MaterialRelaxationConfig",
+    "MaterialRelaxationExecutionRequest",
+    "MaterialRelaxationExecutionResponse",
     "MaterialWorkflowConfigRequest",
     "MaterialWorkflowConfigResponse",
     "MaterialWorkflowSpecRequest",

@@ -8,7 +8,7 @@ This page is the canonical entry point for project documentation. The repository
 
 | Goal | Recommended entry point |
 |---|---|
-| Learn the core optimizer API | [Repository README](../README.md) |
+| Learn the core optimizer API | [Repository README](https://github.com/tanakakao/bochan/blob/main/README.md) |
 | Work with material structures and MLIPs | [MLIP workflows](materials/mlip-workflows.md) |
 | Use HTTP / JSON APIs | [FastAPI reference](reference/fastapi.md) |
 | Work with ALIGNN structures | [ALIGNN structure input](alignn_structure_input.md) |

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Sequence
 
 import torch
 from torch import Tensor
@@ -94,9 +94,7 @@ def validate_explicit_material_task_data(
         raise TypeError("train_X and train_Y must be torch.Tensor instances.")
     if train_X.ndim != 2:
         raise ValueError("train_X must have shape [n, d].")
-    if train_Y.ndim == 1:
-        n_y = train_Y.shape[0]
-    elif train_Y.ndim == 2 and train_Y.shape[-1] == 1:
+    if train_Y.ndim == 1 or train_Y.ndim == 2 and train_Y.shape[-1] == 1:
         n_y = train_Y.shape[0]
     else:
         raise ValueError(f"{model_name} requires scalar train_Y with shape [n] or [n, 1].")

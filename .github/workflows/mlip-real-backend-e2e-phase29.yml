@@ -1,0 +1,34 @@
+name: MLIP real backend E2E Phase 29
+
+on:
+  workflow_dispatch:
+
+jobs:
+  real-backend-e2e:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - backend: mace
+            install: 'mace-torch>=0.3.16,<0.4'
+          - backend: chgnet
+            install: 'chgnet>=0.4.2,<0.5'
+          - backend: m3gnet
+            install: 'matgl>=4.0.3,<5'
+          - backend: alignn-ff
+            install: 'alignn==2026.8.11'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install bochan and backend
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[test]"
+          python -m pip install "${{ matrix.install }}"
+      - name: Run real backend relaxation E2E
+        env:
+          BOCHAN_REAL_MLIP_BACKEND: ${{ matrix.backend }}
+        run: python -m pytest tests/models/materials/test_mlip_real_backend_e2e_phase29.py -q -m slow

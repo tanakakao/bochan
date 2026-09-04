@@ -57,6 +57,12 @@ from .common import (
     validate_explicit_material_task_data,
     validate_wide_material_targets,
 )
+from .explicit_task_factory import (
+    RegisteredMaterialExplicitTaskSpec,
+    RegisteredMaterialFeatureExtractor,
+    create_registered_material_explicit_task_surrogate,
+    registered_material_explicit_task_capabilities,
+)
 from .surrogate_factory import (
     SUPPORTED_MATERIAL_GAUSSIAN_KINDS,
     SUPPORTED_MATERIAL_INPUT_MODES,
@@ -99,6 +105,8 @@ __all__ = [
     "PretrainedLoadingMode",
     "PretrainedMaterialCapabilities",
     "PretrainedMaterialSpec",
+    "RegisteredMaterialExplicitTaskSpec",
+    "RegisteredMaterialFeatureExtractor",
     "RegisteredMaterialSurrogateSpec",
     "ResidualMaterialGPModel",
     "SUPPORTED_MATERIAL_GAUSSIAN_KINDS",
@@ -113,6 +121,7 @@ __all__ = [
     "compute_material_residual_targets",
     "configure_encoder_parameters",
     "create_material_surrogate",
+    "create_registered_material_explicit_task_surrogate",
     "get_material_family",
     "legacy_material_model_paths",
     "list_material_families",
@@ -123,6 +132,7 @@ __all__ = [
     "normalize_material_output_mode",
     "normalize_material_task_feature",
     "predict_material_baseline",
+    "registered_material_explicit_task_capabilities",
     "require_residual_gp_capability",
     "resolve_material_latent_dim",
     "resolve_mixed_process_input_transform",

@@ -1,4 +1,4 @@
-"""Material MLIP workflow validation and configuration endpoints."""
+"""Material MLIP workflow validation, configuration, and execution endpoints."""
 
 from __future__ import annotations
 
@@ -9,12 +9,17 @@ from fastapi import APIRouter, HTTPException
 from bochan.models.regression.gaussian.materials.structure.capabilities import (
     get_material_backend_capabilities,
 )
+from bochan.models.regression.gaussian.materials.structure.factory import (
+    create_structure_relaxer,
+)
 from bochan.models.regression.gaussian.materials.structure.workflow_factory import (
     MaterialWorkflowSpec,
 )
 
 from ..schemas import (
     MaterialRelaxationConfig,
+    MaterialRelaxationExecutionRequest,
+    MaterialRelaxationExecutionResponse,
     MaterialWorkflowConfigRequest,
     MaterialWorkflowConfigResponse,
     MaterialWorkflowSpecRequest,
@@ -102,8 +107,44 @@ def configure_material_workflow(
     return MaterialWorkflowConfigResponse(**payload)
 
 
+@router.post(
+    "/execute/relaxation",
+    response_model=MaterialRelaxationExecutionResponse,
+)
+def execute_material_relaxation(
+    request: MaterialRelaxationExecutionRequest,
+) -> MaterialRelaxationExecutionResponse:
+    """Execute the MLIP relaxation stage for a configured rank/acquisition workflow."""
+
+    try:
+        spec, _ = _resolve_workflow(request)
+        relaxation = _canonical_relaxation(spec, request.relaxation)
+        if relaxation is None:
+            raise ValueError("model_only workflows do not have a relaxation execution stage.")
+        relaxer = create_structure_relaxer(spec.backend, **request.backend_options)
+        relax_kwargs = relaxation.model_dump()
+        results = [
+            relaxer.relax(structure, **relax_kwargs).as_dict()
+            for structure in request.structures
+        ]
+    except ImportError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return MaterialRelaxationExecutionResponse(
+        spec=spec.as_dict(),
+        relaxation=relaxation,
+        backend_options=dict(request.backend_options),
+        results=results,
+    )
+
+
 __all__ = [
     "configure_material_workflow",
+    "execute_material_relaxation",
     "router",
     "validate_material_workflow",
 ]

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+import torch
 
 from bochan.models.regression.gaussian.materials import (
     create_material_surrogate,
@@ -64,7 +65,9 @@ def test_roost_capabilities_match_full_matrix() -> None:
     capabilities = material_surrogate_capabilities("roost")
     assert capabilities["family"] == "roost"
     assert capabilities["domain"] == "composition"
-    assert set(capabilities["variants"]) == EXPECTED.keys()
+    configurations = capabilities["configurations"]
+    assert len(configurations) == len(EXPECTED)
+    assert {configuration["variant"] for configuration in configurations} == EXPECTED.keys()
 
 
 def test_factory_resolves_roost_mixed_correlated_class_before_construction(monkeypatch) -> None:
@@ -82,12 +85,12 @@ def test_factory_resolves_roost_mixed_correlated_class_before_construction(monke
     registration = get_material_family("roost")
     monkeypatch.setattr(registration.__class__, "resolve_model_class", lambda self, variant: FakeModel)
 
-    sentinel_x = object()
-    sentinel_y = object()
+    train_X = torch.zeros(2, 4)
+    train_Y = torch.zeros(2, 2)
     model = create_material_surrogate(
         "roost",
-        sentinel_x,
-        sentinel_y,
+        train_X,
+        train_Y,
         kind="dkl",
         input_mode="mixed",
         output_mode="correlated",
@@ -97,8 +100,8 @@ def test_factory_resolves_roost_mixed_correlated_class_before_construction(monke
     )
 
     assert isinstance(model, FakeModel)
-    assert calls["train_X"] is sentinel_x
-    assert calls["train_Y"] is sentinel_y
+    assert calls["train_X"] is train_X
+    assert calls["train_Y"] is train_Y
     assert calls["kwargs"] == {
         "cat_dims": [3],
         "element_ids": "ids",

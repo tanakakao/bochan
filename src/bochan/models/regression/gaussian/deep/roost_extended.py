@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from typing import Literal, cast
 
 from botorch.utils.transforms import normalize_indices
@@ -117,7 +117,7 @@ class _RoostModelProperties:
 
     @property
     def material_feature_extractor(self) -> MaterialGPFeatureExtractor:
-        feature_extractor = getattr(self.deepkernel, "feature_extractor")
+        feature_extractor = self.deepkernel.feature_extractor
         if isinstance(feature_extractor, _RoostMixedContinuousFeatureExtractor):
             return feature_extractor.roost
         return cast(MaterialGPFeatureExtractor, feature_extractor)

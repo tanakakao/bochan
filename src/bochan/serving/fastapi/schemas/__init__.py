@@ -21,6 +21,9 @@ from .material_capabilities import (
     MaterialCapabilityCatalogResponse,
 )
 from .material_workflow import (
+    MaterialRelaxationConfig,
+    MaterialWorkflowConfigRequest,
+    MaterialWorkflowConfigResponse,
     MaterialWorkflowSpecRequest,
     MaterialWorkflowSpecResponse,
     MaterialWorkflowValidationResponse,
@@ -120,6 +123,9 @@ __all__ = [
     "LoadModelResponse",
     "MaterialBackendCapabilitiesResponse",
     "MaterialCapabilityCatalogResponse",
+    "MaterialRelaxationConfig",
+    "MaterialWorkflowConfigRequest",
+    "MaterialWorkflowConfigResponse",
     "MaterialWorkflowSpecRequest",
     "MaterialWorkflowSpecResponse",
     "MaterialWorkflowValidationResponse",

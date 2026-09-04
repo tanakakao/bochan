@@ -198,10 +198,16 @@ def create_material_residual_gp(
 ) -> Any:
     """Create the backend/quantity-specific residual GP model.
 
-    All backend-specific model arguments are forwarded unchanged. ALIGNN-FF is
-    intentionally stricter: residual GPs require ``structure_graphs`` in
-    addition to raw ``structures`` because the physical baseline uses the ASE
-    calculator while the GP correction uses the existing ALIGNN graph encoder.
+    All backend-specific model arguments are forwarded unchanged. Passing
+    ``cat_dims`` selects the mixed-input residual path: the structure selector
+    remains column 0, categorical process columns use the mixed kernel, and
+    remaining process columns stay continuous. Force/stress retain their
+    correlated multi-output residual model.
+
+    ALIGNN-FF is intentionally stricter: residual GPs require
+    ``structure_graphs`` in addition to raw ``structures`` because the physical
+    baseline uses the ASE calculator while the GP correction uses the existing
+    ALIGNN graph encoder.
     """
 
     resolved_backend = normalize_material_backend(backend)
@@ -210,6 +216,27 @@ def create_material_residual_gp(
         raise ValueError(
             "ALIGNN-FF residual GP requires structure_graphs matching structures in length and order."
         )
+
+    kwargs = dict(backend_kwargs)
+    cat_dims = kwargs.pop("cat_dims", None)
+    if cat_dims is not None:
+        mixed_module = _load(".mixed_residual")
+        creator = getattr(mixed_module, "create_mixed_material_residual_gp", None)
+        if not callable(creator):
+            raise RuntimeError(
+                "Material mixed residual module does not expose create_mixed_material_residual_gp()."
+            )
+        return creator(
+            resolved_backend,
+            resolved_quantity,
+            train_X,
+            train_Y,
+            train_Yvar,
+            structures=structures,
+            cat_dims=cat_dims,
+            **kwargs,
+        )
+
     module_name, class_name = _RESIDUAL_IMPORTS[(resolved_backend, resolved_quantity)]
     module = _load(module_name)
     model_class = getattr(module, class_name, None)
@@ -222,7 +249,7 @@ def create_material_residual_gp(
         train_Y,
         train_Yvar,
         structures=structures,
-        **backend_kwargs,
+        **kwargs,
     )
 
 

@@ -10,8 +10,10 @@ from torch import Tensor
 from .spec import FidelitySpec, ResolvedFidelitySpec
 
 if TYPE_CHECKING:
-    from bochan.models.regression.gaussian.long_multifidelity import GaussianMultiFidelityGP
-    from bochan.models.regression.gaussian.mixed_multifidelity import GaussianMixedMultiFidelityGP
+    from bochan.models.regression.gaussian.long_multifidelity import (
+        GaussianMixedMultiFidelityGP,
+        GaussianMultiFidelityGP,
+    )
 
 FidelityInputMode = Literal["continuous", "mixed"]
 FidelitySurrogate = "GaussianMultiFidelityGP | GaussianMixedMultiFidelityGP"
@@ -72,9 +74,7 @@ def create_fidelity_surrogate(
 
     if mode == "continuous":
         if cat_dims is not None and len(tuple(cat_dims)) > 0:
-            raise ValueError(
-                "cat_dims is only valid when input_mode='mixed'."
-            )
+            raise ValueError("cat_dims is only valid when input_mode='mixed'.")
         from bochan.models.regression.gaussian.long_multifidelity import (
             GaussianMultiFidelityGP,
         )
@@ -91,7 +91,7 @@ def create_fidelity_surrogate(
     if cat_dims is None or len(tuple(cat_dims)) == 0:
         raise ValueError("cat_dims is required when input_mode='mixed'.")
 
-    from bochan.models.regression.gaussian.mixed_multifidelity import (
+    from bochan.models.regression.gaussian.long_multifidelity import (
         GaussianMixedMultiFidelityGP,
     )
 
@@ -106,7 +106,4 @@ def create_fidelity_surrogate(
     )
 
 
-__all__ = [
-    "FidelityInputMode",
-    "create_fidelity_surrogate",
-]
+__all__ = ["FidelityInputMode", "create_fidelity_surrogate"]

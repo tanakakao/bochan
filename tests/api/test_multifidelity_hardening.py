@@ -3,7 +3,14 @@ from __future__ import annotations
 import pytest
 import torch
 
-from bochan.api import BayesianOptimizer, FitConfig, ModelConfig, MultiOutputConfig
+from bochan.api import (
+    BayesianOptimizer,
+    FitConfig,
+    ModelConfig,
+    MultiOutputConfig,
+    OptimizeConfig as PublicOptimizeConfig,
+)
+from bochan.api.configs import OptimizeConfig as ConfigsOptimizeConfig
 from bochan.models.multifidelity import FidelityCostConfig, build_fidelity_cost_utility
 from bochan.models.regression.gaussian import GaussianMultiFidelityGP
 
@@ -43,6 +50,16 @@ def _config(*, multi_output: bool = False):
             MultiOutputConfig(output_names=["a", "b"]) if multi_output else None
         ),
     )
+
+
+def test_api_configs_exports_canonical_optimize_config():
+    assert ConfigsOptimizeConfig is PublicOptimizeConfig
+    config = ConfigsOptimizeConfig(
+        fidelity_values=[0.25, 0.5, 1.0],
+        ensure_unique_candidates=False,
+    )
+    assert config.fidelity_values == (0.25, 0.5, 1.0)
+    assert config.ensure_unique_candidates is False
 
 
 def test_negative_cost_index_resolves_against_model_dimension():

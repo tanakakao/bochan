@@ -19,6 +19,7 @@ from .multifidelity import (
     _categorical_assignments,
     _model_dimension,
     _projector,
+    _reference_train_Y,
     _resolve_cost_aware_utility,
     _target_fidelities,
 )
@@ -36,7 +37,7 @@ def _normalize_name(value: Any) -> str:
 
 
 def is_multifidelity_hvkg_name(name: Any) -> bool:
-    """Return whether ``name`` identifies the Phase 56 MF-HVKG acquisition."""
+    """Return whether ``name`` identifies the MF-HVKG acquisition."""
 
     return _normalize_name(name) in _MFHVKG_NAMES
 
@@ -55,11 +56,11 @@ def _ref_point_tensor(
             "MF-HVKG requires a multi-objective ref_point. Provide DataContext.ref_point "
             "or AcquisitionConfig.acqf_kwargs['ref_point']."
         )
-    train_Y = torch.as_tensor(bundle.train_Y)
+    train_Y = _reference_train_Y(bundle)
     ref_point = torch.as_tensor(raw, dtype=train_Y.dtype, device=train_Y.device)
     if ref_point.ndim != 1:
         raise ValueError("MF-HVKG ref_point must be a one-dimensional tensor.")
-    num_outputs = int(getattr(bundle.model, "num_outputs", train_Y.shape[-1]))
+    num_outputs = int(getattr(bundle.model, "num_outputs", ref_point.numel()))
     if ref_point.numel() != num_outputs:
         raise ValueError(
             f"MF-HVKG ref_point must contain {num_outputs} values; "
@@ -152,6 +153,26 @@ def _current_hypervolume_value(
     return values.max().detach()
 
 
+def _resolve_objective(
+    *,
+    bundle: ModelBundle,
+    config: AcquisitionConfig,
+    data_context: DataContext,
+    kwargs: dict[str, Any],
+) -> Any:
+    """Resolve explicit and configured objectives through the shared API factory."""
+
+    objective = kwargs.pop("objective", config.objective)
+    if objective is not None:
+        return objective
+    if config.objective_factory is None and config.objective_config is None:
+        return None
+
+    from ..factory import build_objective
+
+    return build_objective(bundle=bundle, config=config, data_context=data_context)
+
+
 def build_multifidelity_hvkg_acquisition(
     *,
     bundle: ModelBundle,
@@ -182,15 +203,15 @@ def build_multifidelity_hvkg_acquisition(
     project = _projector(targets=targets, d=d)
 
     X_pending = kwargs.pop("X_pending", data_context.X_pending)
-    objective = kwargs.pop("objective", config.objective)
-    if objective is None and (
-        config.objective_factory is not None or config.objective_config is not None
-    ):
-        raise NotImplementedError(
-            "Phase 56 MF-HVKG supports the identity multi-output objective or an "
-            "explicit AcquisitionConfig.objective. objective_factory/objective_config "
-            "integration is deferred to Phase 57 hardening."
-        )
+    objective = _resolve_objective(
+        bundle=bundle,
+        config=config,
+        data_context=data_context,
+        kwargs=kwargs,
+    )
+    for field_name in ("X_evaluation_mask", "X_pending_evaluation_mask"):
+        if field_name not in kwargs and field_name in data_context.extra:
+            kwargs[field_name] = data_context.extra[field_name]
 
     num_fantasies = int(kwargs.pop("num_fantasies", 8))
     num_pareto = int(kwargs.pop("num_pareto", 10))

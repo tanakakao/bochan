@@ -6,6 +6,8 @@ from collections.abc import Callable
 from dataclasses import replace
 from typing import Any
 
+import torch
+
 from .. import factory as _factory
 from ..candidate.uniqueness import ensure_unique_candidates
 from ..configs import OptimizeConfig as _BaseOptimizeConfig
@@ -82,6 +84,39 @@ def _resolve_multifidelity_optimization(acqf: Any, bounds: Any, config: _BaseOpt
     return merge_target_fidelities_into_opt_config(config, model=model)
 
 
+def _has_inter_point_constraints(config: _BaseOptimizeConfig) -> bool:
+    """Return whether optimizer constraints address explicit q-point indices."""
+
+    for constraints in (config.inequality_constraints, config.equality_constraints):
+        for item in constraints or ():
+            indices = torch.as_tensor(item[0])
+            if indices.ndim > 1:
+                return True
+    return False
+
+
+def _prepare_mfhvkg_initializer(acqf: Any, config: _BaseOptimizeConfig) -> _BaseOptimizeConfig:
+    """Let standard MF-HVKG use BoTorch's specialized one-shot initializer.
+
+    bochan historically injected its generic Best Subset-compatible initializer
+    for every one-shot acquisition.  That initializer remains necessary for
+    inter-point support constraints, but ordinary MF-HVKG should use BoTorch's
+    ``gen_one_shot_hvkg_initial_conditions`` so fantasy Pareto sets receive the
+    dedicated initialization strategy.
+    """
+
+    if getattr(acqf, "_bochan_multifidelity_kind", None) != "mfhvkg":
+        return config
+    if "ic_generator" in config.optimizer_kwargs or _has_inter_point_constraints(config):
+        return config
+
+    from botorch.optim.initializers import gen_one_shot_hvkg_initial_conditions
+
+    optimizer_kwargs = dict(config.optimizer_kwargs)
+    optimizer_kwargs["ic_generator"] = gen_one_shot_hvkg_initial_conditions
+    return replace(config, optimizer_kwargs=optimizer_kwargs)
+
+
 def _common_kwargs(acqf: Any, bounds: Any, config: _BaseOptimizeConfig) -> dict[str, Any]:
     kwargs: dict[str, Any] = {
         "acq_function": acqf,
@@ -116,6 +151,7 @@ def _optimize_candidates_once(
         raise ValueError("bounds must be provided.")
     backend = base_optimize_candidates or _BASE_OPTIMIZE_CANDIDATES
     config = _force_sequential_for_kronecker(acqf, config)
+    config = _prepare_mfhvkg_initializer(acqf, config)
     optimizer = config.optimizer
     if callable(optimizer) and not isinstance(optimizer, str):
         return backend(acqf=acqf, bounds=bounds, config=config)
@@ -151,10 +187,12 @@ def _optimize_candidates_once(
     kwargs = _common_kwargs(acqf, bounds, config)
     if name in {"nsgaii", "optimize_acqf_nsgaii"}:
         from bochan.optim import optimize_acqf_nsgaii
+
         kwargs = _factory._filter_kwargs_for_callable(optimize_acqf_nsgaii, kwargs)
         return optimize_acqf_nsgaii(**kwargs)
     if name in {"llm_candidate_set", "optimize_acqf_llm", "optimize_acqf_llm_candidate_set"}:
         from bochan.optim import optimize_acqf_llm_candidate_set
+
         kwargs = _factory._filter_kwargs_for_callable(optimize_acqf_llm_candidate_set, kwargs)
         return optimize_acqf_llm_candidate_set(**kwargs)
 
@@ -164,6 +202,7 @@ def _optimize_candidates_once(
     )
     if use_mixed:
         from bochan.optim import optimize_thompson_sampling_mixed
+
         fixed_features_list = _factory._merge_fixed_features_list(config.fixed_features, config.fixed_features_list)
         if fixed_features_list is None:
             raise ValueError("fixed_features_list is required for mixed Thompson sampling.")
@@ -173,6 +212,7 @@ def _optimize_candidates_once(
         return optimize_thompson_sampling_mixed(**kwargs)
 
     from bochan.optim import optimize_thompson_sampling
+
     kwargs = _factory._filter_kwargs_for_callable(optimize_thompson_sampling, kwargs)
     return optimize_thompson_sampling(**kwargs)
 
@@ -194,7 +234,9 @@ def optimize_candidates(
             bounds=bounds,
             config=config,
             optimize_one=lambda *, acqf, bounds, config: optimize_candidates(
-                acqf=acqf, bounds=bounds, config=config,
+                acqf=acqf,
+                bounds=bounds,
+                config=config,
                 base_optimize_candidates=base_optimize_candidates,
             ),
         )
@@ -204,7 +246,9 @@ def optimize_candidates(
             bounds=bounds,
             config=config,
             optimize_one=lambda *, acqf, bounds, config: optimize_candidates(
-                acqf=acqf, bounds=bounds, config=config,
+                acqf=acqf,
+                bounds=bounds,
+                config=config,
                 base_optimize_candidates=base_optimize_candidates,
             ),
         )

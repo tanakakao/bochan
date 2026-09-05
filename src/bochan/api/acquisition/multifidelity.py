@@ -47,6 +47,70 @@ def is_multifidelity_acquisition_name(name: Any) -> bool:
     return normalized in _MFKG_NAMES or normalized in _MFMES_NAMES
 
 
+def _shared_multifidelity_metadata(model: Any) -> Mapping[str, Any] | None:
+    """Resolve shared MF metadata from independent ModelListGP submodels."""
+
+    submodels = getattr(model, "models", None)
+    if submodels is None:
+        return None
+    try:
+        from bochan.models.multifidelity.multioutput import shared_multifidelity_metadata
+
+        metadata = shared_multifidelity_metadata(list(submodels))
+    except (TypeError, ValueError):
+        return None
+    return metadata if isinstance(metadata, Mapping) else None
+
+
+def _bundle_tensors(value: Any, *, name: str) -> tuple[torch.Tensor, ...]:
+    """Normalize possibly nested single- and multi-output bundle tensors."""
+
+    tensors: list[torch.Tensor] = []
+
+    def collect(item: Any) -> None:
+        if isinstance(item, torch.Tensor):
+            tensors.append(item)
+            return
+        if isinstance(item, (list, tuple)):
+            if not item:
+                raise ValueError(f"{name} must not contain empty tensor groups.")
+            for child in item:
+                collect(child)
+            return
+        tensors.append(torch.as_tensor(item))
+
+    collect(value)
+    if not tensors:
+        raise ValueError(f"{name} must not be empty.")
+    return tuple(tensors)
+
+
+def _train_X_tensors(bundle: ModelBundle) -> tuple[torch.Tensor, ...]:
+    tensors = _bundle_tensors(bundle.train_X, name="train_X")
+    if any(tensor.ndim != 2 for tensor in tensors):
+        raise ValueError("Multi-fidelity acquisition construction requires 2-D train_X tensors.")
+    d = int(tensors[0].shape[-1])
+    if any(int(tensor.shape[-1]) != d for tensor in tensors[1:]):
+        raise ValueError("All multi-output train_X tensors must share the same feature dimension.")
+    return tensors
+
+
+def _reference_train_X(bundle: ModelBundle) -> torch.Tensor:
+    return _train_X_tensors(bundle)[0]
+
+
+def _observed_train_X(bundle: ModelBundle) -> torch.Tensor:
+    tensors = _train_X_tensors(bundle)
+    reference = tensors[0]
+    aligned = [tensor.to(dtype=reference.dtype, device=reference.device) for tensor in tensors]
+    return aligned[0] if len(aligned) == 1 else torch.cat(aligned, dim=0)
+
+
+def _reference_train_Y(bundle: ModelBundle) -> torch.Tensor:
+    tensors = _bundle_tensors(bundle.train_Y, name="train_Y")
+    return tensors[0]
+
+
 def _fidelity_features(model: Any) -> tuple[int, ...]:
     features = getattr(model, "fidelity_features", None)
     if features is None:
@@ -55,6 +119,10 @@ def _fidelity_features(model: Any) -> tuple[int, ...]:
             metadata = metadata()
         if isinstance(metadata, Mapping):
             features = metadata.get("fidelity_features")
+    if features is None:
+        shared = _shared_multifidelity_metadata(model)
+        if shared is not None:
+            features = shared.get("fidelity_features")
     if features is None:
         return ()
     return tuple(int(index) for index in features)
@@ -83,6 +151,10 @@ def _target_fidelities(
             metadata = metadata()
         if isinstance(metadata, Mapping):
             targets = metadata.get("target_fidelities")
+    if targets is None:
+        shared = _shared_multifidelity_metadata(model)
+        if shared is not None:
+            targets = shared.get("target_fidelities")
     if not isinstance(targets, Mapping) or not targets:
         raise ValueError(
             "Multi-fidelity acquisition functions require model target_fidelities. "
@@ -92,10 +164,7 @@ def _target_fidelities(
 
 
 def _model_dimension(bundle: ModelBundle) -> int:
-    train_X = torch.as_tensor(bundle.train_X)
-    if train_X.ndim != 2:
-        raise ValueError("Multi-fidelity acquisition construction requires 2-D train_X.")
-    return int(train_X.shape[-1])
+    return int(_reference_train_X(bundle).shape[-1])
 
 
 def _bounds_tensor(bundle: ModelBundle, context: DataContext) -> torch.Tensor:
@@ -104,7 +173,7 @@ def _bounds_tensor(bundle: ModelBundle, context: DataContext) -> torch.Tensor:
         bounds = getattr(bundle, "bounds", None)
     if bounds is None:
         raise ValueError("Multi-fidelity acquisition functions require bounds in DataContext.")
-    train_X = torch.as_tensor(bundle.train_X)
+    train_X = _reference_train_X(bundle)
     tensor = torch.as_tensor(bounds, dtype=train_X.dtype, device=train_X.device)
     if tensor.shape != (2, train_X.shape[-1]):
         raise ValueError(
@@ -122,12 +191,19 @@ def _projector(*, targets: Mapping[int, float], d: int):
     return partial(project_to_target_fidelity, target_fidelities=dict(targets), d=d)
 
 
+def _categorical_dims(model: Any) -> tuple[int, ...]:
+    cat_dims = getattr(model, "cat_dims", None)
+    if cat_dims is None:
+        shared = _shared_multifidelity_metadata(model)
+        cat_dims = None if shared is None else shared.get("cat_dims")
+    return tuple(int(index) for index in (cat_dims or ()))
+
+
 def _categorical_assignments(bundle: ModelBundle) -> list[dict[int, float]] | None:
-    model = bundle.model
-    cat_dims = tuple(int(index) for index in (getattr(model, "cat_dims", None) or ()))
+    cat_dims = _categorical_dims(bundle.model)
     if not cat_dims:
         return None
-    train_X = torch.as_tensor(bundle.train_X)
+    train_X = _observed_train_X(bundle)
     combos = torch.unique(train_X[:, list(cat_dims)], dim=0)
     return [
         {index: float(value) for index, value in zip(cat_dims, row.tolist(), strict=True)}
@@ -138,7 +214,7 @@ def _categorical_assignments(bundle: ModelBundle) -> list[dict[int, float]] | No
 def _sign_posterior_transform(bundle: ModelBundle, *, maximize: bool) -> Any | None:
     if maximize:
         return None
-    train_Y = torch.as_tensor(bundle.train_Y)
+    train_Y = _reference_train_Y(bundle)
     if train_Y.ndim < 2 or int(train_Y.shape[-1]) != 1:
         raise ValueError("maximize=False is currently supported only for single-output MF models.")
     return ScalarizedPosteriorTransform(weights=train_Y.new_tensor([-1.0]))
@@ -193,12 +269,11 @@ def _candidate_set(
 ) -> torch.Tensor:
     if size < 2:
         raise ValueError("candidate_set_size must be at least 2.")
-    train_X = torch.as_tensor(bundle.train_X, dtype=bounds.dtype, device=bounds.device)
+    train_X = _observed_train_X(bundle).to(dtype=bounds.dtype, device=bounds.device)
     n, d = train_X.shape
     random = torch.rand(size, d, dtype=bounds.dtype, device=bounds.device)
     candidates = bounds[0] + (bounds[1] - bounds[0]) * random
-    cat_dims = tuple(int(index) for index in (getattr(bundle.model, "cat_dims", None) or ()))
-    for index in cat_dims:
+    for index in _categorical_dims(bundle.model):
         values = torch.unique(train_X[:, index])
         draw = torch.randint(values.numel(), (size,), device=bounds.device)
         candidates[:, index] = values[draw]

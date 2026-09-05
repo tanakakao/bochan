@@ -7,6 +7,7 @@ from typing import Any
 
 from ..converters import to_data_context, to_optimize_config, to_tensor
 from ..target_categories import to_acquisition_config
+from .material_models import apply_material_target_task
 
 
 def _schema_to_dict(value: Any | None) -> dict[str, Any] | None:
@@ -40,16 +41,22 @@ def _candidate_call_args(optimizer: Any, request: Any) -> dict[str, Any]:
     """Convert one HTTP candidate request into canonical optimizer arguments."""
 
     options = request.tensor_options
+    opt_config = _inject_llm_options(
+        to_optimize_config(request.opt_config, options),
+        request,
+    )
+    opt_config = apply_material_target_task(
+        optimizer,
+        opt_config,
+        getattr(request, "target_task", None),
+    )
     return {
         "acq_config": to_acquisition_config(
             request.acq_config,
             options,
             optimizer=optimizer,
         ),
-        "opt_config": _inject_llm_options(
-            to_optimize_config(request.opt_config, options),
-            request,
-        ),
+        "opt_config": opt_config,
         "data_context": (
             to_data_context(request.data_context, options)
             if request.data_context is not None
@@ -90,7 +97,11 @@ def compare_candidate_results(
         )
         for config in request.acq_configs
     ]
-    opt_config = to_optimize_config(request.opt_config, options)
+    opt_config = apply_material_target_task(
+        optimizer,
+        to_optimize_config(request.opt_config, options),
+        getattr(request, "target_task", None),
+    )
     data_context = (
         to_data_context(request.data_context, options)
         if request.data_context is not None

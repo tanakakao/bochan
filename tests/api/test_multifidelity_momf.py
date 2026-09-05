@@ -102,7 +102,7 @@ def test_momf_builds_augmented_hypervolume_problem(monkeypatch):
         data_context=_context(),
     )
 
-    assert getattr(acqf, "_bochan_multifidelity_kind") == "momf"
+    assert acqf._bochan_multifidelity_kind == "momf"
     assert captured["ref_point"].shape == torch.Size([3])
     assert captured["partitioning"].num_outcomes == 3
     assert callable(captured["cost_call"])
@@ -123,7 +123,10 @@ def test_momf_custom_fidelity_objective_is_used(monkeypatch):
             self.model = kwargs["model"]
 
     monkeypatch.setattr(momf_module, "MOMF", FakeMOMF)
-    fidelity_objective = lambda X: X[..., 1].square()
+
+    def fidelity_objective(X):
+        return X[..., 1].square()
+
     momf_module.build_momf_acquisition(
         bundle=_bundle(),
         config=AcquisitionConfig(

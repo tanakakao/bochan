@@ -24,7 +24,6 @@ from bochan.models.multifidelity.cost import FidelityCostConfig, build_fidelity_
 
 from ..configs import AcquisitionConfig, DataContext, ModelBundle
 
-
 _MFKG_NAMES = {
     "mfkg",
     "qmfkg",

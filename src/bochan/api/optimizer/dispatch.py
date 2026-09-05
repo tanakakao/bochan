@@ -24,33 +24,58 @@ OptimizeBackend = Callable[..., tuple[Any, Any]]
 _BASE_OPTIMIZE_CANDIDATES = _factory.optimize_candidates
 
 
-def _is_phase50_multifidelity_acquisition(acqf: Any) -> bool:
+def _is_multifidelity_acquisition(acqf: Any) -> bool:
     return type(acqf).__name__ in {
         "qMultiFidelityKnowledgeGradient",
         "qMultiFidelityMaxValueEntropy",
     }
 
 
-def _resolve_multifidelity_optimization(acqf: Any, bounds: Any, config: _BaseOptimizeConfig) -> _BaseOptimizeConfig:
+def _acquisition_model(acqf: Any) -> Any | None:
+    """Resolve the model from direct and one-level wrapped acquisitions."""
+
     model = getattr(acqf, "model", None)
+    if model is not None:
+        return model
+    base_acqf = getattr(acqf, "base_acqf", None)
+    if base_acqf is not None:
+        model = getattr(base_acqf, "model", None)
+        if model is not None:
+            return model
+    return getattr(acqf, "_bochan_thompson_model", None)
+
+
+def _resolve_multifidelity_optimization(acqf: Any, bounds: Any, config: _BaseOptimizeConfig) -> _BaseOptimizeConfig:
+    model = _acquisition_model(acqf)
     if model is None:
         return config
     from bochan.models.multifidelity.optimization import (
         enumerate_discrete_fidelities_into_opt_config,
         merge_target_fidelities_into_opt_config,
+        prepare_continuous_fidelity_optimization,
     )
 
-    if _is_phase50_multifidelity_acquisition(acqf) and getattr(config, "fidelity_values", None) is None:
+    discrete = getattr(config, "fidelity_values", None) is not None
+    continuous = bool(getattr(config, "optimize_fidelity", False))
+    if _is_multifidelity_acquisition(acqf) and not (discrete or continuous):
         raise ValueError(
-            "Phase 50 multi-fidelity acquisitions require OptimizeConfig.fidelity_values. "
-            "Continuous joint fidelity optimization is added in Phase 52."
+            "Multi-fidelity acquisitions require either OptimizeConfig.fidelity_values "
+            "for discrete fidelity search or optimize_fidelity=True for continuous "
+            "joint fidelity optimization."
         )
 
-    config = enumerate_discrete_fidelities_into_opt_config(
-        config,
-        model=model,
-        bounds=bounds,
-    )
+    if continuous:
+        config = prepare_continuous_fidelity_optimization(
+            config,
+            model=model,
+            bounds=bounds,
+        )
+    else:
+        config = enumerate_discrete_fidelities_into_opt_config(
+            config,
+            model=model,
+            bounds=bounds,
+        )
     return merge_target_fidelities_into_opt_config(config, model=model)
 
 

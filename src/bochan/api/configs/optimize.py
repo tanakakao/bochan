@@ -27,6 +27,7 @@ class OptimizeConfig(_BaseOptimizeConfig):
     optimizer: OptimizerName | str | Callable[..., Any] = "optimize_acqf"
     evo_method: EvolutionaryMethod = "ga"
     fidelity_values: Sequence[float] | None = None
+    optimize_fidelity: bool = False
     ensure_unique_candidates: bool = True
     duplicate_tolerance: float = 1e-10
     duplicate_tolerances: Sequence[float] | None = None
@@ -40,6 +41,12 @@ class OptimizeConfig(_BaseOptimizeConfig):
         return state
 
     def __post_init__(self) -> None:
+        if self.fidelity_values is not None and self.optimize_fidelity:
+            raise ValueError(
+                "fidelity_values and optimize_fidelity=True are mutually exclusive. "
+                "Use fidelity_values for discrete fidelity search or optimize_fidelity=True "
+                "for continuous joint fidelity optimization."
+            )
         if self.fidelity_values is not None:
             values = tuple(float(value) for value in self.fidelity_values)
             if not values:

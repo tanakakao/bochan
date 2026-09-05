@@ -183,13 +183,14 @@ def build_multifidelity_hvkg_acquisition(
 
     X_pending = kwargs.pop("X_pending", data_context.X_pending)
     objective = kwargs.pop("objective", config.objective)
-    if config.objective_factory is not None or config.objective_config is not None:
-        if objective is None:
-            raise NotImplementedError(
-                "Phase 56 MF-HVKG supports the identity multi-output objective or an "
-                "explicit AcquisitionConfig.objective. objective_factory/objective_config "
-                "integration is deferred to Phase 57 hardening."
-            )
+    if objective is None and (
+        config.objective_factory is not None or config.objective_config is not None
+    ):
+        raise NotImplementedError(
+            "Phase 56 MF-HVKG supports the identity multi-output objective or an "
+            "explicit AcquisitionConfig.objective. objective_factory/objective_config "
+            "integration is deferred to Phase 57 hardening."
+        )
 
     num_fantasies = int(kwargs.pop("num_fantasies", 8))
     num_pareto = int(kwargs.pop("num_pareto", 10))

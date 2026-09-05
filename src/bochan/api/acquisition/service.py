@@ -24,6 +24,10 @@ from .defaults import resolve_acquisition_defaults
 from .defaults.observations import resolve_observation_aware_baselines
 from .diagnostics import build_acquisition_observation_diagnostics
 from .feasibility import resolve_outcome_constraint_config
+from .multifidelity import (
+    build_multifidelity_acquisition,
+    is_multifidelity_acquisition_name,
+)
 
 
 def _normalize_name(value: Any) -> str:
@@ -77,6 +81,15 @@ def resolve_acquisition_class(
         from bochan.optim.nsgaii.strategy import build_nsgaii_strategy
 
         return replace(config, acqf_factory=build_nsgaii_strategy)
+    if is_multifidelity_acquisition_name(config.name):
+        optimizer._check_fitted()
+        task_type, model_type, multi_output = optimizer._acquisition_routing_context()
+        if task_type != "regression" or model_type != "multifidelity_gp" or multi_output:
+            raise ValueError(
+                "Phase 50 multi-fidelity acquisitions require a single-output "
+                "regression model with model_type='multifidelity_gp'."
+            )
+        return replace(config, acqf_factory=build_multifidelity_acquisition)
 
     optimizer._check_fitted()
     task_type, model_type, multi_output = optimizer._acquisition_routing_context()

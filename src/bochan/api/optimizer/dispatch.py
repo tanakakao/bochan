@@ -24,6 +24,13 @@ OptimizeBackend = Callable[..., tuple[Any, Any]]
 _BASE_OPTIMIZE_CANDIDATES = _factory.optimize_candidates
 
 
+def _is_phase50_multifidelity_acquisition(acqf: Any) -> bool:
+    return type(acqf).__name__ in {
+        "qMultiFidelityKnowledgeGradient",
+        "qMultiFidelityMaxValueEntropy",
+    }
+
+
 def _resolve_multifidelity_optimization(acqf: Any, bounds: Any, config: _BaseOptimizeConfig) -> _BaseOptimizeConfig:
     model = getattr(acqf, "model", None)
     if model is None:
@@ -32,6 +39,12 @@ def _resolve_multifidelity_optimization(acqf: Any, bounds: Any, config: _BaseOpt
         enumerate_discrete_fidelities_into_opt_config,
         merge_target_fidelities_into_opt_config,
     )
+
+    if _is_phase50_multifidelity_acquisition(acqf) and getattr(config, "fidelity_values", None) is None:
+        raise ValueError(
+            "Phase 50 multi-fidelity acquisitions require OptimizeConfig.fidelity_values. "
+            "Continuous joint fidelity optimization is added in Phase 52."
+        )
 
     config = enumerate_discrete_fidelities_into_opt_config(
         config,

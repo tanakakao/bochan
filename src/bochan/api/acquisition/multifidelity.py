@@ -63,17 +63,26 @@ def _shared_multifidelity_metadata(model: Any) -> Mapping[str, Any] | None:
 
 
 def _bundle_tensors(value: Any, *, name: str) -> tuple[torch.Tensor, ...]:
-    """Normalize single- and independent-multi-output bundle tensors."""
+    """Normalize possibly nested single- and multi-output bundle tensors."""
 
-    if isinstance(value, torch.Tensor):
-        tensors = (value,)
-    elif isinstance(value, (list, tuple)):
-        if not value:
-            raise ValueError(f"{name} must not be empty.")
-        tensors = tuple(torch.as_tensor(item) for item in value)
-    else:
-        tensors = (torch.as_tensor(value),)
-    return tensors
+    tensors: list[torch.Tensor] = []
+
+    def collect(item: Any) -> None:
+        if isinstance(item, torch.Tensor):
+            tensors.append(item)
+            return
+        if isinstance(item, (list, tuple)):
+            if not item:
+                raise ValueError(f"{name} must not contain empty tensor groups.")
+            for child in item:
+                collect(child)
+            return
+        tensors.append(torch.as_tensor(item))
+
+    collect(value)
+    if not tensors:
+        raise ValueError(f"{name} must not be empty.")
+    return tuple(tensors)
 
 
 def _train_X_tensors(bundle: ModelBundle) -> tuple[torch.Tensor, ...]:

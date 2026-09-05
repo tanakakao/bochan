@@ -48,6 +48,11 @@ from .evaluation.cross_validation import (
 from .factory import prepare_multi_objective_context
 from .modeling.build import build_model, infer_input_type, resolve_model_cls
 from .modeling.fit import fit_model
+from .modeling.materials import (
+    MaterialAPIModelSpec,
+    make_material_model_config,
+    material_task_fixed_features,
+)
 from .observation import ExperimentFailureConfig, ObservationData
 from .optimizer import BayesianOptimizer
 from .optimizer.service import optimize_candidates
@@ -94,6 +99,7 @@ __all__ = [
     "InputTransformConfig",
     "LazyModelRegistry",
     "MODEL_REGISTRY",
+    "MaterialAPIModelSpec",
     "MetricSummary",
     "ModelBundle",
     "ModelConfig",
@@ -119,7 +125,9 @@ __all__ = [
     "compute_feature_importance",
     "fit_model",
     "infer_input_type",
+    "make_material_model_config",
     "material_residual_model_types",
+    "material_task_fixed_features",
     "optimize_candidates",
     "prepare_multi_objective_context",
     "register_material_residual_model_types",

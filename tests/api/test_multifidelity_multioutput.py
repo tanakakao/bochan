@@ -4,7 +4,7 @@ import pytest
 import torch
 
 from bochan.api import ModelConfig, MultiOutputConfig, OptimizeConfig
-from bochan.api.modeling import build_model
+from bochan.api.modeling.build import build_model
 from bochan.models.multifidelity import shared_multifidelity_metadata
 from bochan.models.multifidelity.optimization import (
     enumerate_discrete_fidelities_into_opt_config,

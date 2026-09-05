@@ -5,8 +5,8 @@ import torch
 from gpytorch.mlls import ExactMarginalLogLikelihood
 
 from bochan.api import BayesianOptimizer, FitConfig, ModelConfig
-from bochan.api.modeling import build_model, fit_model
-from bochan.api.modeling.build import resolve_model_cls
+from bochan.api.modeling.build import build_model, resolve_model_cls
+from bochan.api.modeling.fit import fit_model
 from bochan.models.multifidelity import FidelitySpec
 from bochan.models.regression.gaussian import (
     GaussianMixedMultiFidelityGP,

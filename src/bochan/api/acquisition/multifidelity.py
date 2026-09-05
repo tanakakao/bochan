@@ -21,7 +21,6 @@ from botorch.acquisition.utils import project_to_target_fidelity
 from botorch.optim import optimize_acqf, optimize_acqf_mixed
 
 from bochan.models.multifidelity.cost import FidelityCostConfig, build_fidelity_cost_utility
-
 from ..configs import AcquisitionConfig, DataContext, ModelBundle
 
 

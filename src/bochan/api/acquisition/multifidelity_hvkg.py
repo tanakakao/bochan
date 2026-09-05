@@ -19,6 +19,7 @@ from .multifidelity import (
     _categorical_assignments,
     _model_dimension,
     _projector,
+    _reference_train_Y,
     _resolve_cost_aware_utility,
     _target_fidelities,
 )
@@ -55,11 +56,11 @@ def _ref_point_tensor(
             "MF-HVKG requires a multi-objective ref_point. Provide DataContext.ref_point "
             "or AcquisitionConfig.acqf_kwargs['ref_point']."
         )
-    train_Y = torch.as_tensor(bundle.train_Y)
+    train_Y = _reference_train_Y(bundle)
     ref_point = torch.as_tensor(raw, dtype=train_Y.dtype, device=train_Y.device)
     if ref_point.ndim != 1:
         raise ValueError("MF-HVKG ref_point must be a one-dimensional tensor.")
-    num_outputs = int(getattr(bundle.model, "num_outputs", train_Y.shape[-1]))
+    num_outputs = int(getattr(bundle.model, "num_outputs", ref_point.numel()))
     if ref_point.numel() != num_outputs:
         raise ValueError(
             f"MF-HVKG ref_point must contain {num_outputs} values; "
@@ -167,8 +168,6 @@ def _resolve_objective(
     if config.objective_factory is None and config.objective_config is None:
         return None
 
-    # Lazy import avoids a module import cycle: factory imports acquisition
-    # service modules that can route back to this MF-HVKG factory.
     from ..factory import build_objective
 
     return build_objective(bundle=bundle, config=config, data_context=data_context)

@@ -127,13 +127,24 @@ class PredictRequest(APIRequest):
 class _MultiFidelityCandidateMixin(BaseModel):
     target_fidelity: float | None = None
     cost_config: dict[str, Any] | None = None
-    fidelity_values: list[float] | None = None
+    fidelity_values: list[float] | dict[int, list[float]] | None = None
+    fidelity_assignments: list[dict[int, float]] | None = None
     optimize_fidelity: bool | None = None
 
     @model_validator(mode="after")
     def validate_query_fidelity_mode(self):
-        if self.optimize_fidelity and self.fidelity_values is not None:
-            raise ValueError("Specify either fidelity_values or optimize_fidelity=True, not both.")
+        active_modes = sum(
+            (
+                self.fidelity_values is not None,
+                self.fidelity_assignments is not None,
+                bool(self.optimize_fidelity),
+            )
+        )
+        if active_modes > 1:
+            raise ValueError(
+                "Specify only one of fidelity_values, fidelity_assignments, or "
+                "optimize_fidelity=True."
+            )
         return self
 
 

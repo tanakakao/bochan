@@ -20,7 +20,6 @@ from .base import (
     MultiOutputConfig,
     ObjectiveConfig,
     ObjectiveMode,
-    OptimizeConfig,
     OptimizerName,
     OutputConfig,
     OutputConfigLike,
@@ -31,6 +30,7 @@ from .base import (
     build_outcome_transform_for_task,
     is_regression_outcome_task,
 )
+from .optimize import OptimizeConfig
 
 __all__ = [
     "AcquisitionConfig",

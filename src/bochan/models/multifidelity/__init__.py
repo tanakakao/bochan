@@ -7,6 +7,10 @@ should be placed here as they are introduced.
 
 from .configured import create_configured_fidelity_surrogate
 from .factory import FidelityInputMode, create_fidelity_surrogate
+from .optimization import (
+    merge_target_fidelities_into_opt_config,
+    target_fidelity_fixed_features,
+)
 from .spec import FidelitySpec, ResolvedFidelitySpec
 
 __all__ = [
@@ -15,4 +19,6 @@ __all__ = [
     "ResolvedFidelitySpec",
     "create_configured_fidelity_surrogate",
     "create_fidelity_surrogate",
+    "merge_target_fidelities_into_opt_config",
+    "target_fidelity_fixed_features",
 ]

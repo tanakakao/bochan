@@ -6,6 +6,8 @@ from collections.abc import Callable
 from dataclasses import replace
 from typing import Any
 
+from bochan.models.multifidelity import merge_target_fidelities_into_opt_config
+
 from .. import factory as _factory
 from ..candidate.uniqueness import ensure_unique_candidates
 from ..configs import OptimizeConfig as _BaseOptimizeConfig
@@ -47,6 +49,30 @@ def _common_kwargs(acqf: Any, bounds: Any, config: _BaseOptimizeConfig) -> dict[
     return kwargs
 
 
+def _acquisition_model(acqf: Any) -> Any | None:
+    """Return the surrogate model attached to an acquisition function."""
+
+    model = getattr(acqf, "model", None)
+    if model is not None:
+        return model
+    base_acqf = getattr(acqf, "base_acqf", None)
+    if base_acqf is not None:
+        return getattr(base_acqf, "model", None)
+    return None
+
+
+def _resolve_target_fidelity_config(
+    acqf: Any,
+    config: _BaseOptimizeConfig,
+) -> _BaseOptimizeConfig:
+    """Apply configured target fidelities to candidate optimization."""
+
+    model = _acquisition_model(acqf)
+    if model is None:
+        return config
+    return merge_target_fidelities_into_opt_config(config, model=model)
+
+
 def _optimize_candidates_once(
     acqf: Any,
     bounds: Any,
@@ -64,6 +90,7 @@ def _optimize_candidates_once(
     if bounds is None:
         raise ValueError("bounds must be provided.")
     backend = base_optimize_candidates or _BASE_OPTIMIZE_CANDIDATES
+    config = _resolve_target_fidelity_config(acqf, config)
     config = _force_sequential_for_kronecker(acqf, config)
     optimizer = config.optimizer
     if callable(optimizer) and not isinstance(optimizer, str):
@@ -165,6 +192,8 @@ def optimize_candidates(
     base_optimize_candidates: OptimizeBackend | None = None,
 ) -> tuple[Any, Any]:
     """Dispatch an optimizer and enforce uniqueness on its final q-batch."""
+
+    config = _resolve_target_fidelity_config(acqf, config)
 
     if uses_grouped_best_subset(config):
         return optimize_grouped_best_subset_candidates(

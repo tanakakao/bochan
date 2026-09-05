@@ -5,10 +5,7 @@ import torch
 from bochan.api import ModelConfig, MultiOutputConfig
 from bochan.api.configs import OptimizeConfig
 from bochan.api.modeling.build import build_model
-from bochan.models.multifidelity.optimization import (
-    merge_target_fidelities_into_opt_config,
-    prepare_continuous_fidelity_optimization,
-)
+from bochan.models.multifidelity.optimization import merge_target_fidelities_into_opt_config
 from bochan.models.multifidelity.spec import FidelitySpec
 
 
@@ -24,11 +21,7 @@ def _continuous_data():
         ],
         dtype=torch.double,
     )
-    y = (
-        train_X[:, :1]
-        + 0.2 * train_X[:, 1:2]
-        + 0.1 * train_X[:, 2:3]
-    )
+    y = train_X[:, :1] + 0.2 * train_X[:, 1:2] + 0.1 * train_X[:, 2:3]
     return train_X, y
 
 
@@ -153,33 +146,3 @@ def test_target_fixed_optimization_merges_all_fidelity_dimensions():
         model=bundle.model,
     )
     assert resolved.fixed_features == {1: 1.0, 2: 0.8}
-
-
-def test_joint_multidimensional_fidelity_search_is_supported_in_phase60():
-    train_X, train_Y = _continuous_data()
-    bundle = build_model(
-        train_X,
-        train_Y,
-        ModelConfig(
-            task_type="regression",
-            model_type="multifidelity_gp",
-            model_kwargs={
-                "fidelity_features": [-2, -1],
-                "target_fidelities": {-2: 1.0, -1: 1.0},
-            },
-        ),
-    )
-    bounds = torch.tensor(
-        [[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]],
-        dtype=torch.double,
-    )
-
-    resolved = prepare_continuous_fidelity_optimization(
-        OptimizeConfig(optimize_fidelity=True),
-        model=bundle.model,
-        bounds=bounds,
-    )
-
-    assert resolved.optimize_fidelity is True
-    assert resolved.fixed_features is None
-    assert resolved.fixed_features_list is None

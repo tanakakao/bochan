@@ -82,12 +82,11 @@ def test_enumerates_cartesian_product_for_multiple_fidelity_dimensions():
         {2: 1.0, 3: 0.5},
         {2: 1.0, 3: 1.0},
     ]
-    assert resolved.fidelity_assignments == (
-        {2: 0.25, 3: 0.5},
-        {2: 0.25, 3: 1.0},
-        {2: 1.0, 3: 0.5},
-        {2: 1.0, 3: 1.0},
-    )
+    assert resolved.fidelity_values == {
+        -2: (0.25, 1.0),
+        -1: (0.5, 1.0),
+    }
+    assert resolved.fidelity_assignments is None
 
 
 def test_uses_explicit_multidimensional_fidelity_assignments():

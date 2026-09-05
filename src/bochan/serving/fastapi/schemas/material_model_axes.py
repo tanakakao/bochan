@@ -1,10 +1,13 @@
-"""FastAPI schemas for material model-axis discovery and validation."""
+"""FastAPI schemas for material model-axis discovery, validation, and execution."""
 
 from __future__ import annotations
 
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
+
+from .configs import DataContextSchema, FitConfigSchema
+from .requests import TensorOptionsSchema
 
 
 class MaterialExplicitTaskRequest(BaseModel):
@@ -27,6 +30,19 @@ class MaterialModelAxesRequest(BaseModel):
     cat_dims: list[int] | None = None
     task: MaterialExplicitTaskRequest | None = None
     backend_kwargs: dict[str, Any] = Field(default_factory=dict)
+
+
+class MaterialModelFitRequest(BaseModel):
+    """Fit one registered material surrogate through the canonical optimizer API."""
+
+    model: MaterialModelAxesRequest
+    train_X: Any
+    train_Y: Any
+    train_Yvar: Any | None = None
+    bounds: Any | None = None
+    fit_config: FitConfigSchema | None = None
+    data_context: DataContextSchema | None = None
+    tensor_options: TensorOptionsSchema = Field(default_factory=TensorOptionsSchema)
 
 
 class MaterialModelAxesResponse(BaseModel):
@@ -82,6 +98,7 @@ __all__ = [
     "MaterialModelAxesCatalogResponse",
     "MaterialModelAxesRequest",
     "MaterialModelAxesResponse",
+    "MaterialModelFitRequest",
     "MaterialTaskFixedFeaturesRequest",
     "MaterialTaskFixedFeaturesResponse",
 ]

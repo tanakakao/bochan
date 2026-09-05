@@ -318,9 +318,14 @@ def enumerate_discrete_fidelities_into_opt_config(
     if not expanded:
         raise ValueError("No valid fixed-feature assignments remain after applying fidelity search.")
 
+    if explicit is not None:
+        return replace(
+            opt_config,
+            fidelity_assignments=fidelity_assignments,
+            fixed_features_list=expanded,
+        )
     return replace(
         opt_config,
-        fidelity_assignments=fidelity_assignments,
         fixed_features_list=expanded,
     )
 

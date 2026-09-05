@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .configs import (
     AcquisitionConfigSchema,
@@ -124,7 +124,20 @@ class PredictRequest(APIRequest):
     tensor_options: TensorOptionsSchema = Field(default_factory=TensorOptionsSchema)
 
 
-class CandidateRequest(APIRequest):
+class _MultiFidelityCandidateMixin(BaseModel):
+    target_fidelity: float | None = None
+    cost_config: dict[str, Any] | None = None
+    fidelity_values: list[float] | None = None
+    optimize_fidelity: bool | None = None
+
+    @model_validator(mode="after")
+    def validate_query_fidelity_mode(self):
+        if self.optimize_fidelity and self.fidelity_values is not None:
+            raise ValueError("Specify either fidelity_values or optimize_fidelity=True, not both.")
+        return self
+
+
+class CandidateRequest(APIRequest, _MultiFidelityCandidateMixin):
     acq_config: AcquisitionConfigSchema = Field(alias="acquisition_config")
     opt_config: OptimizeConfigSchema = Field(default_factory=OptimizeConfigSchema, alias="optimize_config")
     data_context: DataContextSchema | None = None
@@ -136,7 +149,7 @@ class CandidateRequest(APIRequest):
     tensor_options: TensorOptionsSchema = Field(default_factory=TensorOptionsSchema)
 
 
-class CompareCandidatesRequest(APIRequest):
+class CompareCandidatesRequest(APIRequest, _MultiFidelityCandidateMixin):
     """Generate candidates for multiple acquisition functions on the same fitted model."""
 
     acq_configs: list[AcquisitionConfigSchema] = Field(alias="acquisition_configs")
@@ -147,12 +160,8 @@ class CompareCandidatesRequest(APIRequest):
     tensor_options: TensorOptionsSchema = Field(default_factory=TensorOptionsSchema)
 
 
-class SuggestRequest(APIRequest):
-    """Stateless fit-and-candidate request.
-
-    The endpoint fits a temporary optimizer from the supplied training data and
-    immediately returns candidates without registering model state.
-    """
+class SuggestRequest(APIRequest, _MultiFidelityCandidateMixin):
+    """Stateless fit-and-candidate request."""
 
     bo_model_config: ModelConfigSchema = Field(default_factory=ModelConfigSchema, alias="model_config")
     train_X: Any
@@ -174,11 +183,7 @@ class SaveModelRequest(APIRequest):
 
 
 class LoadModelRequest(APIRequest):
-    """Request body for loading a trusted optimizer artifact.
-
-    Loading uses pickle through ``torch.load``. Set ``trust_pickle`` to true only
-    for model files that were created by a trusted user or process.
-    """
+    """Request body for loading a trusted optimizer artifact."""
 
     filename: str
     map_location: str | None = "cpu"

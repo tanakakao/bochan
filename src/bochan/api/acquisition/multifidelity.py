@@ -20,10 +20,7 @@ from botorch.acquisition.objective import ScalarizedPosteriorTransform
 from botorch.acquisition.utils import project_to_target_fidelity
 from botorch.optim import optimize_acqf, optimize_acqf_mixed
 
-from bochan.models.multifidelity.cost import (
-    FidelityCostConfig,
-    build_fidelity_cost_utility,
-)
+from bochan.models.multifidelity.cost import FidelityCostConfig, build_fidelity_cost_utility
 
 from ..configs import AcquisitionConfig, DataContext, ModelBundle
 
@@ -47,26 +44,8 @@ def _normalize_name(value: Any) -> str:
 
 
 def is_multifidelity_acquisition_name(name: Any) -> bool:
-    """Return whether ``name`` is handled by the MF acquisition factory."""
-
     normalized = _normalize_name(name)
     return normalized in _MFKG_NAMES or normalized in _MFMES_NAMES
-
-
-def _target_fidelities(model: Any) -> dict[int, float]:
-    targets = getattr(model, "target_fidelities", None)
-    if targets is None:
-        metadata = getattr(model, "fidelity_metadata", None)
-        if callable(metadata):
-            metadata = metadata()
-        if isinstance(metadata, Mapping):
-            targets = metadata.get("target_fidelities")
-    if not isinstance(targets, Mapping) or not targets:
-        raise ValueError(
-            "Multi-fidelity acquisition functions require model target_fidelities. "
-            "Configure target_fidelities on ModelConfig.model_kwargs."
-        )
-    return {int(index): float(value) for index, value in targets.items()}
 
 
 def _fidelity_features(model: Any) -> tuple[int, ...]:
@@ -82,6 +61,37 @@ def _fidelity_features(model: Any) -> tuple[int, ...]:
     return tuple(int(index) for index in features)
 
 
+def _target_fidelities(
+    model: Any,
+    *,
+    target_fidelity: float | None = None,
+    target_fidelities: Mapping[int, float] | None = None,
+) -> dict[int, float]:
+    if target_fidelity is not None and target_fidelities is not None:
+        raise ValueError("Provide either target_fidelity or target_fidelities, not both.")
+    if target_fidelity is not None:
+        features = _fidelity_features(model)
+        if len(features) != 1:
+            raise ValueError("target_fidelity requires exactly one model fidelity feature.")
+        return {features[0]: float(target_fidelity)}
+    if target_fidelities is not None:
+        return {int(index): float(value) for index, value in target_fidelities.items()}
+
+    targets = getattr(model, "target_fidelities", None)
+    if targets is None:
+        metadata = getattr(model, "fidelity_metadata", None)
+        if callable(metadata):
+            metadata = metadata()
+        if isinstance(metadata, Mapping):
+            targets = metadata.get("target_fidelities")
+    if not isinstance(targets, Mapping) or not targets:
+        raise ValueError(
+            "Multi-fidelity acquisition functions require model target_fidelities. "
+            "Configure target_fidelities on ModelConfig.model_kwargs or pass a request override."
+        )
+    return {int(index): float(value) for index, value in targets.items()}
+
+
 def _model_dimension(bundle: ModelBundle) -> int:
     train_X = torch.as_tensor(bundle.train_X)
     if train_X.ndim != 2:
@@ -94,9 +104,7 @@ def _bounds_tensor(bundle: ModelBundle, context: DataContext) -> torch.Tensor:
     if bounds is None:
         bounds = getattr(bundle, "bounds", None)
     if bounds is None:
-        raise ValueError(
-            "Multi-fidelity acquisition functions require bounds in DataContext."
-        )
+        raise ValueError("Multi-fidelity acquisition functions require bounds in DataContext.")
     train_X = torch.as_tensor(bundle.train_X)
     tensor = torch.as_tensor(bounds, dtype=train_X.dtype, device=train_X.device)
     if tensor.shape != (2, train_X.shape[-1]):
@@ -120,7 +128,6 @@ def _categorical_assignments(bundle: ModelBundle) -> list[dict[int, float]] | No
     cat_dims = tuple(int(index) for index in (getattr(model, "cat_dims", None) or ()))
     if not cat_dims:
         return None
-
     train_X = torch.as_tensor(bundle.train_X)
     combos = torch.unique(train_X[:, list(cat_dims)], dim=0)
     return [
@@ -135,8 +142,7 @@ def _sign_posterior_transform(bundle: ModelBundle, *, maximize: bool) -> Any | N
     train_Y = torch.as_tensor(bundle.train_Y)
     if train_Y.ndim < 2 or int(train_Y.shape[-1]) != 1:
         raise ValueError("maximize=False is currently supported only for single-output MF models.")
-    weights = train_Y.new_tensor([-1.0])
-    return ScalarizedPosteriorTransform(weights=weights)
+    return ScalarizedPosteriorTransform(weights=train_Y.new_tensor([-1.0]))
 
 
 def _current_value(
@@ -148,12 +154,7 @@ def _current_value(
     num_restarts: int,
     raw_samples: int,
 ) -> torch.Tensor:
-    """Compute the current terminal value at the configured target fidelity."""
-
-    posterior_mean = PosteriorMean(
-        model=bundle.model,
-        posterior_transform=posterior_transform,
-    )
+    posterior_mean = PosteriorMean(model=bundle.model, posterior_transform=posterior_transform)
     categorical = _categorical_assignments(bundle)
     if categorical:
         fixed_features_list: list[dict[int, float]] = []
@@ -161,9 +162,7 @@ def _current_value(
             item = dict(assignment)
             for index, value in targets.items():
                 if index in item and item[index] != value:
-                    raise ValueError(
-                        "A categorical dimension overlaps the target fidelity dimension."
-                    )
+                    raise ValueError("A categorical dimension overlaps the target fidelity dimension.")
                 item[index] = value
             fixed_features_list.append(item)
         _, value = optimize_acqf_mixed(
@@ -193,35 +192,24 @@ def _candidate_set(
     targets: Mapping[int, float],
     size: int,
 ) -> torch.Tensor:
-    """Generate an MF-MES discretization set and project it to target fidelity."""
-
     if size < 2:
         raise ValueError("candidate_set_size must be at least 2.")
     train_X = torch.as_tensor(bundle.train_X, dtype=bounds.dtype, device=bounds.device)
     n, d = train_X.shape
     random = torch.rand(size, d, dtype=bounds.dtype, device=bounds.device)
     candidates = bounds[0] + (bounds[1] - bounds[0]) * random
-
     cat_dims = tuple(int(index) for index in (getattr(bundle.model, "cat_dims", None) or ()))
     for index in cat_dims:
         values = torch.unique(train_X[:, index])
         draw = torch.randint(values.numel(), (size,), device=bounds.device)
         candidates[:, index] = values[draw]
-
     keep = min(n, size)
     if keep:
         candidates[:keep] = train_X[:keep]
-
-    return project_to_target_fidelity(
-        candidates,
-        target_fidelities=dict(targets),
-        d=d,
-    )
+    return project_to_target_fidelity(candidates, target_fidelities=dict(targets), d=d)
 
 
 def _resolve_cost_aware_utility(model: Any, kwargs: dict[str, Any]) -> tuple[Any | None, Any | None]:
-    """Resolve optional Phase 51 cost configuration from acquisition kwargs."""
-
     explicit_utility = kwargs.get("cost_aware_utility")
     raw_config = kwargs.pop("cost_config", None)
     if explicit_utility is not None and raw_config is not None:
@@ -235,10 +223,7 @@ def _resolve_cost_aware_utility(model: Any, kwargs: dict[str, Any]) -> tuple[Any
     features = _fidelity_features(model)
     if not features:
         raise ValueError("cost_config requires model fidelity_features metadata.")
-    cost_model, utility = build_fidelity_cost_utility(
-        raw_config,
-        fidelity_features=features,
-    )
+    cost_model, utility = build_fidelity_cost_utility(raw_config, fidelity_features=features)
     kwargs["cost_aware_utility"] = utility
     return cost_model, utility
 
@@ -257,18 +242,30 @@ def build_multifidelity_acquisition(
     config: AcquisitionConfig,
     data_context: DataContext,
 ) -> Any:
-    """Build MFKG or MF-MES from the public :class:`AcquisitionConfig` API."""
-
     name = _normalize_name(config.name)
     if name not in _MFKG_NAMES | _MFMES_NAMES:
         raise ValueError(f"Unsupported multi-fidelity acquisition name: {config.name!r}.")
 
     model = bundle.model
-    targets = _target_fidelities(model)
     d = _model_dimension(bundle)
     bounds = _bounds_tensor(bundle, data_context)
-    project = _projector(targets=targets, d=d)
     kwargs = dict(config.acqf_kwargs)
+    target_fidelity = kwargs.pop("target_fidelity", None)
+    target_fidelities = kwargs.pop("target_fidelities", None)
+    targets = _target_fidelities(
+        model,
+        target_fidelity=target_fidelity,
+        target_fidelities=target_fidelities,
+    )
+    for index, value in targets.items():
+        if index < 0 or index >= d:
+            raise ValueError(f"target fidelity feature {index} is outside model dimension d={d}.")
+        if value < float(bounds[0, index]) or value > float(bounds[1, index]):
+            raise ValueError(
+                f"target fidelity {value} is outside bounds for feature {index}: "
+                f"[{float(bounds[0, index])}, {float(bounds[1, index])}]."
+            )
+    project = _projector(targets=targets, d=d)
     X_pending = kwargs.pop("X_pending", data_context.X_pending)
     cost_model, cost_utility = _resolve_cost_aware_utility(model, kwargs)
 
@@ -309,13 +306,8 @@ def build_multifidelity_acquisition(
             size=candidate_set_size,
         )
     else:
-        candidate_set = torch.as_tensor(
-            candidate_set,
-            dtype=bounds.dtype,
-            device=bounds.device,
-        )
+        candidate_set = torch.as_tensor(candidate_set, dtype=bounds.dtype, device=bounds.device)
         candidate_set = project(candidate_set)
-
     acqf = qMultiFidelityMaxValueEntropy(
         model=model,
         candidate_set=candidate_set,
@@ -326,7 +318,4 @@ def build_multifidelity_acquisition(
     return _attach_cost_metadata(acqf, cost_model=cost_model, utility=cost_utility)
 
 
-__all__ = [
-    "build_multifidelity_acquisition",
-    "is_multifidelity_acquisition_name",
-]
+__all__ = ["build_multifidelity_acquisition", "is_multifidelity_acquisition_name"]

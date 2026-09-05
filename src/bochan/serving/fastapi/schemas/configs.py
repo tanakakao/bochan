@@ -50,10 +50,6 @@ class OutputConfigSchema(_Schema):
     model_kwargs: dict[str, Any] = Field(default_factory=dict)
     fit_config: FitConfigSchema | None = None
     output_spec_kwargs: dict[str, Any] = Field(default_factory=dict)
-
-    # Tabular-only target metadata. The FastAPI converter removes these fields
-    # before constructing the tensor-oriented core OutputConfig and retains the
-    # resolved mapping for string class / ordinal-rank constraints.
     ordered_categories: list[Any] | None = None
     categories: list[Any] | None = None
     category_map: dict[Any, int] | None = None
@@ -66,9 +62,7 @@ class OutputConfigSchema(_Schema):
             if getattr(self, name) is not None
         ]
         if len(declared) > 1:
-            raise ValueError(
-                "Specify only one of ordered_categories, categories, or category_map."
-            )
+            raise ValueError("Specify only one of ordered_categories, categories, or category_map.")
         if self.ordered_categories is not None and self.task_type.lower() != "ordinal":
             raise ValueError("ordered_categories is only valid for ordinal outputs.")
         return self
@@ -140,15 +134,9 @@ class OutcomeConstraintConfigSchema(_Schema):
 
     @model_validator(mode="after")
     def validate_parallel_lengths(self):
-        lengths = {
-            len(self.output_indices),
-            len(self.operators),
-            len(self.thresholds),
-        }
+        lengths = {len(self.output_indices), len(self.operators), len(self.thresholds)}
         if len(lengths) != 1:
-            raise ValueError(
-                "output_indices, operators, and thresholds must have the same length."
-            )
+            raise ValueError("output_indices, operators, and thresholds must have the same length.")
         return self
 
 
@@ -209,9 +197,7 @@ class AcquisitionConfigSchema(_Schema):
     @model_validator(mode="after")
     def validate_constraint_source(self):
         if self.constraints is not None and self.outcome_constraint_config is not None:
-            raise ValueError(
-                "Specify either constraints or outcome_constraint_config, not both."
-            )
+            raise ValueError("Specify either constraints or outcome_constraint_config, not both.")
         return self
 
 
@@ -251,6 +237,16 @@ class OptimizeConfigSchema(_Schema):
     repair_config: CandidateRepairConfigSchema | None = None
     fixed_features: dict[int, float] | None = None
     fixed_features_list: list[dict[int, float]] | None = None
+    fidelity_values: list[float] | None = None
+    optimize_fidelity: bool = False
     inequality_constraints: Any | None = None
     equality_constraints: Any | None = None
     return_best_only: bool = True
+
+    @model_validator(mode="after")
+    def validate_fidelity_mode(self):
+        if self.optimize_fidelity and self.fidelity_values is not None:
+            raise ValueError("Specify either fidelity_values or optimize_fidelity=True, not both.")
+        if self.fidelity_values is not None and not self.fidelity_values:
+            raise ValueError("fidelity_values must not be empty when supplied.")
+        return self

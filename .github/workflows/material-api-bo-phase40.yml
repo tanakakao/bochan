@@ -3,9 +3,13 @@ name: Material API BO Phase 40
 on:
   pull_request:
     paths:
-      - "src/bochan/api/**"
+      - "src/bochan/api/modeling/materials.py"
+      - "src/bochan/api/modeling/__init__.py"
+      - "src/bochan/api/__init__.py"
       - "src/bochan/models/regression/gaussian/materials/**"
       - "tests/test_material_api_bo_phase40.py"
+      - "tests/test_material_model_axes_phase39.py"
+      - "tests/test_material_mixed_explicit_task_phase38.py"
       - ".github/workflows/material-api-bo-phase40.yml"
 
 jobs:

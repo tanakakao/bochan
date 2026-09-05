@@ -4,6 +4,16 @@ on:
   pull_request:
     branches:
       - main
+    paths:
+      - "src/bochan/composition/encoders/chgnet.py"
+      - "src/bochan/models/regression/gaussian/deep/chgnet*.py"
+      - "src/bochan/tabular/structure/chgnet.py"
+      - "src/bochan/serving/fastapi/**/*chgnet*"
+      - "tests/*chgnet*.py"
+      - "tests/**/*chgnet*.py"
+      - "examples/*chgnet*.py"
+      - "examples/**/*chgnet*.py"
+      - ".github/workflows/chgnet-phase7-smoke.yml"
   workflow_dispatch:
 
 jobs:

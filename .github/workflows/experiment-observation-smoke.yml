@@ -4,6 +4,25 @@ on:
   pull_request:
     branches:
       - main
+    paths:
+      - "src/bochan/api/observation/**"
+      - "src/bochan/acquisition/feasible/experiment_success.py"
+      - "src/bochan/models/hybrid/partial_observation.py"
+      - "src/bochan/models/multitask/mixed.py"
+      - "src/bochan/tabular/observation/**"
+      - "src/bochan/tabular/config/data.py"
+      - "src/bochan/serving/fastapi/schemas/tabular.py"
+      - "src/bochan/serving/fastapi/routers/tabular.py"
+      - "src/bochan/serving/webapp/targets/missing.py"
+      - "src/bochan/serving/webapp/settings/targets.py"
+      - "src/bochan/serving/webapp/tabular_backend.py"
+      - "tests/test_observation_*.py"
+      - "tests/test_partial_observation_api.py"
+      - "tests/test_experiment_success_acquisition.py"
+      - "tests/test_tabular_observation_states.py"
+      - "tests/test_fastapi_tabular_observation_states.py"
+      - "tests/test_webapp_target_missing_policy.py"
+      - ".github/workflows/experiment-observation-smoke.yml"
   workflow_dispatch:
 
 jobs:

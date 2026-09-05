@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -19,6 +19,64 @@ from .optimizer_names import (
     _optimizer_name,
 )
 
+FidelityValues = Sequence[float] | Mapping[int, Sequence[float]]
+FidelityAssignments = Sequence[Mapping[int, float]]
+
+
+def _normalize_value_sequence(values: Sequence[float], *, label: str) -> tuple[float, ...]:
+    resolved = tuple(float(value) for value in values)
+    if not resolved:
+        raise ValueError(f"{label} must not be empty when supplied.")
+    if any(not math.isfinite(value) for value in resolved):
+        raise ValueError(f"{label} must contain finite values.")
+    if len(set(resolved)) != len(resolved):
+        raise ValueError(f"{label} must not contain duplicates.")
+    return resolved
+
+
+def _normalize_fidelity_values(values: FidelityValues) -> tuple[float, ...] | dict[int, tuple[float, ...]]:
+    if isinstance(values, Mapping):
+        if not values:
+            raise ValueError("fidelity_values mapping must not be empty when supplied.")
+        normalized: dict[int, tuple[float, ...]] = {}
+        for raw_index, raw_values in values.items():
+            index = int(raw_index)
+            if index in normalized:
+                raise ValueError("fidelity_values contains duplicate feature keys.")
+            normalized[index] = _normalize_value_sequence(
+                raw_values,
+                label=f"fidelity_values[{raw_index}]",
+            )
+        return normalized
+    return _normalize_value_sequence(values, label="fidelity_values")
+
+
+def _normalize_fidelity_assignments(
+    assignments: FidelityAssignments,
+) -> tuple[dict[int, float], ...]:
+    if not assignments:
+        raise ValueError("fidelity_assignments must not be empty when supplied.")
+    normalized: list[dict[int, float]] = []
+    seen: set[tuple[tuple[int, float], ...]] = set()
+    for assignment in assignments:
+        if not assignment:
+            raise ValueError("Each fidelity_assignments item must contain at least one feature.")
+        item: dict[int, float] = {}
+        for raw_index, raw_value in assignment.items():
+            index = int(raw_index)
+            value = float(raw_value)
+            if not math.isfinite(value):
+                raise ValueError("fidelity_assignments must contain finite values.")
+            if index in item:
+                raise ValueError("fidelity_assignments contains duplicate feature keys.")
+            item[index] = value
+        key = tuple(sorted(item.items()))
+        if key in seen:
+            raise ValueError("fidelity_assignments must not contain duplicate assignments.")
+        seen.add(key)
+        normalized.append(item)
+    return tuple(normalized)
+
 
 @dataclass
 class OptimizeConfig(_BaseOptimizeConfig):
@@ -26,7 +84,8 @@ class OptimizeConfig(_BaseOptimizeConfig):
 
     optimizer: OptimizerName | str | Callable[..., Any] = "optimize_acqf"
     evo_method: EvolutionaryMethod = "ga"
-    fidelity_values: Sequence[float] | None = None
+    fidelity_values: FidelityValues | None = None
+    fidelity_assignments: FidelityAssignments | None = None
     optimize_fidelity: bool = False
     ensure_unique_candidates: bool = True
     duplicate_tolerance: float = 1e-10
@@ -41,21 +100,22 @@ class OptimizeConfig(_BaseOptimizeConfig):
         return state
 
     def __post_init__(self) -> None:
-        if self.fidelity_values is not None and self.optimize_fidelity:
+        active_modes = sum(
+            (
+                self.fidelity_values is not None,
+                self.fidelity_assignments is not None,
+                bool(self.optimize_fidelity),
+            )
+        )
+        if active_modes > 1:
             raise ValueError(
-                "fidelity_values and optimize_fidelity=True are mutually exclusive. "
-                "Use fidelity_values for discrete fidelity search or optimize_fidelity=True "
-                "for continuous joint fidelity optimization."
+                "fidelity_values, fidelity_assignments, and optimize_fidelity=True are mutually "
+                "exclusive query-fidelity modes."
             )
         if self.fidelity_values is not None:
-            values = tuple(float(value) for value in self.fidelity_values)
-            if not values:
-                raise ValueError("fidelity_values must not be empty when supplied.")
-            if any(not math.isfinite(value) for value in values):
-                raise ValueError("fidelity_values must contain finite values.")
-            if len(set(values)) != len(values):
-                raise ValueError("fidelity_values must not contain duplicates.")
-            self.fidelity_values = values
+            self.fidelity_values = _normalize_fidelity_values(self.fidelity_values)
+        if self.fidelity_assignments is not None:
+            self.fidelity_assignments = _normalize_fidelity_assignments(self.fidelity_assignments)
         if self.duplicate_tolerance < 0:
             raise ValueError("duplicate_tolerance must be non-negative.")
         if self.duplicate_tolerances is not None:

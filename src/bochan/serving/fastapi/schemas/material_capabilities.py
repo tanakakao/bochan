@@ -14,6 +14,11 @@ class MaterialBackendCapabilitiesResponse(BaseModel):
     direct_quantities: list[str]
     residual_quantities: list[str]
     model_modes: list[str]
+    residual_input_modes: list[str]
+    residual_scalar_quantities: list[str]
+    residual_correlated_multioutput_quantities: list[str]
+    supports_mixed_residual: bool
+    supports_correlated_multioutput_residual: bool
     workflow_modes: list[str]
     supports_relaxation: bool
     supports_relax_rank: bool
@@ -31,6 +36,7 @@ class MaterialCapabilityCatalogResponse(BaseModel):
     backends: list[MaterialBackendCapabilitiesResponse]
     quantities: list[str]
     model_modes: list[str]
+    residual_input_modes: list[str]
     workflow_modes: list[str]
 
 

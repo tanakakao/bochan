@@ -21,7 +21,7 @@ def test_fastapi_optimize_schema_exposes_multifidelity_modes():
     assert discrete.fidelity_values == [0.25, 0.5, 1.0]
     continuous = OptimizeConfigSchema(optimize_fidelity=True)
     assert continuous.optimize_fidelity is True
-    with pytest.raises(ValueError, match="either fidelity_values or optimize_fidelity"):
+    with pytest.raises(ValueError, match="Specify only one of fidelity_values, fidelity_assignments, or optimize_fidelity"):
         OptimizeConfigSchema(fidelity_values=[0.5, 1.0], optimize_fidelity=True)
 
 

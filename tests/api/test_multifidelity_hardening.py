@@ -8,8 +8,8 @@ from bochan.api import (
     FitConfig,
     ModelConfig,
     MultiOutputConfig,
-    OptimizeConfig as PublicOptimizeConfig,
 )
+from bochan.api import OptimizeConfig as PublicOptimizeConfig
 from bochan.api.configs import OptimizeConfig as ConfigsOptimizeConfig
 from bochan.models.multifidelity import FidelityCostConfig, build_fidelity_cost_utility
 from bochan.models.regression.gaussian import GaussianMultiFidelityGP

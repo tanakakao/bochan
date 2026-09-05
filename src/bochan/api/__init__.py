@@ -62,6 +62,7 @@ from .registry.material import (
     register_material_residual_model_types,
 )
 from .registry.model import DEFAULT_MODEL_REGISTRY, MODEL_REGISTRY, LazyModelRegistry
+from .registry.multifidelity import register_multifidelity_gp_model_types
 from .study import CandidateBatch, StudySnapshot, StudySuggestion, Trial, TrialState
 from .study.controls import (
     BochanStudy,
@@ -71,9 +72,10 @@ from .study.controls import (
     StopDecision,
 )
 
-# Extend the default lazy registry with metadata-only material paths.  Concrete
-# optional material backends remain unloaded until a model type is resolved.
+# Extend the default lazy registry with metadata-only model paths. Concrete
+# optional backends remain unloaded until a model type is resolved.
 register_material_residual_model_types()
+register_multifidelity_gp_model_types()
 
 __all__ = [
     "AcquisitionConfig",
@@ -131,6 +133,7 @@ __all__ = [
     "optimize_candidates",
     "prepare_multi_objective_context",
     "register_material_residual_model_types",
+    "register_multifidelity_gp_model_types",
     "resolve_acqf_cls",
     "resolve_model_cls",
     "resolve_optimizer_from_cat_dims",

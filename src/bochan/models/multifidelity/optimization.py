@@ -7,6 +7,18 @@ from dataclasses import replace
 from itertools import product
 from typing import Any
 
+from .multioutput import shared_multifidelity_metadata
+
+
+def _wrapper_fidelity_metadata(model: Any) -> dict[str, Any] | None:
+    models = getattr(model, "models", None)
+    if models is None:
+        return None
+    try:
+        return shared_multifidelity_metadata(list(models))
+    except TypeError:
+        return None
+
 
 def _fidelity_features(model: Any) -> tuple[int, ...]:
     features = getattr(model, "fidelity_features", None)
@@ -16,6 +28,10 @@ def _fidelity_features(model: Any) -> tuple[int, ...]:
             metadata = metadata()
         if isinstance(metadata, Mapping):
             features = metadata.get("fidelity_features")
+    if features is None:
+        wrapper_metadata = _wrapper_fidelity_metadata(model)
+        if wrapper_metadata is not None:
+            features = wrapper_metadata.get("fidelity_features")
     if features is None:
         return ()
     return tuple(int(index) for index in features)
@@ -29,6 +45,10 @@ def target_fidelity_fixed_features(model: Any) -> dict[int, float]:
             metadata = metadata()
         if isinstance(metadata, Mapping):
             targets = metadata.get("target_fidelities")
+    if targets is None:
+        wrapper_metadata = _wrapper_fidelity_metadata(model)
+        if wrapper_metadata is not None:
+            targets = wrapper_metadata.get("target_fidelities")
     if targets is None:
         return {}
     if not isinstance(targets, Mapping):

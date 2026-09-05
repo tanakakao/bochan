@@ -28,6 +28,10 @@ from .multifidelity import (
     build_multifidelity_acquisition,
     is_multifidelity_acquisition_name,
 )
+from .multifidelity_hvkg import (
+    build_multifidelity_hvkg_acquisition,
+    is_multifidelity_hvkg_name,
+)
 
 
 def _normalize_name(value: Any) -> str:
@@ -55,6 +59,7 @@ def _is_vector_strategy(config: AcquisitionConfig) -> bool:
         is_nsgaii_strategy(config)
         or "nparego" in combined
         or "expectedhypervolumeimprovement" in combined
+        or "hypervolumeknowledgegradient" in combined
         or name
         in {
             "ehi",
@@ -65,6 +70,8 @@ def _is_vector_strategy(config: AcquisitionConfig) -> bool:
             "qnehi",
             "nehvi",
             "qnehvi",
+            "mfhvkg",
+            "qmfhvkg",
         }
     )
 
@@ -81,13 +88,22 @@ def resolve_acquisition_class(
         from bochan.optim.nsgaii.strategy import build_nsgaii_strategy
 
         return replace(config, acqf_factory=build_nsgaii_strategy)
+    if is_multifidelity_hvkg_name(config.name):
+        optimizer._check_fitted()
+        task_type, model_type, multi_output = optimizer._acquisition_routing_context()
+        if task_type not in {"regression", "multi_objective"} or model_type != "multifidelity_gp" or not multi_output:
+            raise ValueError(
+                "MF-HVKG requires a multi-output regression model with "
+                "model_type='multifidelity_gp'."
+            )
+        return replace(config, acqf_factory=build_multifidelity_hvkg_acquisition)
     if is_multifidelity_acquisition_name(config.name):
         optimizer._check_fitted()
         task_type, model_type, multi_output = optimizer._acquisition_routing_context()
         if task_type != "regression" or model_type != "multifidelity_gp" or multi_output:
             raise ValueError(
-                "Phase 50 multi-fidelity acquisitions require a single-output "
-                "regression model with model_type='multifidelity_gp'."
+                "MFKG / MF-MES require a single-output regression model with "
+                "model_type='multifidelity_gp'."
             )
         return replace(config, acqf_factory=build_multifidelity_acquisition)
 

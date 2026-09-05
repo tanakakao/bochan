@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from botorch.acquisition.cost_aware import InverseCostWeightedUtility
+from botorch.acquisition.objective import GenericMCObjective
 from botorch.models.cost import AffineFidelityCostModel
 
 FidelityCostKind = Literal["affine"]
@@ -21,6 +22,8 @@ class FidelityCostConfig:
     evaluation. ``fidelity_weights`` defines the linear contribution of each
     fidelity feature to cost. Negative feature indices are accepted when the
     model dimension is available, matching ``FidelitySpec`` / ``ModelConfig``.
+    ``min_cost`` is applied through the cost objective so that the public
+    configuration remains stable across BoTorch cost-utility API changes.
     """
 
     kind: FidelityCostKind | str = "affine"
@@ -101,6 +104,14 @@ def _resolved_weights(
     return weights
 
 
+def _minimum_cost_objective(min_cost: float) -> GenericMCObjective:
+    """Return a cost objective that guarantees strictly positive costs."""
+
+    return GenericMCObjective(
+        lambda samples, X=None: samples.squeeze(-1).clamp_min(min_cost)
+    )
+
+
 def build_fidelity_cost_utility(
     config: FidelityCostConfig,
     *,
@@ -122,7 +133,7 @@ def build_fidelity_cost_utility(
     )
     utility = InverseCostWeightedUtility(
         cost_model=cost_model,
-        min_cost=config.min_cost,
+        cost_objective=_minimum_cost_objective(config.min_cost),
     )
     return cost_model, utility
 

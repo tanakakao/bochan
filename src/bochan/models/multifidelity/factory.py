@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any, Literal, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Literal
 
 from torch import Tensor
 
@@ -15,8 +15,11 @@ if TYPE_CHECKING:
         GaussianMultiFidelityGP,
     )
 
+    FidelitySurrogate = GaussianMultiFidelityGP | GaussianMixedMultiFidelityGP
+else:
+    FidelitySurrogate = Any
+
 FidelityInputMode = Literal["continuous", "mixed"]
-FidelitySurrogate = "GaussianMultiFidelityGP | GaussianMixedMultiFidelityGP"
 
 
 def _normalize_input_mode(input_mode: str) -> FidelityInputMode:

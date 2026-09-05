@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import pytest
 import torch
 
 from bochan.api import ModelConfig, MultiOutputConfig
@@ -156,7 +155,7 @@ def test_target_fixed_optimization_merges_all_fidelity_dimensions():
     assert resolved.fixed_features == {1: 1.0, 2: 0.8}
 
 
-def test_joint_multidimensional_fidelity_search_is_deferred_to_phase60():
+def test_joint_multidimensional_fidelity_search_is_supported_in_phase60():
     train_X, train_Y = _continuous_data()
     bundle = build_model(
         train_X,
@@ -175,9 +174,12 @@ def test_joint_multidimensional_fidelity_search_is_deferred_to_phase60():
         dtype=torch.double,
     )
 
-    with pytest.raises(NotImplementedError, match="exactly one fidelity feature"):
-        prepare_continuous_fidelity_optimization(
-            OptimizeConfig(optimize_fidelity=True),
-            model=bundle.model,
-            bounds=bounds,
-        )
+    resolved = prepare_continuous_fidelity_optimization(
+        OptimizeConfig(optimize_fidelity=True),
+        model=bundle.model,
+        bounds=bounds,
+    )
+
+    assert resolved.optimize_fidelity is True
+    assert resolved.fixed_features is None
+    assert resolved.fixed_features_list is None

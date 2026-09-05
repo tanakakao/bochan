@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from fastapi.testclient import TestClient
-
 from bochan.serving.fastapi.app import create_app
 
 

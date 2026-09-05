@@ -1,9 +1,8 @@
 """Long-format Gaussian multi-fidelity regression models.
 
-The public input already contains one or more fidelity columns, e.g.
-``X = [design..., fidelity]``. This is intentionally separate from the existing
-wide-format multi-fidelity models where fidelities are represented by output
-columns.
+The public input already contains one or more fidelity columns. This is
+intentionally separate from the existing wide-format multi-fidelity models
+where fidelities are represented by output columns.
 """
 
 from __future__ import annotations
@@ -30,22 +29,7 @@ from bochan.models.multifidelity import FidelitySpec, ResolvedFidelitySpec
 
 
 class GaussianMultiFidelityGP(SingleTaskMultiFidelityGP):
-    """Gaussian multi-fidelity GP for long-format inputs.
-
-    Parameters
-    ----------
-    train_X:
-        Training inputs with fidelity represented by an input feature.
-    train_Y:
-        Scalar observations with shape ``[n, 1]``.
-    train_Yvar:
-        Optional known observation variances with the same shape as ``train_Y``.
-    fidelity_spec:
-        Shared fidelity-axis contract. Negative indices are resolved against
-        ``train_X.shape[-1]``.
-    bounds:
-        Optional public input bounds used to validate target fidelities.
-    """
+    """Gaussian multi-fidelity GP for long-format inputs."""
 
     def __init__(
         self,
@@ -81,25 +65,22 @@ class GaussianMultiFidelityGP(SingleTaskMultiFidelityGP):
 
         d = int(X.shape[-1])
         if isinstance(fidelity_spec, FidelitySpec):
-            resolved = fidelity_spec.resolve(d=d, bounds=bounds, single_fidelity_only=True)
+            resolved = fidelity_spec.resolve(d=d, bounds=bounds)
         elif isinstance(fidelity_spec, ResolvedFidelitySpec):
             resolved = fidelity_spec
-            if len(resolved.fidelity_features) != 1:
-                raise ValueError(
-                    "Gaussian Multi-Fidelity v1 supports exactly one continuous fidelity feature."
-                )
-            index = resolved.primary_fidelity_feature
-            if index < 0 or index >= d:
-                raise ValueError(f"Invalid resolved fidelity dim {index} for input dim {d}.")
+            if not resolved.fidelity_features:
+                raise ValueError("At least one resolved fidelity feature is required.")
+            for index in resolved.fidelity_features:
+                if index < 0 or index >= d:
+                    raise ValueError(f"Invalid resolved fidelity dim {index} for input dim {d}.")
         else:
             raise TypeError("fidelity_spec must be FidelitySpec or ResolvedFidelitySpec.")
 
-        fidelity_index = resolved.primary_fidelity_feature
         super().__init__(
             train_X=X,
             train_Y=Y,
             train_Yvar=Yvar,
-            data_fidelities=[fidelity_index],
+            data_fidelities=list(resolved.fidelity_features),
             linear_truncated=linear_truncated,
             nu=nu,
             covar_module=covar_module,
@@ -158,10 +139,8 @@ class GaussianMultiFidelityGP(SingleTaskMultiFidelityGP):
 class GaussianMixedMultiFidelityGP(GaussianMultiFidelityGP):
     """Mixed continuous/categorical Gaussian multi-fidelity GP.
 
-    The covariance is constructed as ``K_continuous * K_categorical`` for
-    non-fidelity inputs. ``SingleTaskMultiFidelityGP`` then multiplies this by
-    its dedicated fidelity kernel, producing
-    ``K_continuous * K_categorical * K_fidelity``.
+    The non-fidelity covariance is ``K_continuous * K_categorical``. BoTorch
+    multiplies this by one fidelity kernel per configured data-fidelity feature.
     """
 
     def __init__(
@@ -199,7 +178,6 @@ class GaussianMixedMultiFidelityGP(GaussianMultiFidelityGP):
             d=d,
             cat_dims=cat_dims,
             bounds=bounds,
-            single_fidelity_only=True,
         )
         categorical = tuple(resolved.categorical_features)
         fidelity = tuple(resolved.fidelity_features)

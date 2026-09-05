@@ -32,7 +32,7 @@ def test_fidelity_spec_rejects_duplicate_indices_after_resolution() -> None:
     spec = FidelitySpec(fidelity_features=(2, -1))
 
     with pytest.raises(ValueError, match="Duplicate fidelity dim"):
-        spec.resolve(3, single_fidelity_only=False)
+        spec.resolve(3)
 
 
 def test_fidelity_spec_rejects_categorical_collision() -> None:
@@ -70,23 +70,23 @@ def test_fidelity_spec_rejects_invalid_bounds_shape() -> None:
         spec.resolve(3, bounds=torch.zeros(3, 2))
 
 
-def test_fidelity_spec_v1_rejects_multiple_fidelity_features() -> None:
-    spec = FidelitySpec(fidelity_features=(1, 2))
-
-    with pytest.raises(ValueError, match="supports exactly one continuous fidelity"):
-        spec.resolve(4)
-
-
-def test_fidelity_spec_can_resolve_multiple_features_for_future_extensions() -> None:
+def test_fidelity_spec_phase59_accepts_multiple_fidelity_features() -> None:
     spec = FidelitySpec(
         fidelity_features=(-2, -1),
         target_fidelities={-2: 0.8, -1: 1.0},
     )
 
-    resolved = spec.resolve(5, single_fidelity_only=False)
+    resolved = spec.resolve(5)
 
     assert resolved.fidelity_features == (3, 4)
     assert resolved.target_fidelities == {3: 0.8, 4: 1.0}
+
+
+def test_fidelity_spec_single_fidelity_compatibility_guard() -> None:
+    spec = FidelitySpec(fidelity_features=(1, 2))
+
+    with pytest.raises(ValueError, match="supports exactly one continuous fidelity"):
+        spec.resolve(4, single_fidelity_only=True)
 
 
 def test_fidelity_spec_rejects_nonfinite_target() -> None:

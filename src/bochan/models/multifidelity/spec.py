@@ -37,9 +37,9 @@ def _normalize_feature_indices(
 class FidelitySpec:
     """Describe which input columns represent fidelity.
 
-    ``fidelity_features`` accepts negative indices and remains unresolved until
-    the public input dimensionality is known. ``target_fidelities`` keys use the
-    same indexing convention.
+    ``fidelity_features`` accepts one or more feature indices. Negative indices
+    remain unresolved until the public input dimensionality is known.
+    ``target_fidelities`` keys use the same indexing convention.
     """
 
     fidelity_features: tuple[int, ...]
@@ -65,9 +65,14 @@ class FidelitySpec:
         *,
         cat_dims: Sequence[int] | None = None,
         bounds: Tensor | None = None,
-        single_fidelity_only: bool = True,
+        single_fidelity_only: bool = False,
     ) -> ResolvedFidelitySpec:
-        """Resolve negative indices and validate the feature contract."""
+        """Resolve negative indices and validate the feature contract.
+
+        ``single_fidelity_only`` remains available as a compatibility guard for
+        callers whose algorithm still supports exactly one fidelity dimension.
+        The shared Phase-59 model contract itself accepts multiple dimensions.
+        """
 
         fidelity_features = _normalize_feature_indices(
             self.fidelity_features,
@@ -75,9 +80,7 @@ class FidelitySpec:
             label="fidelity",
         )
         if single_fidelity_only and len(fidelity_features) != 1:
-            raise ValueError(
-                "Gaussian Multi-Fidelity v1 supports exactly one continuous fidelity feature."
-            )
+            raise ValueError("This operation supports exactly one continuous fidelity feature.")
 
         categorical = ()
         if cat_dims is not None:
@@ -143,7 +146,7 @@ class ResolvedFidelitySpec:
 
     @property
     def primary_fidelity_feature(self) -> int:
-        """Return the single v1 fidelity feature index."""
+        """Return the fidelity index for algorithms restricted to one dimension."""
 
         if len(self.fidelity_features) != 1:
             raise ValueError("Expected exactly one resolved fidelity feature.")

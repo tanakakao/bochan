@@ -8,6 +8,10 @@ should be placed here as they are introduced.
 from .configured import create_configured_fidelity_surrogate
 from .cost import FidelityCostConfig, FidelityCostKind, build_fidelity_cost_utility
 from .factory import FidelityInputMode, create_fidelity_surrogate
+from .multioutput import (
+    bind_shared_multifidelity_metadata,
+    shared_multifidelity_metadata,
+)
 from .optimization import (
     enumerate_discrete_fidelities_into_opt_config,
     merge_target_fidelities_into_opt_config,
@@ -22,11 +26,13 @@ __all__ = [
     "FidelityInputMode",
     "FidelitySpec",
     "ResolvedFidelitySpec",
+    "bind_shared_multifidelity_metadata",
     "build_fidelity_cost_utility",
     "create_configured_fidelity_surrogate",
     "create_fidelity_surrogate",
     "enumerate_discrete_fidelities_into_opt_config",
     "merge_target_fidelities_into_opt_config",
     "prepare_continuous_fidelity_optimization",
+    "shared_multifidelity_metadata",
     "target_fidelity_fixed_features",
 ]

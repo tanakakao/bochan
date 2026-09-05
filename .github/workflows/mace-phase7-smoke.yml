@@ -4,6 +4,18 @@ on:
   pull_request:
     branches:
       - main
+    paths:
+      - "src/bochan/composition/encoders/mace.py"
+      - "src/bochan/models/regression/gaussian/deep/mace*.py"
+      - "src/bochan/models/regression/gaussian/deep/structure.py"
+      - "src/bochan/tabular/structure/mace.py"
+      - "src/bochan/serving/fastapi/**/*mace*"
+      - "src/bochan/structure/adapter.py"
+      - "tests/*mace*.py"
+      - "tests/**/*mace*.py"
+      - "examples/*mace*.py"
+      - "examples/**/*mace*.py"
+      - ".github/workflows/mace-phase7-smoke.yml"
   workflow_dispatch:
 
 jobs:

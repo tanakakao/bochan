@@ -5,10 +5,10 @@ on:
     paths:
       - "src/bochan/serving/fastapi/routers/material_model_axes.py"
       - "src/bochan/serving/fastapi/services/material_models.py"
-      - "src/bochan/serving/fastapi/services/candidates.py"
       - "src/bochan/serving/fastapi/schemas/material_model_axes.py"
-      - "src/bochan/serving/fastapi/schemas/requests.py"
       - "tests/test_material_fastapi_execution_phase42.py"
+      - "tests/test_material_fastapi_axes_phase41.py"
+      - "tests/test_material_api_bo_phase40.py"
       - ".github/workflows/material-fastapi-execution-phase42.yml"
 
 jobs:
@@ -33,7 +33,5 @@ jobs:
           ruff check \
             src/bochan/serving/fastapi/routers/material_model_axes.py \
             src/bochan/serving/fastapi/services/material_models.py \
-            src/bochan/serving/fastapi/services/candidates.py \
             src/bochan/serving/fastapi/schemas/material_model_axes.py \
-            src/bochan/serving/fastapi/schemas/requests.py \
             tests/test_material_fastapi_execution_phase42.py

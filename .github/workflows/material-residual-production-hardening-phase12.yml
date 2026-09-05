@@ -4,8 +4,9 @@ on:
   pull_request:
     paths:
       - "src/bochan/models/regression/gaussian/materials/**"
-      - "src/bochan/tabular/structure/**"
-      - "src/bochan/serving/fastapi/**"
+      - "src/bochan/tabular/structure/*material*"
+      - "src/bochan/serving/fastapi/**/*material*"
+      - "tests/_material_residual_hardening_utils.py"
       - "tests/models/materials/test_residual_production_hardening.py"
       - "tests/serving/fastapi/test_material_residual_artifact_roundtrip_phase12.py"
       - "tests/serving/fastapi/test_material_residual_e2e_phase12.py"

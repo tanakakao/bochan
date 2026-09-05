@@ -4,6 +4,21 @@ on:
   pull_request:
     branches:
       - main
+    paths:
+      - "src/bochan/api/support/one_shot.py"
+      - "src/bochan/api/support/best_subset.py"
+      - "src/bochan/api/support/multi_group_best_subset.py"
+      - "src/bochan/tabular/composition/logratio_support.py"
+      - "src/bochan/tabular/composition/variable_total_support.py"
+      - "src/bochan/tabular/composition/multi_raw_support.py"
+      - "tests/test_k_sparse_best_subset_one_shot.py"
+      - "tests/test_composition_one_shot_best_subset.py"
+      - "tests/test_k_sparse_best_subset.py"
+      - "tests/test_k_sparse_best_subset_groups.py"
+      - "tests/test_composition_logratio_best_subset.py"
+      - "tests/test_composition_variable_total_best_subset.py"
+      - "tests/test_composition_multi_raw_best_subset.py"
+      - ".github/workflows/one-shot-best-subset-smoke.yml"
   workflow_dispatch:
 
 jobs:

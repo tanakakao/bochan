@@ -4,6 +4,19 @@ on:
   pull_request:
     branches:
       - main
+    paths:
+      - "src/bochan/acquisition/non_gaussian/**"
+      - "src/bochan/acquisition/regression/active_learning/**"
+      - "src/bochan/models/regression/count/**"
+      - "src/bochan/api/candidate/uniqueness.py"
+      - "src/bochan/api/registry/acquisition.py"
+      - "tests/test_non_gaussian_*.py"
+      - "tests/test_gamma_fantasize.py"
+      - "tests/test_poisson_heteroscedastic_init.py"
+      - "tests/test_negative_binomial_heteroscedastic_init.py"
+      - "tests/test_api_candidate_uniqueness.py"
+      - "tests/test_regression_active_learning_duplicate_exclusion.py"
+      - ".github/workflows/non-gaussian-acquisition-smoke.yml"
   workflow_dispatch:
 
 jobs:

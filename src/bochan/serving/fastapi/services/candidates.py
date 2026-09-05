@@ -37,76 +37,81 @@ def _inject_llm_options(opt_config: Any, request: Any) -> Any:
     return replace(opt_config, optimizer_kwargs=optimizer_kwargs)
 
 
+def _inject_multifidelity_options(acq_config: Any, opt_config: Any, request: Any) -> tuple[Any, Any]:
+    """Merge Phase 53 transport conveniences into canonical core configs."""
+
+    acqf_kwargs = dict(getattr(acq_config, "acqf_kwargs", {}) or {})
+    target_fidelity = getattr(request, "target_fidelity", None)
+    cost_config = getattr(request, "cost_config", None)
+    if target_fidelity is not None:
+        if "target_fidelity" in acqf_kwargs and float(acqf_kwargs["target_fidelity"]) != float(target_fidelity):
+            raise ValueError("target_fidelity conflicts with acquisition_config.acqf_kwargs.")
+        acqf_kwargs["target_fidelity"] = float(target_fidelity)
+    if cost_config is not None:
+        if "cost_config" in acqf_kwargs and acqf_kwargs["cost_config"] != cost_config:
+            raise ValueError("cost_config conflicts with acquisition_config.acqf_kwargs.")
+        acqf_kwargs["cost_config"] = dict(cost_config)
+    if acqf_kwargs != dict(getattr(acq_config, "acqf_kwargs", {}) or {}):
+        acq_config = replace(acq_config, acqf_kwargs=acqf_kwargs)
+
+    fidelity_values = getattr(request, "fidelity_values", None)
+    optimize_fidelity = getattr(request, "optimize_fidelity", None)
+    if fidelity_values is not None:
+        existing = getattr(opt_config, "fidelity_values", None)
+        values = tuple(float(value) for value in fidelity_values)
+        if existing is not None and tuple(existing) != values:
+            raise ValueError("fidelity_values conflicts with optimize_config.fidelity_values.")
+        opt_config = replace(opt_config, fidelity_values=values)
+    if optimize_fidelity is not None:
+        existing = bool(getattr(opt_config, "optimize_fidelity", False))
+        if existing and not bool(optimize_fidelity):
+            raise ValueError("optimize_fidelity conflicts with optimize_config.optimize_fidelity.")
+        opt_config = replace(opt_config, optimize_fidelity=bool(optimize_fidelity))
+
+    if getattr(opt_config, "fidelity_values", None) is not None and bool(getattr(opt_config, "optimize_fidelity", False)):
+        raise ValueError("Specify either fidelity_values or optimize_fidelity=True, not both.")
+    return acq_config, opt_config
+
+
 def _candidate_call_args(optimizer: Any, request: Any) -> dict[str, Any]:
     """Convert one HTTP candidate request into canonical optimizer arguments."""
 
     options = request.tensor_options
-    opt_config = _inject_llm_options(
-        to_optimize_config(request.opt_config, options),
-        request,
-    )
-    opt_config = apply_material_target_task(
-        optimizer,
-        opt_config,
-        getattr(request, "target_task", None),
-    )
+    opt_config = _inject_llm_options(to_optimize_config(request.opt_config, options), request)
+    opt_config = apply_material_target_task(optimizer, opt_config, getattr(request, "target_task", None))
+    acq_config = to_acquisition_config(request.acq_config, options, optimizer=optimizer)
+    acq_config, opt_config = _inject_multifidelity_options(acq_config, opt_config, request)
     return {
-        "acq_config": to_acquisition_config(
-            request.acq_config,
-            options,
-            optimizer=optimizer,
-        ),
+        "acq_config": acq_config,
         "opt_config": opt_config,
-        "data_context": (
-            to_data_context(request.data_context, options)
-            if request.data_context is not None
-            else None
-        ),
-        "bounds": (
-            to_tensor(request.bounds, options)
-            if request.bounds is not None
-            else None
-        ),
+        "data_context": to_data_context(request.data_context, options) if request.data_context is not None else None,
+        "bounds": to_tensor(request.bounds, options) if request.bounds is not None else None,
     }
 
 
-def generate_candidate_result(
-    optimizer: Any,
-    request: Any,
-    *,
-    use_ask: bool = False,
-) -> tuple[Any, Any]:
+def generate_candidate_result(optimizer: Any, request: Any, *, use_ask: bool = False) -> tuple[Any, Any]:
     """Generate candidates through the canonical optimizer API."""
 
     method = optimizer.ask if use_ask else optimizer.candidate
     return method(**_candidate_call_args(optimizer, request))
 
 
-def compare_candidate_results(
-    optimizer: Any,
-    request: Any,
-) -> dict[str, Any]:
+def compare_candidate_results(optimizer: Any, request: Any) -> dict[str, Any]:
     """Evaluate several acquisition configurations using one converted context."""
 
     options = request.tensor_options
-    acq_configs = [
-        to_acquisition_config(
-            config,
-            options,
-            optimizer=optimizer,
-        )
-        for config in request.acq_configs
-    ]
     opt_config = apply_material_target_task(
         optimizer,
         to_optimize_config(request.opt_config, options),
         getattr(request, "target_task", None),
     )
-    data_context = (
-        to_data_context(request.data_context, options)
-        if request.data_context is not None
-        else None
-    )
+    acq_configs = []
+    for config in request.acq_configs:
+        acq_config = to_acquisition_config(config, options, optimizer=optimizer)
+        acq_config, resolved_opt = _inject_multifidelity_options(acq_config, opt_config, request)
+        acq_configs.append(acq_config)
+        opt_config = resolved_opt
+    data_context = to_data_context(request.data_context, options) if request.data_context is not None else None
     bounds = to_tensor(request.bounds, options) if request.bounds is not None else None
     return optimizer.compare_acquisitions(
         acq_configs=acq_configs,

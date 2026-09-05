@@ -5,6 +5,12 @@ classification family. Shared fidelity-axis transforms, adapters, and validation
 should be placed here as they are introduced.
 """
 
+from .factory import FidelityInputMode, create_fidelity_surrogate
 from .spec import FidelitySpec, ResolvedFidelitySpec
 
-__all__ = ["FidelitySpec", "ResolvedFidelitySpec"]
+__all__ = [
+    "FidelityInputMode",
+    "FidelitySpec",
+    "ResolvedFidelitySpec",
+    "create_fidelity_surrogate",
+]

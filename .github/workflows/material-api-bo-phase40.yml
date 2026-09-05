@@ -1,0 +1,36 @@
+name: Material API BO Phase 40
+
+on:
+  pull_request:
+    paths:
+      - "src/bochan/api/**"
+      - "src/bochan/models/regression/gaussian/materials/**"
+      - "tests/test_material_api_bo_phase40.py"
+      - ".github/workflows/material-api-bo-phase40.yml"
+
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+          python -m pip install pytest ruff
+      - name: Test material API BO integration
+        run: |
+          pytest -q \
+            tests/test_material_api_bo_phase40.py \
+            tests/test_material_model_axes_phase39.py \
+            tests/test_material_mixed_explicit_task_phase38.py
+      - name: Ruff
+        run: |
+          ruff check \
+            src/bochan/api/modeling/materials.py \
+            src/bochan/api/modeling/__init__.py \
+            src/bochan/api/__init__.py \
+            tests/test_material_api_bo_phase40.py

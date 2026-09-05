@@ -4,6 +4,17 @@ on:
   pull_request:
     branches:
       - main
+    paths:
+      - "src/bochan/composition/encoders/m3gnet.py"
+      - "src/bochan/models/regression/gaussian/deep/m3gnet*.py"
+      - "src/bochan/models/regression/gaussian/deep/structure.py"
+      - "src/bochan/tabular/structure/m3gnet.py"
+      - "src/bochan/serving/fastapi/**/*m3gnet*"
+      - "tests/*m3gnet*.py"
+      - "tests/**/*m3gnet*.py"
+      - "examples/*m3gnet*.py"
+      - "examples/**/*m3gnet*.py"
+      - ".github/workflows/m3gnet-smoke.yml"
   workflow_dispatch:
 
 jobs:

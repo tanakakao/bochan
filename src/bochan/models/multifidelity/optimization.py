@@ -1,4 +1,4 @@
-"""Target and discrete-fidelity helpers for candidate optimization."""
+"""Target, discrete, and continuous-fidelity helpers for candidate optimization."""
 
 from __future__ import annotations
 
@@ -52,19 +52,73 @@ def _validate_fidelity_values(values: Sequence[float], *, bounds: Any, index: in
     return resolved
 
 
+def _validate_continuous_fidelity_search(
+    opt_config: Any,
+    *,
+    model: Any,
+    bounds: Any,
+) -> Any:
+    """Validate that the configured fidelity feature is free for joint search."""
+
+    if not bool(getattr(opt_config, "optimize_fidelity", False)):
+        return opt_config
+
+    if getattr(opt_config, "fidelity_values", None) is not None:
+        raise ValueError(
+            "fidelity_values and optimize_fidelity=True are mutually exclusive."
+        )
+
+    features = _fidelity_features(model)
+    if len(features) != 1:
+        if not features:
+            raise ValueError(
+                "optimize_fidelity=True requires a multi-fidelity model with one fidelity feature."
+            )
+        raise NotImplementedError(
+            "Continuous fidelity optimization currently supports exactly one fidelity feature."
+        )
+    index = features[0]
+
+    if bounds is None:
+        raise ValueError("Continuous fidelity optimization requires bounds.")
+    try:
+        lower = float(bounds[0][index])
+        upper = float(bounds[1][index])
+    except (IndexError, TypeError) as exc:
+        raise ValueError(
+            f"bounds do not contain fidelity feature {index}."
+        ) from exc
+    if not lower <= upper:
+        raise ValueError(
+            f"Fidelity bounds must satisfy lower <= upper, got [{lower}, {upper}]."
+        )
+
+    fixed = {int(k): float(v) for k, v in (getattr(opt_config, "fixed_features", None) or {}).items()}
+    if index in fixed:
+        raise ValueError(
+            "optimize_fidelity=True conflicts with fixed_features fixing the fidelity: "
+            f"feature {index}={fixed[index]!r}."
+        )
+
+    fixed_features_list = getattr(opt_config, "fixed_features_list", None)
+    if fixed_features_list is not None:
+        for assignment in fixed_features_list:
+            if index in {int(k): v for k, v in assignment.items()}:
+                raise ValueError(
+                    "optimize_fidelity=True conflicts with fixed_features_list fixing "
+                    f"fidelity feature {index}."
+                )
+
+    return opt_config
+
+
 def enumerate_discrete_fidelities_into_opt_config(
     opt_config: Any,
     *,
     model: Any,
     bounds: Any = None,
 ) -> Any:
-    """Expand discrete fidelity choices into mixed fixed-feature assignments.
-
-    Phase 49 formally supports one fidelity feature. Existing categorical or
-    user-provided ``fixed_features_list`` assignments are crossed with every
-    requested fidelity value. Global non-fidelity ``fixed_features`` remain
-    global and are merged by the existing optimizer factory.
-    """
+    """Expand discrete fidelity choices into mixed fixed-feature assignments."""
 
     values = getattr(opt_config, "fidelity_values", None)
     if values is None:
@@ -110,11 +164,29 @@ def enumerate_discrete_fidelities_into_opt_config(
     )
 
 
+def prepare_continuous_fidelity_optimization(
+    opt_config: Any,
+    *,
+    model: Any,
+    bounds: Any,
+) -> Any:
+    """Prepare joint x/fidelity optimization without target-fidelity fixing."""
+
+    return _validate_continuous_fidelity_search(
+        opt_config,
+        model=model,
+        bounds=bounds,
+    )
+
+
 def merge_target_fidelities_into_opt_config(opt_config: Any, *, model: Any) -> Any:
-    """Merge model target fidelities unless discrete fidelity search is active."""
+    """Merge model target fidelities unless query-fidelity search is active."""
 
     if getattr(opt_config, "fidelity_values", None) is not None:
         return opt_config
+    if bool(getattr(opt_config, "optimize_fidelity", False)):
+        return opt_config
+
     targets = target_fidelity_fixed_features(model)
     if not targets:
         return opt_config
@@ -148,5 +220,6 @@ def merge_target_fidelities_into_opt_config(opt_config: Any, *, model: Any) -> A
 __all__ = [
     "enumerate_discrete_fidelities_into_opt_config",
     "merge_target_fidelities_into_opt_config",
+    "prepare_continuous_fidelity_optimization",
     "target_fidelity_fixed_features",
 ]

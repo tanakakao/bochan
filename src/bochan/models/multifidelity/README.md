@@ -20,6 +20,23 @@ model_config = ModelConfig(
 )
 ```
 
+Multiple fidelity dimensions are supported by the Gaussian surrogate:
+
+```python
+model_config = ModelConfig(
+    task_type="regression",
+    model_type="multifidelity_gp",
+    input_type="normal",
+    model_kwargs={
+        "fidelity_features": [-2, -1],
+        "target_fidelities": {
+            -2: 1.0,
+            -1: 1.0,
+        },
+    },
+)
+```
+
 Mixed input:
 
 ```python
@@ -29,35 +46,35 @@ model_config = ModelConfig(
     input_type="mixed",
     cat_dims=[1, 3],
     model_kwargs={
-        "fidelity_features": [-1],
-        "target_fidelities": {-1: 1.0},
+        "fidelity_features": [-2, -1],
+        "target_fidelities": {-2: 1.0, -1: 1.0},
     },
 )
 ```
 
-Gaussian Multi-Fidelity v1 formally supports one continuous fidelity feature. Negative indices are resolved against the input dimension and duplicate / categorical-overlap indices are rejected.
+Negative indices are resolved against the input dimension and duplicate / categorical-overlap indices are rejected. BoTorch constructs one data-fidelity kernel per configured fidelity feature.
 
 ## Query fidelity modes
 
-Target-only optimization fixes the fidelity to the configured target:
+Target-only optimization fixes every configured fidelity dimension to its target:
 
 ```python
 OptimizeConfig()
 ```
 
-Discrete fidelity search enumerates explicitly allowed query fidelities:
+For a single fidelity dimension, discrete fidelity search enumerates explicitly allowed query fidelities:
 
 ```python
 OptimizeConfig(fidelity_values=[0.25, 0.5, 1.0])
 ```
 
-Continuous fidelity search jointly optimizes design variables and fidelity:
+and continuous fidelity search jointly optimizes design variables and fidelity:
 
 ```python
 OptimizeConfig(optimize_fidelity=True)
 ```
 
-`fidelity_values` and `optimize_fidelity=True` are mutually exclusive.
+Phase 59 deliberately keeps discrete and continuous query-fidelity search restricted to exactly one fidelity dimension. Multi-dimensional fidelity assignments / joint fidelity optimization are introduced in Phase 60. `fidelity_values` and `optimize_fidelity=True` remain mutually exclusive.
 
 ## Multi-fidelity acquisitions
 
@@ -69,6 +86,15 @@ AcquisitionConfig(name="qmfmes")
 ```
 
 The configured `target_fidelities` defines the terminal high-fidelity objective used by the acquisition projection. Candidate-time fidelity selection is controlled independently by `OptimizeConfig`.
+
+Independent multi-output models additionally support MF-HVKG and MOMF:
+
+```python
+AcquisitionConfig(name="mfhvkg")
+AcquisitionConfig(name="momf")
+```
+
+MOMF augments the physical objectives with a fidelity/trust objective and applies fidelity-dependent evaluation cost.
 
 ## Cost-aware optimization
 
@@ -87,7 +113,9 @@ AcquisitionConfig(
 )
 ```
 
-Negative fidelity indices are resolved against the model dimension, so `-1` consistently means the last input feature for both model and cost configuration.
+For multiple fidelity dimensions, explicit weights can already be supplied for each fidelity feature. Generalized known-cost configuration is expanded further in Phase 61.
+
+Negative fidelity indices are resolved against the model dimension.
 
 ## Multi-output
 
@@ -101,8 +129,8 @@ model_config = ModelConfig(
     model_type="multifidelity_gp",
     input_type="normal",
     model_kwargs={
-        "fidelity_features": [-1],
-        "target_fidelities": {-1: 1.0},
+        "fidelity_features": [-2, -1],
+        "target_fidelities": {-2: 1.0, -1: 1.0},
     },
     multi_output_config=MultiOutputConfig(
         output_names=["property_a", "property_b"],
@@ -110,7 +138,7 @@ model_config = ModelConfig(
 )
 ```
 
-All output submodels must share the same fidelity feature, target fidelity, input mode, and categorical dimensions. Ordinary multi-objective acquisitions such as EHVI / NEHVI / NParEGO can use the shared fidelity optimization modes. MFKG and MF-MES remain single-output in v1.
+All output submodels must share the same fidelity features, target fidelities, input mode, and categorical dimensions.
 
 ## Known observation variance
 
@@ -118,30 +146,18 @@ All output submodels must share the same fidelity feature, target fidelity, inpu
 
 ## FastAPI
 
-FastAPI fitting uses the same `model_type="multifidelity_gp"` payload. Candidate requests may specify MF settings either in the canonical nested configs or through request convenience fields:
+FastAPI fitting uses the same `model_type="multifidelity_gp"` payload. Candidate requests may specify MF settings either in the canonical nested configs or through request convenience fields.
 
-```json
-{
-  "acquisition_config": {"name": "mfkg"},
-  "optimize_fidelity": true,
-  "target_fidelity": 1.0,
-  "cost_config": {
-    "fixed_cost": 1.0,
-    "fidelity_weights": {"-1": 4.0}
-  }
-}
-```
+## Current v2 boundary after Phase 59
 
-## Current v1 boundaries
-
-- one continuous fidelity feature
-- Gaussian regression
+- one or more continuous fidelity features in Gaussian surrogate models
 - continuous or mixed design inputs
 - inferred or known observation noise
 - independent multi-output via `ModelListGP`
-- MFKG / MF-MES for single-output models
+- target-fixed optimization supports all configured fidelity targets
+- discrete / continuous query-fidelity search remains single-dimensional until Phase 60
+- MFKG / MF-MES single-output; MF-HVKG / MOMF multi-output
 - affine known cost model
-- target-fixed, discrete-fidelity, and continuous-fidelity candidate optimization
 - CPU and CUDA-compatible tensor/device handling
 
-Future extensions can add multiple fidelity dimensions, learned/custom cost models, correlated multi-output MF models, and dedicated multi-objective information-value acquisitions such as MF-HVKG.
+Planned v2 extensions include multi-dimensional query-fidelity optimization, generalized and learned cost models, correlated multi-output MF, and discrete information sources.

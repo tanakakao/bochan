@@ -8,7 +8,7 @@ required by MFKG and MF-MES.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from functools import partial
 from typing import Any
 

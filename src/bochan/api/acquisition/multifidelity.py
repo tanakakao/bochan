@@ -47,6 +47,21 @@ def is_multifidelity_acquisition_name(name: Any) -> bool:
     return normalized in _MFKG_NAMES or normalized in _MFMES_NAMES
 
 
+def _shared_multifidelity_metadata(model: Any) -> Mapping[str, Any] | None:
+    """Resolve shared MF metadata from independent ModelListGP submodels."""
+
+    submodels = getattr(model, "models", None)
+    if submodels is None:
+        return None
+    try:
+        from bochan.models.multifidelity.multioutput import shared_multifidelity_metadata
+
+        metadata = shared_multifidelity_metadata(list(submodels))
+    except (TypeError, ValueError):
+        return None
+    return metadata if isinstance(metadata, Mapping) else None
+
+
 def _fidelity_features(model: Any) -> tuple[int, ...]:
     features = getattr(model, "fidelity_features", None)
     if features is None:
@@ -55,6 +70,10 @@ def _fidelity_features(model: Any) -> tuple[int, ...]:
             metadata = metadata()
         if isinstance(metadata, Mapping):
             features = metadata.get("fidelity_features")
+    if features is None:
+        shared = _shared_multifidelity_metadata(model)
+        if shared is not None:
+            features = shared.get("fidelity_features")
     if features is None:
         return ()
     return tuple(int(index) for index in features)
@@ -83,6 +102,10 @@ def _target_fidelities(
             metadata = metadata()
         if isinstance(metadata, Mapping):
             targets = metadata.get("target_fidelities")
+    if targets is None:
+        shared = _shared_multifidelity_metadata(model)
+        if shared is not None:
+            targets = shared.get("target_fidelities")
     if not isinstance(targets, Mapping) or not targets:
         raise ValueError(
             "Multi-fidelity acquisition functions require model target_fidelities. "
@@ -124,7 +147,11 @@ def _projector(*, targets: Mapping[int, float], d: int):
 
 def _categorical_assignments(bundle: ModelBundle) -> list[dict[int, float]] | None:
     model = bundle.model
-    cat_dims = tuple(int(index) for index in (getattr(model, "cat_dims", None) or ()))
+    cat_dims = getattr(model, "cat_dims", None)
+    if cat_dims is None:
+        shared = _shared_multifidelity_metadata(model)
+        cat_dims = None if shared is None else shared.get("cat_dims")
+    cat_dims = tuple(int(index) for index in (cat_dims or ()))
     if not cat_dims:
         return None
     train_X = torch.as_tensor(bundle.train_X)
@@ -197,11 +224,13 @@ def _candidate_set(
     n, d = train_X.shape
     random = torch.rand(size, d, dtype=bounds.dtype, device=bounds.device)
     candidates = bounds[0] + (bounds[1] - bounds[0]) * random
-    cat_dims = tuple(int(index) for index in (getattr(bundle.model, "cat_dims", None) or ()))
-    for index in cat_dims:
-        values = torch.unique(train_X[:, index])
-        draw = torch.randint(values.numel(), (size,), device=bounds.device)
-        candidates[:, index] = values[draw]
+    cat_dims = _categorical_assignments(bundle)
+    if cat_dims:
+        resolved_dims = sorted(cat_dims[0])
+        for index in resolved_dims:
+            values = torch.unique(train_X[:, index])
+            draw = torch.randint(values.numel(), (size,), device=bounds.device)
+            candidates[:, index] = values[draw]
     keep = min(n, size)
     if keep:
         candidates[:keep] = train_X[:keep]

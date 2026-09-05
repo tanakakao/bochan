@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 from .configs import (
     AcquisitionConfigSchema,
@@ -13,7 +13,6 @@ from .configs import (
     ModelConfigSchema,
     OptimizeConfigSchema,
 )
-from .material_model_axes import MaterialModelAxesRequest
 
 
 class APIRequest(BaseModel):
@@ -54,8 +53,7 @@ class LLMContextSchema(APIRequest):
 
 
 class FitModelRequest(APIRequest):
-    bo_model_config: ModelConfigSchema | None = Field(default=None, alias="model_config")
-    material_model: MaterialModelAxesRequest | None = None
+    bo_model_config: ModelConfigSchema = Field(alias="model_config")
     train_X: Any
     train_Y: Any
     train_Yvar: Any | None = None
@@ -63,12 +61,6 @@ class FitModelRequest(APIRequest):
     fit_config: FitConfigSchema | None = None
     data_context: DataContextSchema | None = None
     tensor_options: TensorOptionsSchema = Field(default_factory=TensorOptionsSchema)
-
-    @model_validator(mode="after")
-    def validate_model_source(self):
-        if (self.bo_model_config is None) == (self.material_model is None):
-            raise ValueError("Specify exactly one of model_config or material_model.")
-        return self
 
 
 class LLMPlanRequest(APIRequest):
@@ -101,19 +93,11 @@ class AutoCandidateRequest(APIRequest):
     llm_context: LLMContextSchema | None = None
     planner_response: Any | None = None
     bo_model_config: dict[str, Any] | None = Field(default=None, alias="model_config")
-    material_model: MaterialModelAxesRequest | None = None
-    target_task: int | None = None
     fit_config: dict[str, Any] | None = None
     acquisition_config: dict[str, Any] | None = None
     optimize_config: dict[str, Any] | None = None
     data_context: DataContextSchema | None = None
     tensor_options: TensorOptionsSchema = Field(default_factory=TensorOptionsSchema)
-
-    @model_validator(mode="after")
-    def validate_explicit_model_source(self):
-        if self.bo_model_config is not None and self.material_model is not None:
-            raise ValueError("Specify model_config or material_model, not both.")
-        return self
 
 
 class RefitModelRequest(APIRequest):

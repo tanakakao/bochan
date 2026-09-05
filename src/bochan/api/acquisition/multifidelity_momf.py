@@ -276,11 +276,7 @@ def build_momf_acquisition(
     def augmented_objective(samples: torch.Tensor, X: torch.Tensor | None = None):
         if X is None:
             raise ValueError("MOMF augmented objective requires candidate X.")
-        physical = (
-            samples
-            if physical_objective is None
-            else physical_objective(samples, X=X)
-        )
+        physical = samples if physical_objective is None else physical_objective(samples, X=X)
         return _append_trust_to_samples(
             physical,
             X=X,
@@ -291,7 +287,7 @@ def build_momf_acquisition(
     cost_call, cost_model = _resolve_cost_call(model=model, d=d, kwargs=kwargs)
     sampler = kwargs.pop("sampler", config.sampler)
     X_pending = kwargs.pop("X_pending", data_context.X_pending)
-    constraints = kwargs.pop("constraints", config.constraints)
+    constraints = kwargs.pop("constraints", data_context.constraints)
     eta = kwargs.pop("eta", 1e-3)
     if kwargs:
         unexpected = ", ".join(sorted(kwargs))

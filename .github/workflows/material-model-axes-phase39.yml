@@ -1,0 +1,36 @@
+name: Material model axes Phase 39
+
+on:
+  pull_request:
+    paths:
+      - "src/bochan/models/regression/gaussian/materials/**"
+      - "tests/test_material_model_axes_phase39.py"
+      - ".github/workflows/material-model-axes-phase39.yml"
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+          python -m pip install pytest ruff
+      - name: Test Phase 39 model-axis contract
+        run: |
+          pytest -q \
+            tests/test_material_model_axes_phase39.py \
+            tests/test_material_explicit_task_factory_phase37.py \
+            tests/test_material_mixed_explicit_task_phase38.py \
+            tests/test_material_independent_multioutput_phase34.py
+      - name: Ruff
+        run: |
+          ruff check \
+            src/bochan/models/regression/gaussian/materials/model_axes.py \
+            src/bochan/models/regression/gaussian/materials/__init__.py \
+            tests/test_material_model_axes_phase39.py

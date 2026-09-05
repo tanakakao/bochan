@@ -44,10 +44,19 @@ class _WideMultiFidelityBinaryCore(_BinaryClassificationGPModel):
         covar_module: Kernel | None = None,
         fidelity_covar_module: Kernel | None = None,
         num_inducing: int = 128,
+        num_inducing_points: int | None = None,
         inducing_points: Tensor | None = None,
         learn_inducing_locations: bool = True,
         _full_covar_module: Kernel | None = None,
     ) -> None:
+        if num_inducing_points is not None:
+            alias_value = int(num_inducing_points)
+            if num_inducing != 128 and int(num_inducing) != alias_value:
+                raise ValueError(
+                    "num_inducing and num_inducing_points must match when both are supplied."
+                )
+            num_inducing = alias_value
+
         raw_X = torch.as_tensor(train_X)
         raw_Y = torch.as_tensor(train_Y, dtype=raw_X.dtype, device=raw_X.device)
         if raw_Y.ndim != 2:

@@ -379,7 +379,6 @@ def merge_target_fidelities_into_opt_config(opt_config: Any, *, model: Any) -> A
                         "OptimizeConfig.fixed_features_list conflicts with the model target fidelity: "
                         f"feature {index} has {item[index]!r}, expected {value!r}."
                     )
-                item[index] = value
             merged_list.append(item)
         fixed_features_list = merged_list
 

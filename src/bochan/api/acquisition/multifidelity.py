@@ -209,7 +209,12 @@ def _candidate_set(
     return project_to_target_fidelity(candidates, target_fidelities=dict(targets), d=d)
 
 
-def _resolve_cost_aware_utility(model: Any, kwargs: dict[str, Any]) -> tuple[Any | None, Any | None]:
+def _resolve_cost_aware_utility(
+    model: Any,
+    kwargs: dict[str, Any],
+    *,
+    d: int,
+) -> tuple[Any | None, Any | None]:
     explicit_utility = kwargs.get("cost_aware_utility")
     raw_config = kwargs.pop("cost_config", None)
     if explicit_utility is not None and raw_config is not None:
@@ -223,7 +228,11 @@ def _resolve_cost_aware_utility(model: Any, kwargs: dict[str, Any]) -> tuple[Any
     features = _fidelity_features(model)
     if not features:
         raise ValueError("cost_config requires model fidelity_features metadata.")
-    cost_model, utility = build_fidelity_cost_utility(raw_config, fidelity_features=features)
+    cost_model, utility = build_fidelity_cost_utility(
+        raw_config,
+        fidelity_features=features,
+        d=d,
+    )
     kwargs["cost_aware_utility"] = utility
     return cost_model, utility
 
@@ -267,7 +276,7 @@ def build_multifidelity_acquisition(
             )
     project = _projector(targets=targets, d=d)
     X_pending = kwargs.pop("X_pending", data_context.X_pending)
-    cost_model, cost_utility = _resolve_cost_aware_utility(model, kwargs)
+    cost_model, cost_utility = _resolve_cost_aware_utility(model, kwargs, d=d)
 
     if name in _MFKG_NAMES:
         maximize = bool(kwargs.pop("maximize", True))

@@ -66,7 +66,7 @@ class FidelitySpec:
         cat_dims: Sequence[int] | None = None,
         bounds: Tensor | None = None,
         single_fidelity_only: bool = True,
-    ) -> "ResolvedFidelitySpec":
+    ) -> ResolvedFidelitySpec:
         """Resolve negative indices and validate the feature contract."""
 
         fidelity_features = _normalize_feature_indices(

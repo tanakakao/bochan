@@ -41,5 +41,7 @@ jobs:
             src/bochan/models/multifidelity \
             src/bochan/api/acquisition/multifidelity.py \
             src/bochan/api/acquisition/multifidelity_hvkg.py \
+            src/bochan/api/optimizer/dispatch.py \
             tests/api/test_multifidelity_hardening.py \
-            tests/api/test_multifidelity_hvkg.py
+            tests/api/test_multifidelity_hvkg.py \
+            tests/api/test_multifidelity_hvkg_hardening.py

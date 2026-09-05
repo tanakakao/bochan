@@ -2,8 +2,8 @@
 
 This module keeps multi-fidelity acquisition construction in the API layer so
 ordinary BoTorch acquisition functions remain available for multi-fidelity
-surrogates.  The helpers below only add the extra target-fidelity plumbing
-required by MFKG and MF-MES.
+surrogates. The helpers below add the target-fidelity and optional cost-aware
+plumbing required by MFKG and MF-MES.
 """
 
 from __future__ import annotations
@@ -19,6 +19,11 @@ from botorch.acquisition.max_value_entropy_search import qMultiFidelityMaxValueE
 from botorch.acquisition.objective import ScalarizedPosteriorTransform
 from botorch.acquisition.utils import project_to_target_fidelity
 from botorch.optim import optimize_acqf, optimize_acqf_mixed
+
+from bochan.models.multifidelity.cost import (
+    FidelityCostConfig,
+    build_fidelity_cost_utility,
+)
 
 from ..configs import AcquisitionConfig, DataContext, ModelBundle
 
@@ -62,6 +67,19 @@ def _target_fidelities(model: Any) -> dict[int, float]:
             "Configure target_fidelities on ModelConfig.model_kwargs."
         )
     return {int(index): float(value) for index, value in targets.items()}
+
+
+def _fidelity_features(model: Any) -> tuple[int, ...]:
+    features = getattr(model, "fidelity_features", None)
+    if features is None:
+        metadata = getattr(model, "fidelity_metadata", None)
+        if callable(metadata):
+            metadata = metadata()
+        if isinstance(metadata, Mapping):
+            features = metadata.get("fidelity_features")
+    if features is None:
+        return ()
+    return tuple(int(index) for index in features)
 
 
 def _model_dimension(bundle: ModelBundle) -> int:
@@ -190,8 +208,6 @@ def _candidate_set(
         draw = torch.randint(values.numel(), (size,), device=bounds.device)
         candidates[:, index] = values[draw]
 
-    # Retain observed design locations as part of the discretization whenever
-    # possible.  This improves robustness in small-data and mixed spaces.
     keep = min(n, size)
     if keep:
         candidates[:keep] = train_X[:keep]
@@ -201,6 +217,38 @@ def _candidate_set(
         target_fidelities=dict(targets),
         d=d,
     )
+
+
+def _resolve_cost_aware_utility(model: Any, kwargs: dict[str, Any]) -> tuple[Any | None, Any | None]:
+    """Resolve optional Phase 51 cost configuration from acquisition kwargs."""
+
+    explicit_utility = kwargs.get("cost_aware_utility")
+    raw_config = kwargs.pop("cost_config", None)
+    if explicit_utility is not None and raw_config is not None:
+        raise ValueError("Provide either cost_aware_utility or cost_config, not both.")
+    if raw_config is None:
+        return None, explicit_utility
+    if isinstance(raw_config, Mapping):
+        raw_config = FidelityCostConfig(**dict(raw_config))
+    if not isinstance(raw_config, FidelityCostConfig):
+        raise TypeError("cost_config must be FidelityCostConfig or a mapping of its fields.")
+    features = _fidelity_features(model)
+    if not features:
+        raise ValueError("cost_config requires model fidelity_features metadata.")
+    cost_model, utility = build_fidelity_cost_utility(
+        raw_config,
+        fidelity_features=features,
+    )
+    kwargs["cost_aware_utility"] = utility
+    return cost_model, utility
+
+
+def _attach_cost_metadata(acqf: Any, *, cost_model: Any | None, utility: Any | None) -> Any:
+    if cost_model is not None:
+        object.__setattr__(acqf, "_bochan_cost_model", cost_model)
+    if utility is not None:
+        object.__setattr__(acqf, "_bochan_cost_aware_utility", utility)
+    return acqf
 
 
 def build_multifidelity_acquisition(
@@ -222,6 +270,7 @@ def build_multifidelity_acquisition(
     project = _projector(targets=targets, d=d)
     kwargs = dict(config.acqf_kwargs)
     X_pending = kwargs.pop("X_pending", data_context.X_pending)
+    cost_model, cost_utility = _resolve_cost_aware_utility(model, kwargs)
 
     if name in _MFKG_NAMES:
         maximize = bool(kwargs.pop("maximize", True))
@@ -240,7 +289,7 @@ def build_multifidelity_acquisition(
                 num_restarts=num_restarts,
                 raw_samples=raw_samples,
             )
-        return qMultiFidelityKnowledgeGradient(
+        acqf = qMultiFidelityKnowledgeGradient(
             model=model,
             current_value=current_value,
             posterior_transform=posterior_transform,
@@ -248,6 +297,7 @@ def build_multifidelity_acquisition(
             project=project,
             **kwargs,
         )
+        return _attach_cost_metadata(acqf, cost_model=cost_model, utility=cost_utility)
 
     candidate_set = kwargs.pop("candidate_set", None)
     candidate_set_size = int(kwargs.pop("candidate_set_size", 1024))
@@ -266,13 +316,14 @@ def build_multifidelity_acquisition(
         )
         candidate_set = project(candidate_set)
 
-    return qMultiFidelityMaxValueEntropy(
+    acqf = qMultiFidelityMaxValueEntropy(
         model=model,
         candidate_set=candidate_set,
         X_pending=X_pending,
         project=project,
         **kwargs,
     )
+    return _attach_cost_metadata(acqf, cost_model=cost_model, utility=cost_utility)
 
 
 __all__ = [

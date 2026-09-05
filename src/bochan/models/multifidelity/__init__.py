@@ -6,6 +6,7 @@ should be placed here as they are introduced.
 """
 
 from .configured import create_configured_fidelity_surrogate
+from .cost import FidelityCostConfig, FidelityCostKind, build_fidelity_cost_utility
 from .factory import FidelityInputMode, create_fidelity_surrogate
 from .optimization import (
     enumerate_discrete_fidelities_into_opt_config,
@@ -15,9 +16,12 @@ from .optimization import (
 from .spec import FidelitySpec, ResolvedFidelitySpec
 
 __all__ = [
+    "FidelityCostConfig",
+    "FidelityCostKind",
     "FidelityInputMode",
     "FidelitySpec",
     "ResolvedFidelitySpec",
+    "build_fidelity_cost_utility",
     "create_configured_fidelity_surrogate",
     "create_fidelity_surrogate",
     "enumerate_discrete_fidelities_into_opt_config",

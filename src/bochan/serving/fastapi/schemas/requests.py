@@ -129,6 +129,7 @@ class CandidateRequest(APIRequest):
     opt_config: OptimizeConfigSchema = Field(default_factory=OptimizeConfigSchema, alias="optimize_config")
     data_context: DataContextSchema | None = None
     bounds: Any | None = None
+    target_task: int | None = None
     goal: str | None = None
     llm_config: LLMConfigSchema | None = None
     llm_context: LLMContextSchema | None = None
@@ -142,6 +143,7 @@ class CompareCandidatesRequest(APIRequest):
     opt_config: OptimizeConfigSchema = Field(default_factory=OptimizeConfigSchema, alias="optimize_config")
     data_context: DataContextSchema | None = None
     bounds: Any | None = None
+    target_task: int | None = None
     tensor_options: TensorOptionsSchema = Field(default_factory=TensorOptionsSchema)
 
 

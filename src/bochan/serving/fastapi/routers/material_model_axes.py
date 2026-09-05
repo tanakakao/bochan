@@ -1,46 +1,41 @@
-"""Material model-axis discovery and validation endpoints."""
+"""Material model-axis discovery, validation, and execution endpoints."""
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
-from bochan.api import MaterialAPIModelSpec, material_task_fixed_features
+from bochan.api import BayesianOptimizer, material_task_fixed_features
 from bochan.models.regression.gaussian.materials import (
     list_material_families,
     material_model_axes_capabilities,
 )
 
+from ..converters import model_metadata, to_data_context, to_fit_config, to_tensor
+from ..dependencies import OptimizerStore, get_optimizer_store
 from ..schemas.material_model_axes import (
     MaterialExplicitTaskRequest,
     MaterialModelAxesCapabilitiesResponse,
     MaterialModelAxesCatalogResponse,
     MaterialModelAxesRequest,
     MaterialModelAxesResponse,
+    MaterialModelFitRequest,
     MaterialTaskFixedFeaturesRequest,
     MaterialTaskFixedFeaturesResponse,
 )
+from ..schemas.responses import ModelFitResponse
+from ..services.material_models import (
+    bind_material_model_spec,
+    to_material_api_spec,
+    to_material_model_config,
+)
+
+OPTIMIZER_STORE_DEP = Depends(get_optimizer_store)
 
 router = APIRouter(prefix="/materials/models", tags=["materials"])
 
 
-def _to_api_spec(request: MaterialModelAxesRequest) -> MaterialAPIModelSpec:
-    task = request.task
-    return MaterialAPIModelSpec(
-        family=request.family,
-        kind=request.kind,
-        input_mode=request.input_mode,
-        output_mode=request.output_mode,
-        task_mode=request.task_mode,
-        fidelity_mode=request.fidelity_mode,
-        task_feature=-1 if task is None else task.task_feature,
-        all_tasks=None if task is None or task.all_tasks is None else tuple(task.all_tasks),
-        output_tasks=None if task is None or task.output_tasks is None else tuple(task.output_tasks),
-        backend_kwargs=dict(request.backend_kwargs),
-    )
-
-
 def _normalized_response(request: MaterialModelAxesRequest) -> MaterialModelAxesResponse:
-    spec = _to_api_spec(request)
+    spec = to_material_api_spec(request)
     payload = spec.as_dict()
     task = None
     if spec.axes.task_mode == "explicit":
@@ -112,6 +107,60 @@ def validate_material_model_axes(
     return response
 
 
+@router.post("/fit", response_model=ModelFitResponse)
+def fit_material_model(
+    request: MaterialModelFitRequest,
+    store: OptimizerStore = OPTIMIZER_STORE_DEP,
+) -> ModelFitResponse:
+    """Fit a material-axis surrogate and register it in the shared model store."""
+
+    try:
+        options = request.tensor_options
+        train_X = to_tensor(request.train_X, options)
+        train_Y = to_tensor(request.train_Y, options)
+        train_Yvar = (
+            to_tensor(request.train_Yvar, options)
+            if request.train_Yvar is not None
+            else None
+        )
+        bounds = (
+            to_tensor(request.bounds, options)
+            if request.bounds is not None
+            else None
+        )
+        data_context = (
+            to_data_context(request.data_context, options)
+            if request.data_context is not None
+            else None
+        )
+        model_config, spec = to_material_model_config(request.model)
+        optimizer = BayesianOptimizer(
+            model_config=model_config,
+            fit_config=to_fit_config(request.fit_config),
+            bounds=bounds,
+            data_context=data_context,
+        )
+        optimizer.fit(train_X, train_Y, train_Yvar)
+        bind_material_model_spec(optimizer, spec, input_dim=int(train_X.shape[-1]))
+        model_id = store.add(optimizer)
+        bundle = optimizer.bundle
+        if bundle is None:
+            raise RuntimeError("Optimizer has no fitted bundle.")
+        metadata = model_metadata(optimizer)
+        metadata["material_model_axes"] = spec.as_dict()
+        return ModelFitResponse(
+            model_id=model_id,
+            task_type=str(bundle.task_type),
+            model_type=str(bundle.model_type),
+            n_train=int(train_X.shape[-2]),
+            metadata=metadata,
+        )
+    except NotImplementedError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.post(
     "/task-fixed-features",
     response_model=MaterialTaskFixedFeaturesResponse,
@@ -122,7 +171,7 @@ def get_material_task_fixed_features(
     """Resolve fixed features for BO over one explicit material task."""
 
     try:
-        spec = _to_api_spec(request.model)
+        spec = to_material_api_spec(request.model)
         fixed_features = material_task_fixed_features(
             spec,
             request.target_task,

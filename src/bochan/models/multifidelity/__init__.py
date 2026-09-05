@@ -11,6 +11,7 @@ from .factory import FidelityInputMode, create_fidelity_surrogate
 from .optimization import (
     enumerate_discrete_fidelities_into_opt_config,
     merge_target_fidelities_into_opt_config,
+    prepare_continuous_fidelity_optimization,
     target_fidelity_fixed_features,
 )
 from .spec import FidelitySpec, ResolvedFidelitySpec
@@ -26,5 +27,6 @@ __all__ = [
     "create_fidelity_surrogate",
     "enumerate_discrete_fidelities_into_opt_config",
     "merge_target_fidelities_into_opt_config",
+    "prepare_continuous_fidelity_optimization",
     "target_fidelity_fixed_features",
 ]

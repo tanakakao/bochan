@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import replace
 from typing import Any
 
@@ -37,8 +38,24 @@ def _inject_llm_options(opt_config: Any, request: Any) -> Any:
     return replace(opt_config, optimizer_kwargs=optimizer_kwargs)
 
 
+def _normalize_transport_fidelity_values(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {
+            int(index): tuple(float(item) for item in values)
+            for index, values in value.items()
+        }
+    return tuple(float(item) for item in value)
+
+
+def _normalize_transport_fidelity_assignments(value: Any) -> tuple[dict[int, float], ...]:
+    return tuple(
+        {int(index): float(item) for index, item in assignment.items()}
+        for assignment in value
+    )
+
+
 def _inject_multifidelity_options(acq_config: Any, opt_config: Any, request: Any) -> tuple[Any, Any]:
-    """Merge Phase 53 transport conveniences into canonical core configs."""
+    """Merge transport conveniences into canonical core multi-fidelity configs."""
 
     acqf_kwargs = dict(getattr(acq_config, "acqf_kwargs", {}) or {})
     target_fidelity = getattr(request, "target_fidelity", None)
@@ -55,21 +72,39 @@ def _inject_multifidelity_options(acq_config: Any, opt_config: Any, request: Any
         acq_config = replace(acq_config, acqf_kwargs=acqf_kwargs)
 
     fidelity_values = getattr(request, "fidelity_values", None)
+    fidelity_assignments = getattr(request, "fidelity_assignments", None)
     optimize_fidelity = getattr(request, "optimize_fidelity", None)
     if fidelity_values is not None:
         existing = getattr(opt_config, "fidelity_values", None)
-        values = tuple(float(value) for value in fidelity_values)
-        if existing is not None and tuple(existing) != values:
+        values = _normalize_transport_fidelity_values(fidelity_values)
+        if existing is not None and existing != values:
             raise ValueError("fidelity_values conflicts with optimize_config.fidelity_values.")
         opt_config = replace(opt_config, fidelity_values=values)
+    if fidelity_assignments is not None:
+        existing = getattr(opt_config, "fidelity_assignments", None)
+        assignments = _normalize_transport_fidelity_assignments(fidelity_assignments)
+        if existing is not None and existing != assignments:
+            raise ValueError(
+                "fidelity_assignments conflicts with optimize_config.fidelity_assignments."
+            )
+        opt_config = replace(opt_config, fidelity_assignments=assignments)
     if optimize_fidelity is not None:
         existing = bool(getattr(opt_config, "optimize_fidelity", False))
         if existing and not bool(optimize_fidelity):
             raise ValueError("optimize_fidelity conflicts with optimize_config.optimize_fidelity.")
         opt_config = replace(opt_config, optimize_fidelity=bool(optimize_fidelity))
 
-    if getattr(opt_config, "fidelity_values", None) is not None and bool(getattr(opt_config, "optimize_fidelity", False)):
-        raise ValueError("Specify either fidelity_values or optimize_fidelity=True, not both.")
+    active_modes = sum(
+        (
+            getattr(opt_config, "fidelity_values", None) is not None,
+            getattr(opt_config, "fidelity_assignments", None) is not None,
+            bool(getattr(opt_config, "optimize_fidelity", False)),
+        )
+    )
+    if active_modes > 1:
+        raise ValueError(
+            "Specify only one of fidelity_values, fidelity_assignments, or optimize_fidelity=True."
+        )
     return acq_config, opt_config
 
 

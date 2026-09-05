@@ -6,6 +6,7 @@ on:
       - "src/bochan/serving/fastapi/routers/material_model_axes.py"
       - "src/bochan/serving/fastapi/routers/__init__.py"
       - "src/bochan/serving/fastapi/schemas/material_model_axes.py"
+      - "src/bochan/serving/fastapi/schemas/material_capabilities.py"
       - "tests/test_material_fastapi_axes_phase41.py"
       - ".github/workflows/material-fastapi-axes-phase41.yml"
 
@@ -18,17 +19,20 @@ jobs:
         with:
           python-version: "3.11"
       - run: python -m pip install --upgrade pip
-      - run: python -m pip install -e ".[test]"
+      - run: python -m pip install -e ".[test,api]"
+      - run: python -m pip install ruff
       - name: Test material FastAPI axes
         run: |
           pytest -q \
             tests/test_material_fastapi_axes_phase41.py \
             tests/test_material_api_bo_phase40.py \
-            tests/test_material_model_axes_phase39.py
+            tests/test_material_model_axes_phase39.py \
+            tests/serving/fastapi/test_material_capabilities_phase25.py
       - name: Ruff
         run: |
           ruff check \
             src/bochan/serving/fastapi/routers/material_model_axes.py \
             src/bochan/serving/fastapi/routers/__init__.py \
             src/bochan/serving/fastapi/schemas/material_model_axes.py \
+            src/bochan/serving/fastapi/schemas/material_capabilities.py \
             tests/test_material_fastapi_axes_phase41.py

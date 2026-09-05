@@ -8,6 +8,7 @@ columns.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 import torch
@@ -19,6 +20,12 @@ from gpytorch.likelihoods import Likelihood
 from gpytorch.mlls import ExactMarginalLogLikelihood
 from torch import Tensor
 
+from bochan.models.components.mixed_kronecker import (
+    validate_mixed_input_transform_for_training,
+)
+from bochan.models.components.mixed_multifidelity import (
+    build_mixed_non_fidelity_kernel,
+)
 from bochan.models.multifidelity import FidelitySpec, ResolvedFidelitySpec
 
 
@@ -148,4 +155,99 @@ class GaussianMultiFidelityGP(SingleTaskMultiFidelityGP):
         return posterior.mean, posterior.variance.clamp_min(0.0).sqrt()
 
 
-__all__ = ["GaussianMultiFidelityGP"]
+class GaussianMixedMultiFidelityGP(GaussianMultiFidelityGP):
+    """Mixed continuous/categorical Gaussian multi-fidelity GP.
+
+    The covariance is constructed as ``K_continuous * K_categorical`` for
+    non-fidelity inputs. ``SingleTaskMultiFidelityGP`` then multiplies this by
+    its dedicated fidelity kernel, producing
+    ``K_continuous * K_categorical * K_fidelity``.
+    """
+
+    def __init__(
+        self,
+        train_X: Tensor,
+        train_Y: Tensor,
+        train_Yvar: Tensor | None = None,
+        *,
+        cat_dims: Sequence[int],
+        fidelity_spec: FidelitySpec | ResolvedFidelitySpec,
+        bounds: Tensor | None = None,
+        covar_module: Kernel | None = None,
+        likelihood: Likelihood | None = None,
+        outcome_transform: OutcomeTransform | None = None,
+        input_transform: InputTransform | None = None,
+    ) -> None:
+        X = torch.as_tensor(train_X)
+        if X.ndim != 2:
+            raise ValueError("train_X must have shape [n, d].")
+        if len(tuple(cat_dims)) == 0:
+            raise ValueError("cat_dims must contain at least one categorical feature index.")
+
+        d = int(X.shape[-1])
+        if isinstance(fidelity_spec, FidelitySpec):
+            spec = fidelity_spec
+        elif isinstance(fidelity_spec, ResolvedFidelitySpec):
+            spec = FidelitySpec(
+                fidelity_features=tuple(fidelity_spec.fidelity_features),
+                target_fidelities=fidelity_spec.target_fidelities,
+            )
+        else:
+            raise TypeError("fidelity_spec must be FidelitySpec or ResolvedFidelitySpec.")
+
+        resolved = spec.resolve(
+            d=d,
+            cat_dims=cat_dims,
+            bounds=bounds,
+            single_fidelity_only=True,
+        )
+        categorical = tuple(resolved.categorical_features)
+        fidelity = tuple(resolved.fidelity_features)
+        excluded = set(categorical).union(fidelity)
+        continuous = tuple(index for index in range(d) if index not in excluded)
+
+        validate_mixed_input_transform_for_training(
+            X,
+            input_transform,
+            cat_dims=categorical,
+        )
+
+        data_covar_module = covar_module
+        if data_covar_module is None:
+            data_covar_module = build_mixed_non_fidelity_kernel(
+                d=d,
+                cat_dims=categorical,
+                fidelity_dims=fidelity,
+            )
+
+        super().__init__(
+            train_X=X,
+            train_Y=train_Y,
+            train_Yvar=train_Yvar,
+            fidelity_spec=resolved,
+            bounds=bounds,
+            linear_truncated=False,
+            covar_module=data_covar_module,
+            likelihood=likelihood,
+            outcome_transform=outcome_transform,
+            input_transform=input_transform,
+        )
+
+        self.cat_dims = categorical
+        self.cont_dims = continuous
+        self.input_mode = "mixed"
+
+    @property
+    def fidelity_metadata(self) -> dict[str, Any]:
+        """Return JSON-serializable mixed multi-fidelity metadata."""
+
+        return {
+            "fidelity_mode": self.fidelity_mode,
+            "fidelity_features": list(self.fidelity_features),
+            "target_fidelities": self.target_fidelities,
+            "input_mode": self.input_mode,
+            "cat_dims": list(self.cat_dims),
+        }
+
+
+__all__ = ["GaussianMixedMultiFidelityGP", "GaussianMultiFidelityGP"]

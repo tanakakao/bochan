@@ -25,9 +25,12 @@ _BASE_OPTIMIZE_CANDIDATES = _factory.optimize_candidates
 
 
 def _is_multifidelity_acquisition(acqf: Any) -> bool:
+    if getattr(acqf, "_bochan_multifidelity_kind", None) is not None:
+        return True
     return type(acqf).__name__ in {
         "qMultiFidelityKnowledgeGradient",
         "qMultiFidelityMaxValueEntropy",
+        "qMultiFidelityHypervolumeKnowledgeGradient",
     }
 
 

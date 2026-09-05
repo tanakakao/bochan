@@ -6,7 +6,7 @@ on:
     paths:
       - "src/bochan/models/multifidelity/**"
       - "src/bochan/models/regression/gaussian/*multifidelity*"
-      - "src/bochan/api/acquisition/multifidelity.py"
+      - "src/bochan/api/acquisition/multifidelity*.py"
       - "src/bochan/api/optimizer/dispatch.py"
       - "src/bochan/serving/fastapi/**"
       - "tests/**/test_*multifidelity*.py"
@@ -40,4 +40,6 @@ jobs:
           ruff check \
             src/bochan/models/multifidelity \
             src/bochan/api/acquisition/multifidelity.py \
-            tests/api/test_multifidelity_hardening.py
+            src/bochan/api/acquisition/multifidelity_hvkg.py \
+            tests/api/test_multifidelity_hardening.py \
+            tests/api/test_multifidelity_hvkg.py

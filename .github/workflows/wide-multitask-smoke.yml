@@ -7,6 +7,21 @@ on:
   pull_request:
     branches:
       - main
+    paths:
+      - "src/bochan/models/multitask/**"
+      - "src/bochan/models/hybrid/**"
+      - "src/bochan/optim/nsgaii/**"
+      - "src/bochan/optim/gradient/multitask.py"
+      - "src/bochan/acquisition/multiclass/**"
+      - "src/bochan/acquisition/ordinal/**"
+      - "src/bochan/acquisition/feasible/**"
+      - "tests/test_wide_multitask*.py"
+      - "tests/test_hybrid_*.py"
+      - "tests/test_nsgaii_*.py"
+      - "tests/test_multiclass_nparego*.py"
+      - "tests/test_ordinal_*.py"
+      - "tests/test_torch_multitask_restart.py"
+      - ".github/workflows/wide-multitask-smoke.yml"
   workflow_dispatch:
 
 jobs:

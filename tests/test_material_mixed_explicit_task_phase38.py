@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import torch
 from botorch.models import MultiTaskGP
 from botorch.models.kernels.categorical import CategoricalKernel
-from gpytorch.kernels import RBFKernel, ScaleKernel
+from gpytorch.kernels import ProductKernel, RBFKernel, ScaleKernel
 from torch import Tensor, nn
 
 import bochan.models.regression.gaussian.materials.explicit_task_factory as factory_module
@@ -160,7 +160,10 @@ def test_mixed_factory_returns_multitask_gp_and_preserves_kernel(monkeypatch) ->
     assert model.material_input_mode == "mixed"
     assert _DummyMixedGP.last_train_X is not None
     assert torch.allclose(_DummyMixedGP.last_train_X, train_X[:, :2])
-    assert isinstance(model.covar_module, ScaleKernel)
+    # MultiTaskGP composes the provided data covariance with its task kernel.
+    # The transferred mixed material covariance is therefore the first factor.
+    assert isinstance(model.covar_module, ProductKernel)
+    assert isinstance(model.covar_module.kernels[0], ScaleKernel)
     assert isinstance(
         model.input_transform.feature_extractor,
         RegisteredMixedMaterialFeatureExtractor,

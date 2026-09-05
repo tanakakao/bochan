@@ -122,7 +122,7 @@ def bind_shared_multifidelity_metadata(wrapper: Any, submodels: Sequence[Any]) -
         "multi_output_fidelity",
     ):
         setattr(wrapper, name, metadata[name])
-    setattr(wrapper, "is_multifidelity_model", True)
+    wrapper.is_multifidelity_model = True
     return metadata
 
 

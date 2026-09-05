@@ -44,11 +44,15 @@ class _WideMultiFidelityBinaryCore(_BinaryClassificationGPModel):
         covar_module: Kernel | None = None,
         fidelity_covar_module: Kernel | None = None,
         num_inducing: int = 128,
-        num_inducing_points: int | None = None,
         inducing_points: Tensor | None = None,
         learn_inducing_locations: bool = True,
         _full_covar_module: Kernel | None = None,
+        **legacy_kwargs: Any,
     ) -> None:
+        num_inducing_points = legacy_kwargs.pop("num_inducing_points", None)
+        if legacy_kwargs:
+            unexpected = ", ".join(sorted(legacy_kwargs))
+            raise TypeError(f"Unexpected keyword argument(s): {unexpected}.")
         if num_inducing_points is not None:
             alias_value = int(num_inducing_points)
             if num_inducing != 128 and int(num_inducing) != alias_value:

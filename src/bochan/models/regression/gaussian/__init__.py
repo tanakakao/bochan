@@ -2,6 +2,7 @@ from .kronecker_multitask import (
     GaussianKroneckerMultiTaskGP,
     GaussianMixedKroneckerMultiTaskGP,
 )
+from .long_multifidelity import GaussianMultiFidelityGP
 from .multifidelity import (
     FidelityFeatureInputTransform,
     WideMixedMultiFidelityGP,
@@ -14,6 +15,7 @@ __all__ = [
     "FidelityFeatureInputTransform",
     "GaussianKroneckerMultiTaskGP",
     "GaussianMixedKroneckerMultiTaskGP",
+    "GaussianMultiFidelityGP",
     "WideMixedMultiFidelityGP",
     "WideMultiFidelityGP",
     "WideMultiFidelityMixedGP",

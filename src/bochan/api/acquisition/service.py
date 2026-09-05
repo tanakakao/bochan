@@ -32,6 +32,7 @@ from .multifidelity_hvkg import (
     build_multifidelity_hvkg_acquisition,
     is_multifidelity_hvkg_name,
 )
+from .multifidelity_momf import build_momf_acquisition, is_momf_name
 
 
 def _normalize_name(value: Any) -> str:
@@ -72,6 +73,8 @@ def _is_vector_strategy(config: AcquisitionConfig) -> bool:
             "qnehvi",
             "mfhvkg",
             "qmfhvkg",
+            "momf",
+            "qmomf",
         }
     )
 
@@ -88,10 +91,27 @@ def resolve_acquisition_class(
         from bochan.optim.nsgaii.strategy import build_nsgaii_strategy
 
         return replace(config, acqf_factory=build_nsgaii_strategy)
+    if is_momf_name(config.name):
+        optimizer._check_fitted()
+        task_type, model_type, multi_output = optimizer._acquisition_routing_context()
+        if (
+            task_type not in {"regression", "multi_objective"}
+            or model_type != "multifidelity_gp"
+            or not multi_output
+        ):
+            raise ValueError(
+                "MOMF requires a multi-output regression model with "
+                "model_type='multifidelity_gp'."
+            )
+        return replace(config, acqf_factory=build_momf_acquisition)
     if is_multifidelity_hvkg_name(config.name):
         optimizer._check_fitted()
         task_type, model_type, multi_output = optimizer._acquisition_routing_context()
-        if task_type not in {"regression", "multi_objective"} or model_type != "multifidelity_gp" or not multi_output:
+        if (
+            task_type not in {"regression", "multi_objective"}
+            or model_type != "multifidelity_gp"
+            or not multi_output
+        ):
             raise ValueError(
                 "MF-HVKG requires a multi-output regression model with "
                 "model_type='multifidelity_gp'."

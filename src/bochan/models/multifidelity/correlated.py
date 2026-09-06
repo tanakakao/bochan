@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from typing import Any
 
 import torch
@@ -109,7 +109,7 @@ class GaussianCorrelatedMultiFidelityGP(KroneckerMultiTaskGP):
         )
         self.fidelity_mode = "feature"
         self.fidelity_features = tuple(resolved.fidelity_features)
-        self.target_fidelities = dict(resolved.target_fidelities)
+        self.target_fidelities = dict(resolved.target_fidelities or {})
         self.input_mode = "continuous"
         self.cat_dims: tuple[int, ...] = ()
         self.multi_output_fidelity = "correlated"

@@ -156,6 +156,11 @@ def fit_model(
             if request.train_Yvar is not None
             else None
         )
+        train_cost = (
+            to_tensor(request.train_cost, options)
+            if request.train_cost is not None
+            else None
+        )
         fit_config = to_fit_config(request.fit_config)
         data_context = (
             to_data_context(request.data_context, options)
@@ -169,7 +174,7 @@ def fit_model(
             bounds=bounds,
             data_context=data_context,
         )
-        optimizer.fit(train_X, train_Y, train_Yvar)
+        optimizer.fit(train_X, train_Y, train_Yvar, train_cost=train_cost)
         bind_category_metadata(optimizer, category_metadata)
         model_id = store.add(optimizer)
         return _model_fit_response(model_id, optimizer)
@@ -242,6 +247,11 @@ def auto_candidates(
             if request.train_Yvar is not None
             else None
         )
+        train_cost = (
+            to_tensor(request.train_cost, options)
+            if request.train_cost is not None
+            else None
+        )
         plan = _plan_from_request(request, train_X, train_Y, bounds)
 
         if explicit_model_config is not None:
@@ -265,7 +275,7 @@ def auto_candidates(
             bounds=bounds,
             data_context=data_context,
         )
-        optimizer.fit(train_X, train_Y, train_Yvar)
+        optimizer.fit(train_X, train_Y, train_Yvar, train_cost=train_cost)
         bind_category_metadata(optimizer, category_metadata)
         model_id = store.add(optimizer)
 
@@ -347,6 +357,11 @@ def tell_model(
             if request.new_Yvar is not None
             else None
         )
+        new_cost = (
+            to_tensor(request.new_cost, options)
+            if request.new_cost is not None
+            else None
+        )
         fit_config = (
             to_fit_config(request.fit_config)
             if request.fit_config is not None
@@ -356,6 +371,7 @@ def tell_model(
             new_X,
             new_Y,
             new_Yvar,
+            new_cost=new_cost,
             refit=request.refit,
             fit_config=fit_config,
         )

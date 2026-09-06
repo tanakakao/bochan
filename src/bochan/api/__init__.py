@@ -1,8 +1,7 @@
 """Public high-level API for bochan.
 
 Importing this package is declarative: the module exports the canonical
-``BayesianOptimizer`` and configuration / factory helpers without replacing
-functions or class methods in sibling modules at runtime.
+``BayesianOptimizer`` and configuration / factory helpers.
 """
 
 from __future__ import annotations
@@ -53,6 +52,7 @@ from .modeling.materials import (
     make_material_model_config,
     material_task_fixed_features,
 )
+from .multifidelity_optimizer import install_cost_observation_contract
 from .observation import ExperimentFailureConfig, ObservationData
 from .optimizer import BayesianOptimizer
 from .optimizer.service import optimize_candidates
@@ -71,6 +71,10 @@ from .study.controls import (
     GenerationStep,
     StopDecision,
 )
+
+# Extend the canonical optimizer with the synchronized cost-observation contract
+# while preserving the single public class identity used across API surfaces.
+install_cost_observation_contract(BayesianOptimizer)
 
 # Extend the default lazy registry with metadata-only model paths. Concrete
 # optional backends remain unloaded until a model type is resolved.

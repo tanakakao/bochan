@@ -34,6 +34,12 @@ from .multifidelity_hvkg import (
 )
 from .multifidelity_momf import build_momf_acquisition, is_momf_name
 
+_SINGLE_OUTPUT_MF_MODEL_TYPES = {
+    "multifidelity_gp",
+    "multisource_gp",
+    "information_source_gp",
+}
+
 
 def _normalize_name(value: Any) -> str:
     return "".join(character for character in str(value).lower() if character.isalnum())
@@ -120,10 +126,14 @@ def resolve_acquisition_class(
     if is_multifidelity_acquisition_name(config.name):
         optimizer._check_fitted()
         task_type, model_type, multi_output = optimizer._acquisition_routing_context()
-        if task_type != "regression" or model_type != "multifidelity_gp" or multi_output:
+        if (
+            task_type != "regression"
+            or model_type not in _SINGLE_OUTPUT_MF_MODEL_TYPES
+            or multi_output
+        ):
             raise ValueError(
-                "MFKG / MF-MES require a single-output regression model with "
-                "model_type='multifidelity_gp'."
+                "MFKG / MF-MES require a single-output regression model with a "
+                "supported multi-fidelity or multi-information-source model_type."
             )
         return replace(config, acqf_factory=build_multifidelity_acquisition)
 

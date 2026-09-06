@@ -111,7 +111,7 @@ def test_cost_kind_specific_validation_is_explicit():
         FidelityCostConfig(kind="callable")
     with pytest.raises(ValueError, match="only valid for kind='affine'"):
         FidelityCostConfig(kind="fixed", fidelity_weights={-1: 1.0})
-    with pytest.raises(ValueError, match="must be 'affine', 'fixed', or 'callable'"):
+    with pytest.raises(ValueError, match="FidelityCostConfig.kind must be"):
         FidelityCostConfig(kind="learned")
 
 

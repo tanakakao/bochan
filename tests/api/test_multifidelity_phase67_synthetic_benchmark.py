@@ -119,12 +119,12 @@ def test_strategy_configs_fix_or_enumerate_fidelity_as_expected():
 
     mfkg_acq, mfkg_opt = _strategy_configs(problem, "mfkg", config)
     assert mfkg_acq.name == "mfkg"
-    assert mfkg_opt.fidelity_values == list(problem.fidelity_values)
+    assert mfkg_opt.fidelity_values == problem.fidelity_values
     assert mfkg_acq.acqf_kwargs["cost_config"]["kind"] == "affine"
 
     mfmes_acq, mfmes_opt = _strategy_configs(problem, "mfmes", config)
     assert mfmes_acq.name == "mfmes"
-    assert mfmes_opt.fidelity_values == list(problem.fidelity_values)
+    assert mfmes_opt.fidelity_values == problem.fidelity_values
 
 
 def test_strategy_family_validation_is_explicit():

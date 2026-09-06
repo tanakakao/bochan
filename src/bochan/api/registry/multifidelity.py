@@ -17,6 +17,11 @@ _CORRELATED_ADAPTER_PATH = (
     "bochan.models.multifidelity.configured",
     "create_configured_correlated_fidelity_surrogate",
 )
+_SOURCE_MODEL_TYPES = ("multisource_gp", "information_source_gp")
+_SOURCE_ADAPTER_PATH = (
+    "bochan.models.multifidelity.configured",
+    "create_configured_information_source_surrogate",
+)
 
 
 def _task_registry(
@@ -36,28 +41,45 @@ def _task_registry(
     return registry
 
 
+def _register_alias(
+    registry: MutableMapping[str, Any],
+    *,
+    model_type: str,
+    adapter_path: tuple[str, str],
+) -> None:
+    existing = registry.get(model_type)
+    if existing is not None and existing != adapter_path:
+        raise RuntimeError(
+            f"Refusing to replace existing model_type {model_type!r}: "
+            f"{existing!r} != {adapter_path!r}."
+        )
+    registry[model_type] = adapter_path
+
+
 def register_multifidelity_gp_model_types() -> None:
-    """Register independent and correlated Gaussian multi-fidelity model types."""
+    """Register Gaussian fidelity and discrete information-source model types."""
 
     tree = DEFAULT_MODEL_REGISTRY.raw()
     for input_type in ("normal", "mixed"):
         registry = _task_registry(tree, input_type, "regression")
-        existing = registry.get(_MODEL_TYPE)
-        if existing is not None and existing != _ADAPTER_PATH:
-            raise RuntimeError(
-                f"Refusing to replace existing model_type {_MODEL_TYPE!r}: "
-                f"{existing!r} != {_ADAPTER_PATH!r}."
-            )
-        registry[_MODEL_TYPE] = _ADAPTER_PATH
+        _register_alias(
+            registry,
+            model_type=_MODEL_TYPE,
+            adapter_path=_ADAPTER_PATH,
+        )
 
     normal_registry = _task_registry(tree, "normal", "regression")
-    existing = normal_registry.get(_CORRELATED_MODEL_TYPE)
-    if existing is not None and existing != _CORRELATED_ADAPTER_PATH:
-        raise RuntimeError(
-            f"Refusing to replace existing model_type {_CORRELATED_MODEL_TYPE!r}: "
-            f"{existing!r} != {_CORRELATED_ADAPTER_PATH!r}."
+    _register_alias(
+        normal_registry,
+        model_type=_CORRELATED_MODEL_TYPE,
+        adapter_path=_CORRELATED_ADAPTER_PATH,
+    )
+    for model_type in _SOURCE_MODEL_TYPES:
+        _register_alias(
+            normal_registry,
+            model_type=model_type,
+            adapter_path=_SOURCE_ADAPTER_PATH,
         )
-    normal_registry[_CORRELATED_MODEL_TYPE] = _CORRELATED_ADAPTER_PATH
 
 
 __all__ = ["register_multifidelity_gp_model_types"]

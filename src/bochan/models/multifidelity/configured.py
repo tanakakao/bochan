@@ -29,7 +29,7 @@ def _make_fidelity_spec(
         return fidelity_spec
     if fidelity_features is None:
         raise ValueError(
-            "multi-fidelity models require model_kwargs['fidelity_features'] or "
+            "multifidelity_gp requires model_kwargs['fidelity_features'] or "
             "model_kwargs['fidelity_spec']."
         )
     return FidelitySpec(

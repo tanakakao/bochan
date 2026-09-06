@@ -1,10 +1,20 @@
 """Cross-family extension point for shared multi-fidelity infrastructure.
 
 Likelihood-specific multi-fidelity models remain owned by their regression or
-classification family. Shared fidelity-axis transforms, adapters, and validation
-should be placed here as they are introduced.
+classification family. Shared fidelity-axis transforms, adapters, validation,
+and benchmark metrics live here.
 """
 
+from .benchmark import (
+    CostNormalizedTrace,
+    best_objective_trace,
+    cumulative_cost,
+    hypervolume_regret_trace,
+    hypervolume_trace,
+    inference_hv_regret_cost_trace,
+    multi_objective_cost_trace,
+    single_objective_cost_trace,
+)
 from .configured import (
     create_configured_correlated_fidelity_surrogate,
     create_configured_fidelity_surrogate,
@@ -38,6 +48,7 @@ from .source import (
 from .spec import FidelitySpec, ResolvedFidelitySpec
 
 __all__ = [
+    "CostNormalizedTrace",
     "FidelityCostCallable",
     "FidelityCostConfig",
     "FidelityCostKind",
@@ -48,6 +59,7 @@ __all__ = [
     "InformationSourceSpec",
     "ResolvedFidelitySpec",
     "ResolvedInformationSourceSpec",
+    "best_objective_trace",
     "bind_shared_multifidelity_metadata",
     "build_fidelity_cost_utility",
     "build_learned_fidelity_cost_model",
@@ -55,10 +67,16 @@ __all__ = [
     "create_configured_fidelity_surrogate",
     "create_configured_information_source_surrogate",
     "create_fidelity_surrogate",
+    "cumulative_cost",
     "enumerate_discrete_fidelities_into_opt_config",
     "evaluate_fidelity_cost_mean",
+    "hypervolume_regret_trace",
+    "hypervolume_trace",
+    "inference_hv_regret_cost_trace",
     "merge_target_fidelities_into_opt_config",
+    "multi_objective_cost_trace",
     "prepare_continuous_fidelity_optimization",
     "shared_multifidelity_metadata",
+    "single_objective_cost_trace",
     "target_fidelity_fixed_features",
 ]

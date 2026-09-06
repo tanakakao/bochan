@@ -42,6 +42,18 @@ def is_multifidelity_hvkg_name(name: Any) -> bool:
     return _normalize_name(name) in _MFHVKG_NAMES
 
 
+def _bundle_is_multi_output(bundle: ModelBundle) -> bool:
+    """Infer multi-output capability while preserving explicit metadata overrides."""
+
+    metadata = getattr(bundle, "metadata", {})
+    if "multi_output" in metadata:
+        return bool(metadata["multi_output"])
+    try:
+        return int(getattr(bundle.model, "num_outputs", 1)) > 1
+    except (TypeError, ValueError):
+        return False
+
+
 def _ref_point_tensor(
     *,
     bundle: ModelBundle,
@@ -179,11 +191,11 @@ def build_multifidelity_hvkg_acquisition(
     config: AcquisitionConfig,
     data_context: DataContext,
 ) -> qMultiFidelityHypervolumeKnowledgeGradient:
-    """Build BoTorch MF-HVKG for an independent multi-output MF surrogate."""
+    """Build BoTorch MF-HVKG for independent or correlated multi-output MF."""
 
     if not is_multifidelity_hvkg_name(config.name):
         raise ValueError(f"Unsupported MF-HVKG acquisition name: {config.name!r}.")
-    if not bool(bundle.metadata.get("multi_output", False)):
+    if not _bundle_is_multi_output(bundle):
         raise ValueError("MF-HVKG requires a multi-output multi-fidelity model.")
 
     model = bundle.model

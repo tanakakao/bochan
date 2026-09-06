@@ -28,7 +28,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install
-        run: pip install -e .
+        run: pip install -e . pandas
       - name: Run cost-sensitivity diagnostic
         run: |
           python examples/multifidelity_mfkg_diagnostic.py \
@@ -64,6 +64,7 @@ jobs:
           print(counts)
           PY
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: mfkg-phase69-${{ matrix.label }}
           path: mfkg-phase69-${{ matrix.label }}.csv

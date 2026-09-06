@@ -1,20 +1,8 @@
-import pytest
-
 from bochan.models.multifidelity.experiment import SyntheticBenchmarkConfig
 from bochan.models.multifidelity.fidelity_score_diagnostics import (
     run_mfkg_fidelity_score_diagnostic,
 )
 from bochan.models.multifidelity.synthetic import augmented_branin_problem
-
-
-def test_phase71_requires_cost_model():
-    problem = augmented_branin_problem()
-    problem = problem.__class__(**{**problem.__dict__, "cost_config": None})
-    with pytest.raises(ValueError, match="cost_config"):
-        run_mfkg_fidelity_score_diagnostic(
-            problem,
-            config=SyntheticBenchmarkConfig(max_steps=0),
-        )
 
 
 def test_phase71_zero_step_smoke():

@@ -1,0 +1,85 @@
+name: MFKG Phase 71 fidelity scores
+
+on:
+  pull_request:
+    branches:
+      - feature/multifidelity-phase70-hartmann
+    paths:
+      - "src/bochan/models/multifidelity/fidelity_score_diagnostics.py"
+      - "examples/multifidelity_mfkg_fidelity_scores.py"
+      - ".github/workflows/mfkg-phase71-fidelity-scores.yml"
+  workflow_dispatch:
+
+jobs:
+  diagnostic:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - problem: branin
+            fixed_cost: 0.25
+            budget: 21
+            label: branin-low
+          - problem: branin
+            fixed_cost: 5
+            budget: 106.5
+            label: branin-botorch-like
+          - problem: hartmann
+            fixed_cost: 0.25
+            budget: 21
+            label: hartmann-low
+          - problem: hartmann
+            fixed_cost: 5
+            budget: 106.5
+            label: hartmann-botorch-like
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: python -m pip install -e ".[test,api]" pandas
+      - name: Run fidelity score diagnostic
+        run: |
+          python examples/multifidelity_mfkg_fidelity_scores.py \
+            --problem ${{ matrix.problem }} \
+            --fixed-cost ${{ matrix.fixed_cost }} \
+            --budget ${{ matrix.budget }} \
+            --seeds 0 1 2 \
+            --n-initial 6 \
+            --max-steps 3 \
+            --num-restarts 2 \
+            --raw-samples 32 \
+            --fit-maxiter 30 \
+            --num-fantasies 8 \
+            --output diagnostic-results/${{ matrix.label }}.csv
+      - name: Summarize
+        run: |
+          python - <<'PY'
+          import pandas as pd
+          from pathlib import Path
+
+          path = Path("diagnostic-results/${{ matrix.label }}.csv")
+          df = pd.read_csv(path)
+          summary = (
+              df.groupby("fidelity", as_index=False)
+              .agg(
+                  mean_raw_kg=("raw_kg", "mean"),
+                  mean_cost_aware_kg=("cost_aware_kg", "mean"),
+                  selected_count=("selected", "sum"),
+              )
+          )
+          print(summary.to_string(index=False))
+          summary.to_csv(
+              Path("diagnostic-results/${{ matrix.label }}-summary.csv"),
+              index=False,
+          )
+          PY
+      - name: Upload diagnostic CSV
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase71-${{ matrix.label }}
+          path: diagnostic-results/

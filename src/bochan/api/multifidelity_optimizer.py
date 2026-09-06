@@ -1,4 +1,9 @@
-"""Cost-observation extension for the public Bayesian optimizer."""
+"""Cost-observation contract for the canonical public Bayesian optimizer.
+
+The public optimizer has a strict single-class architecture contract.  This module
+therefore augments that canonical class in place rather than exporting a second
+``BayesianOptimizer`` definition.
+"""
 
 from __future__ import annotations
 
@@ -8,9 +13,7 @@ from typing import Any
 
 import torch
 
-from .configs import AcquisitionConfig, FitConfig, ModelConfig
-from .observation import ExperimentFailureConfig, ObservationData
-from .optimizer import BayesianOptimizer as _BayesianOptimizer
+from .configs import AcquisitionConfig
 
 
 def _row_count(value: Any) -> int:
@@ -51,16 +54,26 @@ def _normalize_cost_observations(
 
 def _success_statuses(status: Any, *, n_rows: int) -> bool:
     values = [status] * n_rows if isinstance(status, str) else list(status)
-    return len(values) == n_rows and all(str(value).lower() == "success" for value in values)
+    return len(values) == n_rows and all(
+        str(value).lower() == "success" for value in values
+    )
 
 
-class BayesianOptimizer(_BayesianOptimizer):
-    """Public optimizer with synchronized evaluation-cost observations."""
+def install_cost_observation_contract(cls: type) -> type:
+    """Install Phase 63 cost state methods on the canonical optimizer class once."""
 
-    train_cost: torch.Tensor | None = None
+    if bool(getattr(cls, "_bochan_cost_observation_contract", False)):
+        return cls
+
+    original_init = cls.__init__
+    original_fit = cls.fit
+    original_refit = cls.refit
+    original_tell = cls.tell
+    original_update_data = cls.update_data
+    original_prepare_acquisition = cls._prepare_acquisition
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
+        original_init(self, *args, **kwargs)
         self.train_cost = None
 
     def fit(
@@ -70,17 +83,15 @@ class BayesianOptimizer(_BayesianOptimizer):
         train_Yvar: Any | None = None,
         *,
         train_cost: Any | None = None,
-        observation_data: ObservationData | None = None,
+        observation_data: Any | None = None,
         observed_mask: Any | None = None,
         failed_mask: Any | None = None,
         pending_mask: Any | None = None,
-        failure_config: ExperimentFailureConfig | None = None,
-        model_config: ModelConfig | None = None,
-        fit_config: FitConfig | None = None,
-    ) -> BayesianOptimizer:
-        """Fit the objective model and optionally initialize cost observations."""
-
-        previous_cost = self.train_cost
+        failure_config: Any | None = None,
+        model_config: Any | None = None,
+        fit_config: Any | None = None,
+    ):
+        previous_cost = getattr(self, "train_cost", None)
         internal_observation_refit = observation_data is not None and train_cost is None
         if train_cost is not None:
             if observation_data is not None:
@@ -105,7 +116,8 @@ class BayesianOptimizer(_BayesianOptimizer):
         else:
             normalized_cost = None
 
-        result = super().fit(
+        result = original_fit(
+            self,
             train_X,
             train_Y,
             train_Yvar,
@@ -129,11 +141,9 @@ class BayesianOptimizer(_BayesianOptimizer):
             self.train_cost = None
         return result
 
-    def refit(self, *, fit_config: FitConfig | None = None) -> BayesianOptimizer:
-        """Refit objective models without discarding synchronized cost history."""
-
-        cost = self.train_cost
-        result = super().refit(fit_config=fit_config)
+    def refit(self, *, fit_config: Any | None = None):
+        cost = getattr(self, "train_cost", None)
+        result = original_refit(self, fit_config=fit_config)
         self.train_cost = cost
         return result
 
@@ -147,11 +157,9 @@ class BayesianOptimizer(_BayesianOptimizer):
         status: Any = "success",
         observed_mask: Any | None = None,
         refit: bool = True,
-        fit_config: FitConfig | None = None,
-    ) -> BayesianOptimizer:
-        """Append objective and optional cost observations atomically by row."""
-
-        tracking_cost = self.train_cost is not None
+        fit_config: Any | None = None,
+    ):
+        tracking_cost = getattr(self, "train_cost", None) is not None
         if tracking_cost and new_cost is None:
             raise ValueError(
                 "new_cost is required because this optimizer tracks train_cost."
@@ -167,7 +175,8 @@ class BayesianOptimizer(_BayesianOptimizer):
             n_rows = _row_count(X_new)
             if observed_mask is not None or not _success_statuses(status, n_rows=n_rows):
                 raise ValueError(
-                    "new_cost currently supports successful observations without observed_mask only."
+                    "new_cost currently supports successful observations without "
+                    "observed_mask only."
                 )
             normalized_cost = _normalize_cost_observations(
                 new_cost,
@@ -175,7 +184,8 @@ class BayesianOptimizer(_BayesianOptimizer):
                 name="new_cost",
             )
 
-        result = super().tell(
+        result = original_tell(
+            self,
             X_new,
             Y_new,
             new_Yvar,
@@ -199,9 +209,7 @@ class BayesianOptimizer(_BayesianOptimizer):
         *,
         new_cost: Any | None = None,
         append: bool = True,
-    ) -> BayesianOptimizer:
-        """Update objective/cost state while preserving the row-alignment contract."""
-
+    ):
         if not append:
             return self.fit(
                 X_new,
@@ -212,7 +220,7 @@ class BayesianOptimizer(_BayesianOptimizer):
                 fit_config=self.fit_config,
                 failure_config=self.failure_config,
             )
-        if self.train_cost is not None or new_cost is not None:
+        if getattr(self, "train_cost", None) is not None or new_cost is not None:
             return self.tell(
                 X_new,
                 Y_new,
@@ -221,7 +229,8 @@ class BayesianOptimizer(_BayesianOptimizer):
                 status="success",
                 refit=False,
             )
-        return super().update_data(
+        return original_update_data(
+            self,
             X_new,
             Y_new,
             new_Yvar,
@@ -232,57 +241,49 @@ class BayesianOptimizer(_BayesianOptimizer):
         self,
         config: AcquisitionConfig | None,
     ) -> AcquisitionConfig | None:
-        """Fill deferred learned-GP cost config from optimizer cost history."""
-
         if config is None:
             return None
         kwargs = dict(config.acqf_kwargs or {})
         raw = kwargs.get("cost_config")
         if raw is None:
             return config
-
-        from bochan.models.multifidelity import FidelityCostConfig
-
-        if isinstance(raw, Mapping):
-            kind = str(raw.get("kind", "affine")).strip().lower()
-            if kind != "learned_gp":
-                return config
-            if any(key in raw for key in ("train_X", "train_cost", "cost_model")):
-                return config
-            if self.train_cost is None:
-                raise ValueError(
-                    "cost_config kind='learned_gp' requires optimizer train_cost. "
-                    "Call fit(..., train_cost=...) first or provide cost training data explicitly."
-                )
-            resolved = dict(raw)
-            resolved["train_X"] = self.train_X
-            resolved["train_cost"] = self.train_cost
-            kwargs["cost_config"] = resolved
-            return replace(config, acqf_kwargs=kwargs)
-
-        if isinstance(raw, FidelityCostConfig) and raw.kind == "learned_gp":
-            if raw.cost_model is not None or raw.train_X is not None:
-                return config
-            if self.train_cost is None:
-                raise ValueError(
-                    "Deferred learned_gp cost_config requires optimizer train_cost."
-                )
-            kwargs["cost_config"] = replace(
-                raw,
-                train_X=self.train_X,
-                train_cost=self.train_cost,
+        if not isinstance(raw, Mapping):
+            return config
+        kind = str(raw.get("kind", "affine")).strip().lower()
+        if kind != "learned_gp":
+            return config
+        if any(key in raw for key in ("train_X", "train_cost", "cost_model")):
+            return config
+        if getattr(self, "train_cost", None) is None:
+            raise ValueError(
+                "cost_config kind='learned_gp' requires optimizer train_cost. "
+                "Call fit(..., train_cost=...) first or provide cost training data "
+                "explicitly."
             )
-            return replace(config, acqf_kwargs=kwargs)
-        return config
+        resolved = dict(raw)
+        resolved["train_X"] = self.train_X
+        resolved["train_cost"] = self.train_cost
+        kwargs["cost_config"] = resolved
+        return replace(config, acqf_kwargs=kwargs)
 
     def _prepare_acquisition(
         self,
         acq_config: AcquisitionConfig | None,
         data_context: Any | None,
-    ) -> tuple[AcquisitionConfig, Any, Any]:
+    ):
         configured = acq_config if acq_config is not None else self.acq_config
         configured = self._cost_state_acquisition_config(configured)
-        return super()._prepare_acquisition(configured, data_context)
+        return original_prepare_acquisition(self, configured, data_context)
+
+    cls.__init__ = __init__
+    cls.fit = fit
+    cls.refit = refit
+    cls.tell = tell
+    cls.update_data = update_data
+    cls._cost_state_acquisition_config = _cost_state_acquisition_config
+    cls._prepare_acquisition = _prepare_acquisition
+    cls._bochan_cost_observation_contract = True
+    return cls
 
 
-__all__ = ["BayesianOptimizer"]
+__all__ = ["install_cost_observation_contract"]

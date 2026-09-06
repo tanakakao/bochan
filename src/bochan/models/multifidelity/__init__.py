@@ -11,6 +11,8 @@ from .cost import (
     FidelityCostConfig,
     FidelityCostKind,
     build_fidelity_cost_utility,
+    build_learned_fidelity_cost_model,
+    evaluate_fidelity_cost_mean,
 )
 from .factory import FidelityInputMode, create_fidelity_surrogate
 from .multioutput import (
@@ -34,9 +36,11 @@ __all__ = [
     "ResolvedFidelitySpec",
     "bind_shared_multifidelity_metadata",
     "build_fidelity_cost_utility",
+    "build_learned_fidelity_cost_model",
     "create_configured_fidelity_surrogate",
     "create_fidelity_surrogate",
     "enumerate_discrete_fidelities_into_opt_config",
+    "evaluate_fidelity_cost_mean",
     "merge_target_fidelities_into_opt_config",
     "prepare_continuous_fidelity_optimization",
     "shared_multifidelity_metadata",

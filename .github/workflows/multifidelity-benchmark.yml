@@ -1,0 +1,117 @@
+name: Multi-Fidelity benchmark
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/multifidelity-benchmark.yml"
+      - "src/bochan/models/multifidelity/**"
+      - "examples/multifidelity_synthetic_benchmark.py"
+  workflow_dispatch:
+    inputs:
+      budget:
+        description: Total cost budget
+        required: false
+        default: "15"
+      fit_maxiter:
+        description: GP fit max iterations
+        required: false
+        default: "50"
+
+jobs:
+  branin:
+    name: Branin ${{ matrix.strategy }} 10 seeds
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        strategy:
+          - high_fidelity
+          - mfkg
+          - mfmes
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install
+        run: python -m pip install -e ".[test,api]"
+      - name: Run 10-seed Branin benchmark
+        env:
+          BUDGET: ${{ github.event.inputs.budget || '15' }}
+          FIT_MAXITER: ${{ github.event.inputs.fit_maxiter || '50' }}
+        run: |
+          mkdir -p benchmark-results
+          python examples/multifidelity_synthetic_benchmark.py \
+            --problem branin \
+            --strategies "${{ matrix.strategy }}" \
+            --seeds 0 1 2 3 4 5 6 7 8 9 \
+            --budget "$BUDGET" \
+            --n-initial 6 \
+            --max-steps 12 \
+            --num-restarts 4 \
+            --raw-samples 64 \
+            --fit-maxiter "$FIT_MAXITER" \
+            --output "benchmark-results/branin-${{ matrix.strategy }}.csv"
+      - name: Summarize final metrics
+        run: |
+          python - <<'PY'
+          import csv
+          from collections import defaultdict
+          from pathlib import Path
+          from statistics import mean, median, stdev
+
+          strategy = "${{ matrix.strategy }}"
+          path = Path(f"benchmark-results/branin-{strategy}.csv")
+          by_seed = defaultdict(list)
+          with path.open(newline="", encoding="utf-8") as f:
+              for row in csv.DictReader(f):
+                  by_seed[int(row["seed"])].append(row)
+
+          finals = []
+          final_costs = []
+          target_counts = []
+          for seed in sorted(by_seed):
+              rows = by_seed[seed]
+              last = rows[-1]
+              finals.append(float(last["metric"]))
+              final_costs.append(float(last["cumulative_cost"]))
+              target_counts.append(sum(row["is_target_fidelity"].lower() == "true" for row in rows))
+
+          summary_path = Path(f"benchmark-results/branin-{strategy}-summary.csv")
+          with summary_path.open("w", newline="", encoding="utf-8") as f:
+              writer = csv.DictWriter(
+                  f,
+                  fieldnames=[
+                      "strategy", "n_seeds", "mean_final_metric", "median_final_metric",
+                      "std_final_metric", "mean_final_cost", "mean_target_evaluations",
+                  ],
+              )
+              writer.writeheader()
+              writer.writerow({
+                  "strategy": strategy,
+                  "n_seeds": len(finals),
+                  "mean_final_metric": mean(finals),
+                  "median_final_metric": median(finals),
+                  "std_final_metric": stdev(finals) if len(finals) > 1 else 0.0,
+                  "mean_final_cost": mean(final_costs),
+                  "mean_target_evaluations": mean(target_counts),
+              })
+
+          print(strategy)
+          print("final metrics:", finals)
+          print("mean:", mean(finals))
+          print("median:", median(finals))
+          print("std:", stdev(finals) if len(finals) > 1 else 0.0)
+          print("mean final cost:", mean(final_costs))
+          print("mean target evaluations:", mean(target_counts))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: branin-${{ matrix.strategy }}-10seeds
+          path: benchmark-results/
+          if-no-files-found: error

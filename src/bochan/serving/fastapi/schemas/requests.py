@@ -57,6 +57,7 @@ class FitModelRequest(APIRequest):
     train_X: Any
     train_Y: Any
     train_Yvar: Any | None = None
+    train_cost: Any | None = None
     bounds: Any | None = None
     fit_config: FitConfigSchema | None = None
     data_context: DataContextSchema | None = None
@@ -88,6 +89,7 @@ class AutoCandidateRequest(APIRequest):
     train_X: Any
     train_Y: Any
     train_Yvar: Any | None = None
+    train_cost: Any | None = None
     bounds: Any | None = None
     llm_config: LLMConfigSchema | None = None
     llm_context: LLMContextSchema | None = None
@@ -112,6 +114,7 @@ class TellRequest(APIRequest):
     new_X: Any
     new_Y: Any
     new_Yvar: Any | None = None
+    new_cost: Any | None = None
     refit: bool = True
     fit_config: FitConfigSchema | None = None
     tensor_options: TensorOptionsSchema = Field(default_factory=TensorOptionsSchema)
@@ -178,6 +181,7 @@ class SuggestRequest(APIRequest, _MultiFidelityCandidateMixin):
     train_X: Any
     train_Y: Any
     train_Yvar: Any | None = None
+    train_cost: Any | None = None
     bounds: Any
     fit_config: FitConfigSchema | None = None
     acquisition_config: AcquisitionConfigSchema

@@ -49,9 +49,29 @@ def create_configured_fidelity_surrogate(
     target_fidelities: Mapping[int, float] | None = None,
     bounds: Tensor | None = None,
     input_mode: str | None = None,
+    correlated_outputs: bool = False,
     **model_kwargs: Any,
 ) -> Any:
-    """Create the standard independent-output-compatible MF surrogate."""
+    """Create the configured Gaussian multi-fidelity surrogate.
+
+    ``correlated_outputs=True`` keeps the public ``model_type='multifidelity_gp'``
+    contract while selecting the Phase 64 Kronecker ICM model. Without the flag,
+    the existing single-output / independent multi-output path is unchanged.
+    """
+
+    if correlated_outputs:
+        return create_configured_correlated_fidelity_surrogate(
+            train_X=train_X,
+            train_Y=train_Y,
+            train_Yvar=train_Yvar,
+            cat_dims=cat_dims,
+            fidelity_spec=fidelity_spec,
+            fidelity_features=fidelity_features,
+            target_fidelities=target_fidelities,
+            bounds=bounds,
+            input_mode=input_mode,
+            **model_kwargs,
+        )
 
     spec = _make_fidelity_spec(
         fidelity_spec=fidelity_spec,
@@ -84,22 +104,17 @@ def create_configured_correlated_fidelity_surrogate(
     input_mode: str | None = None,
     **model_kwargs: Any,
 ) -> GaussianCorrelatedMultiFidelityGP:
-    """Create a correlated Kronecker multi-output multi-fidelity GP.
-
-    Phase 64 intentionally supports continuous inputs with block-design outputs.
-    Mixed/categorical correlated MF is deferred because the Kronecker data kernel
-    must preserve both categorical and fidelity covariance semantics.
-    """
+    """Create a correlated Kronecker multi-output multi-fidelity GP."""
 
     if cat_dims:
         raise NotImplementedError(
-            "Phase 64 correlated_multifidelity_gp supports continuous inputs only; "
-            "use multifidelity_gp for mixed independent outputs."
+            "Phase 64 correlated multi-output MF supports continuous inputs only; "
+            "use independent multifidelity_gp for mixed inputs."
         )
     mode = str(input_mode or "normal").lower()
     if mode not in {"normal", "continuous"}:
         raise NotImplementedError(
-            "correlated_multifidelity_gp supports input_mode='normal' only in Phase 64."
+            "Correlated multi-output MF supports input_mode='normal' only in Phase 64."
         )
     spec = _make_fidelity_spec(
         fidelity_spec=fidelity_spec,

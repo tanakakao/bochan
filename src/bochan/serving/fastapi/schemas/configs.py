@@ -237,7 +237,8 @@ class OptimizeConfigSchema(_Schema):
     repair_config: CandidateRepairConfigSchema | None = None
     fixed_features: dict[int, float] | None = None
     fixed_features_list: list[dict[int, float]] | None = None
-    fidelity_values: list[float] | None = None
+    fidelity_values: list[float] | dict[int, list[float]] | None = None
+    fidelity_assignments: list[dict[int, float]] | None = None
     optimize_fidelity: bool = False
     inequality_constraints: Any | None = None
     equality_constraints: Any | None = None
@@ -245,8 +246,24 @@ class OptimizeConfigSchema(_Schema):
 
     @model_validator(mode="after")
     def validate_fidelity_mode(self):
-        if self.optimize_fidelity and self.fidelity_values is not None:
-            raise ValueError("Specify either fidelity_values or optimize_fidelity=True, not both.")
-        if self.fidelity_values is not None and not self.fidelity_values:
+        active_modes = sum(
+            (
+                self.fidelity_values is not None,
+                self.fidelity_assignments is not None,
+                bool(self.optimize_fidelity),
+            )
+        )
+        if active_modes > 1:
+            raise ValueError(
+                "Specify only one of fidelity_values, fidelity_assignments, or "
+                "optimize_fidelity=True."
+            )
+        if isinstance(self.fidelity_values, list) and not self.fidelity_values:
             raise ValueError("fidelity_values must not be empty when supplied.")
+        if isinstance(self.fidelity_values, dict):
+            if not self.fidelity_values or any(not values for values in self.fidelity_values.values()):
+                raise ValueError("fidelity_values mapping entries must not be empty.")
+        if self.fidelity_assignments is not None:
+            if not self.fidelity_assignments or any(not item for item in self.fidelity_assignments):
+                raise ValueError("fidelity_assignments must not contain empty assignments.")
         return self

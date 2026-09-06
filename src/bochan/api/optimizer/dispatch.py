@@ -60,13 +60,15 @@ def _resolve_multifidelity_optimization(acqf: Any, bounds: Any, config: _BaseOpt
         prepare_continuous_fidelity_optimization,
     )
 
-    discrete = getattr(config, "fidelity_values", None) is not None
+    discrete = getattr(config, "fidelity_values", None) is not None or getattr(
+        config, "fidelity_assignments", None
+    ) is not None
     continuous = bool(getattr(config, "optimize_fidelity", False))
     if _is_multifidelity_acquisition(acqf) and not (discrete or continuous):
         raise ValueError(
-            "Multi-fidelity acquisitions require either OptimizeConfig.fidelity_values "
-            "for discrete fidelity search or optimize_fidelity=True for continuous "
-            "joint fidelity optimization."
+            "Multi-fidelity acquisitions require OptimizeConfig.fidelity_values / "
+            "fidelity_assignments for discrete fidelity search or optimize_fidelity=True "
+            "for continuous joint fidelity optimization."
         )
 
     if continuous:
@@ -99,7 +101,7 @@ def _prepare_mfhvkg_initializer(acqf: Any, config: _BaseOptimizeConfig) -> _Base
     """Let standard MF-HVKG use BoTorch's specialized one-shot initializer.
 
     bochan historically injected its generic Best Subset-compatible initializer
-    for every one-shot acquisition.  That initializer remains necessary for
+    for every one-shot acquisition. That initializer remains necessary for
     inter-point support constraints, but ordinary MF-HVKG should use BoTorch's
     ``gen_one_shot_hvkg_initial_conditions`` so fantasy Pareto sets receive the
     dedicated initialization strategy.

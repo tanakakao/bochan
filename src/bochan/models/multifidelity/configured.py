@@ -1,4 +1,4 @@
-"""ModelConfig adapter for long-format Gaussian multi-fidelity surrogates."""
+"""ModelConfig adapters for Gaussian multi-fidelity surrogates."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ from typing import Any
 
 from torch import Tensor
 
+from .correlated import GaussianCorrelatedMultiFidelityGP
 from .factory import create_fidelity_surrogate
 from .spec import FidelitySpec, ResolvedFidelitySpec
 
@@ -28,7 +29,7 @@ def _make_fidelity_spec(
         return fidelity_spec
     if fidelity_features is None:
         raise ValueError(
-            "multifidelity_gp requires model_kwargs['fidelity_features'] or "
+            "multi-fidelity models require model_kwargs['fidelity_features'] or "
             "model_kwargs['fidelity_spec']."
         )
     return FidelitySpec(
@@ -50,12 +51,7 @@ def create_configured_fidelity_surrogate(
     input_mode: str | None = None,
     **model_kwargs: Any,
 ) -> Any:
-    """Create a Phase-46 surrogate from public ``ModelConfig.model_kwargs``.
-
-    ``fidelity_features`` and ``target_fidelities`` are convenience fields for
-    the high-level API. Internally they are always converted to ``FidelitySpec``.
-    The input mode is inferred from ``cat_dims`` unless explicitly supplied.
-    """
+    """Create the standard independent-output-compatible MF surrogate."""
 
     spec = _make_fidelity_spec(
         fidelity_spec=fidelity_spec,
@@ -75,4 +71,52 @@ def create_configured_fidelity_surrogate(
     )
 
 
-__all__ = ["create_configured_fidelity_surrogate"]
+def create_configured_correlated_fidelity_surrogate(
+    train_X: Tensor,
+    train_Y: Tensor,
+    train_Yvar: Tensor | None = None,
+    *,
+    cat_dims: Sequence[int] | None = None,
+    fidelity_spec: FidelitySpec | ResolvedFidelitySpec | None = None,
+    fidelity_features: Sequence[int] | None = None,
+    target_fidelities: Mapping[int, float] | None = None,
+    bounds: Tensor | None = None,
+    input_mode: str | None = None,
+    **model_kwargs: Any,
+) -> GaussianCorrelatedMultiFidelityGP:
+    """Create a correlated Kronecker multi-output multi-fidelity GP.
+
+    Phase 64 intentionally supports continuous inputs with block-design outputs.
+    Mixed/categorical correlated MF is deferred because the Kronecker data kernel
+    must preserve both categorical and fidelity covariance semantics.
+    """
+
+    if cat_dims:
+        raise NotImplementedError(
+            "Phase 64 correlated_multifidelity_gp supports continuous inputs only; "
+            "use multifidelity_gp for mixed independent outputs."
+        )
+    mode = str(input_mode or "normal").lower()
+    if mode not in {"normal", "continuous"}:
+        raise NotImplementedError(
+            "correlated_multifidelity_gp supports input_mode='normal' only in Phase 64."
+        )
+    spec = _make_fidelity_spec(
+        fidelity_spec=fidelity_spec,
+        fidelity_features=fidelity_features,
+        target_fidelities=target_fidelities,
+    )
+    return GaussianCorrelatedMultiFidelityGP(
+        train_X=train_X,
+        train_Y=train_Y,
+        train_Yvar=train_Yvar,
+        fidelity_spec=spec,
+        bounds=bounds,
+        **model_kwargs,
+    )
+
+
+__all__ = [
+    "create_configured_correlated_fidelity_surrogate",
+    "create_configured_fidelity_surrogate",
+]

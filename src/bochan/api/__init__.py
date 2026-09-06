@@ -53,8 +53,8 @@ from .modeling.materials import (
     make_material_model_config,
     material_task_fixed_features,
 )
+from .multifidelity_optimizer import BayesianOptimizer
 from .observation import ExperimentFailureConfig, ObservationData
-from .optimizer import BayesianOptimizer
 from .optimizer.service import optimize_candidates
 from .registry.acquisition import available_acqf_names, resolve_acqf_cls
 from .registry.material import (

@@ -30,6 +30,10 @@ from .cost import (
     evaluate_fidelity_cost_mean,
 )
 from .factory import FidelityInputMode, create_fidelity_surrogate
+from .fidelity_transfer_diagnostics import (
+    FidelityTransferDiagnostic,
+    run_fidelity_transfer_diagnostic,
+)
 from .multioutput import (
     bind_shared_multifidelity_metadata,
     shared_multifidelity_metadata,
@@ -60,6 +64,7 @@ __all__ = [
     "FidelityCostKind",
     "FidelityInputMode",
     "FidelitySpec",
+    "FidelityTransferDiagnostic",
     "GaussianCorrelatedMultiFidelityGP",
     "GaussianMultiSourceGP",
     "InformationSourceSpec",
@@ -86,6 +91,7 @@ __all__ = [
     "momf_branin_currin_problem",
     "multi_objective_cost_trace",
     "prepare_continuous_fidelity_optimization",
+    "run_fidelity_transfer_diagnostic",
     "shared_multifidelity_metadata",
     "single_objective_cost_trace",
     "target_fidelity_fixed_features",

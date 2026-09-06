@@ -1,0 +1,78 @@
+name: Multi-Fidelity Phase 72 fidelity transfer
+
+on:
+  pull_request:
+    paths:
+      - "src/bochan/models/multifidelity/fidelity_transfer_diagnostics.py"
+      - "src/bochan/models/multifidelity/__init__.py"
+      - "examples/multifidelity_fidelity_transfer_diagnostic.py"
+      - "tests/api/test_multifidelity_phase72_fidelity_transfer.py"
+      - ".github/workflows/multifidelity-phase72-fidelity-transfer.yml"
+  workflow_dispatch:
+
+jobs:
+  diagnostic:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        problem: [branin, hartmann]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install
+        run: python -m pip install -e ".[test]" pandas
+
+      - name: Run smoke test
+        run: python -m pytest tests/api/test_multifidelity_phase72_fidelity_transfer.py -q
+
+      - name: Run transfer diagnostic
+        run: |
+          mkdir -p diagnostic-results
+          python examples/multifidelity_fidelity_transfer_diagnostic.py \
+            --problem ${{ matrix.problem }} \
+            --seeds 0 1 2 3 4 5 6 7 8 9 \
+            --n-initial 6 \
+            --n-probe 128 \
+            --fit-maxiter 50 \
+            --output diagnostic-results/${{ matrix.problem }}-phase72.csv
+
+      - name: Summarize
+        run: |
+          python - <<'PY'
+          import pandas as pd
+          from pathlib import Path
+
+          path = Path("diagnostic-results/${{ matrix.problem }}-phase72.csv")
+          df = pd.read_csv(path)
+          summary = (
+              df.groupby("source_fidelity", as_index=False)
+              .agg(
+                  learned_corr_mean=("mean_posterior_correlation", "mean"),
+                  learned_corr_std=("mean_posterior_correlation", "std"),
+                  true_corr_mean=("true_output_correlation", "mean"),
+                  true_corr_std=("true_output_correlation", "std"),
+                  transfer_fraction_mean=("mean_target_variance_reduction_fraction", "mean"),
+                  transfer_fraction_std=("mean_target_variance_reduction_fraction", "std"),
+                  target_variance_mean=("mean_target_variance", "mean"),
+              )
+          )
+          print(summary.to_string(index=False))
+          summary.to_csv(
+              Path("diagnostic-results/${{ matrix.problem }}-phase72-summary.csv"),
+              index=False,
+          )
+          PY
+
+      - name: Upload diagnostic CSV
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase72-${{ matrix.problem }}
+          path: diagnostic-results/

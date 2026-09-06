@@ -1,0 +1,70 @@
+name: MFKG Phase 69 cost sensitivity
+
+on:
+  pull_request:
+    paths:
+      - "examples/multifidelity_mfkg_diagnostic.py"
+      - ".github/workflows/mfkg-phase69-cost-sensitivity.yml"
+
+jobs:
+  branin:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - fixed_cost: 0.25
+            budget: 21.0
+            label: low-intercept
+          - fixed_cost: 1.0
+            budget: 34.5
+            label: medium-intercept
+          - fixed_cost: 5.0
+            budget: 106.5
+            label: botorch-like-intercept
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: pip install -e . pandas
+      - name: Run cost-sensitivity diagnostic
+        run: |
+          python examples/multifidelity_mfkg_diagnostic.py \
+            --problem branin \
+            --seeds 0 1 2 3 4 5 6 7 8 9 \
+            --fixed-cost ${{ matrix.fixed_cost }} \
+            --budget ${{ matrix.budget }} \
+            --n-initial 6 \
+            --max-steps 12 \
+            --num-restarts 4 \
+            --raw-samples 64 \
+            --fit-maxiter 50 \
+            --num-fantasies 8 \
+            --output mfkg-phase69-${{ matrix.label }}.csv
+      - name: Summarize
+        run: |
+          python - <<'PY'
+          import pandas as pd
+          from pathlib import Path
+          path = next(Path('.').glob('mfkg-phase69-*.csv'))
+          df = pd.read_csv(path)
+          post = df[~df['is_initial']]
+          final = df.sort_values('step').groupby(['strategy','seed']).tail(1)
+          summary = final.groupby('strategy').agg(
+              n_seeds=('seed','nunique'),
+              mean_final_metric=('metric','mean'),
+              median_final_metric=('metric','median'),
+              std_final_metric=('metric','std'),
+              mean_final_cost=('cumulative_cost','mean'),
+          )
+          counts = post.groupby(['strategy','fidelity']).size().unstack(fill_value=0)
+          print(summary)
+          print(counts)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mfkg-phase69-${{ matrix.label }}
+          path: mfkg-phase69-${{ matrix.label }}.csv

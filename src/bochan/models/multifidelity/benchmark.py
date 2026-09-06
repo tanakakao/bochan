@@ -55,9 +55,8 @@ def hypervolume_trace(Y: Any, *, ref_point: Any) -> Tensor:
         raise ValueError("ref_point must contain one finite value per objective.")
 
     hypervolume = Hypervolume(ref_point=reference)
-    return torch.stack(
-        [hypervolume.compute(outcomes[: index + 1]) for index in range(outcomes.shape[0])]
-    ).to(dtype=outcomes.dtype, device=outcomes.device)
+    values = [float(hypervolume.compute(outcomes[: index + 1])) for index in range(outcomes.shape[0])]
+    return outcomes.new_tensor(values)
 
 
 def hypervolume_regret_trace(hypervolume: Any, *, reference_hypervolume: float) -> Tensor:

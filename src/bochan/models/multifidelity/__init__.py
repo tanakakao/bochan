@@ -46,6 +46,12 @@ from .source import (
     ResolvedInformationSourceSpec,
 )
 from .spec import FidelitySpec, ResolvedFidelitySpec
+from .synthetic import (
+    SyntheticMultiFidelityProblem,
+    augmented_branin_problem,
+    augmented_hartmann_problem,
+    momf_branin_currin_problem,
+)
 
 __all__ = [
     "CostNormalizedTrace",
@@ -59,6 +65,9 @@ __all__ = [
     "InformationSourceSpec",
     "ResolvedFidelitySpec",
     "ResolvedInformationSourceSpec",
+    "SyntheticMultiFidelityProblem",
+    "augmented_branin_problem",
+    "augmented_hartmann_problem",
     "best_objective_trace",
     "bind_shared_multifidelity_metadata",
     "build_fidelity_cost_utility",
@@ -74,6 +83,7 @@ __all__ = [
     "hypervolume_trace",
     "inference_hv_regret_cost_trace",
     "merge_target_fidelities_into_opt_config",
+    "momf_branin_currin_problem",
     "multi_objective_cost_trace",
     "prepare_continuous_fidelity_optimization",
     "shared_multifidelity_metadata",

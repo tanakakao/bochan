@@ -60,8 +60,12 @@ def _normalize_transport_cost_config(value: Any) -> dict[str, Any]:
     if kind == "callable" or "cost_callable" in config:
         raise ValueError(
             "FidelityCostConfig(kind='callable') is available only in the Python API; "
-            "FastAPI cost_config supports serializable known-cost modes such as "
-            "'affine' and 'fixed'."
+            "FastAPI cost_config supports serializable cost modes."
+        )
+    if "cost_model" in config:
+        raise ValueError(
+            "A pre-built learned cost_model is available only in the Python API. "
+            "For FastAPI kind='learned_gp', provide serializable train_X and train_cost."
         )
     return config
 

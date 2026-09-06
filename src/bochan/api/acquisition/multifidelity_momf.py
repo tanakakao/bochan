@@ -15,6 +15,7 @@ from botorch.utils.multi_objective.box_decompositions.non_dominated import (
 from bochan.models.multifidelity.cost import (
     FidelityCostConfig,
     build_fidelity_cost_utility,
+    evaluate_fidelity_cost_mean,
 )
 
 from ..configs import AcquisitionConfig, DataContext, ModelBundle
@@ -196,14 +197,19 @@ def _resolve_cost_call(
     if config is None:
         raise TypeError("MOMF cost_config must be FidelityCostConfig or a mapping.")
     features = _fidelity_features(model)
-    cost_model, _ = build_fidelity_cost_utility(
+    cost_model, utility = build_fidelity_cost_utility(
         config,
         fidelity_features=features,
         d=d,
     )
 
     def cost_call(X: torch.Tensor) -> torch.Tensor:
-        return cost_model(X).clamp_min(config.min_cost)
+        return evaluate_fidelity_cost_mean(
+            cost_model,
+            utility,
+            X,
+            min_cost=config.min_cost,
+        )
 
     return cost_call, cost_model
 

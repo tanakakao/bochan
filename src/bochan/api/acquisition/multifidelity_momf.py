@@ -46,6 +46,17 @@ def is_momf_name(name: Any) -> bool:
     return _normalize_name(name) in _MOMF_NAMES
 
 
+def _bundle_is_multi_output(bundle: ModelBundle) -> bool:
+    """Infer multi-output capability from metadata or the concrete model."""
+
+    if bool(bundle.metadata.get("multi_output", False)):
+        return True
+    try:
+        return int(getattr(bundle.model, "num_outputs", 1)) > 1
+    except (TypeError, ValueError):
+        return False
+
+
 def _training_outcomes(bundle: ModelBundle) -> torch.Tensor:
     """Return observed physical outcomes as an ``n x m`` tensor."""
 
@@ -220,11 +231,11 @@ def build_momf_acquisition(
     config: AcquisitionConfig,
     data_context: DataContext,
 ) -> MOMF:
-    """Build BoTorch MOMF from a multi-output multi-fidelity surrogate."""
+    """Build BoTorch MOMF from independent or correlated multi-output MF."""
 
     if not is_momf_name(config.name):
         raise ValueError(f"Unsupported MOMF acquisition name: {config.name!r}.")
-    if not bool(bundle.metadata.get("multi_output", False)):
+    if not _bundle_is_multi_output(bundle):
         raise ValueError("MOMF requires a multi-output multi-fidelity model.")
 
     model = bundle.model
@@ -232,7 +243,7 @@ def build_momf_acquisition(
     bounds = _bounds_tensor(bundle, data_context)
     features = _fidelity_features(model)
     if len(features) != 1:
-        raise ValueError("Phase 58 MOMF requires exactly one fidelity feature.")
+        raise ValueError("MOMF currently requires exactly one fidelity feature.")
     feature = features[0]
     targets = _target_fidelities(model)
     if set(targets) != {feature}:

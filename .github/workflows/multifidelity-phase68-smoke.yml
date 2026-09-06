@@ -1,0 +1,26 @@
+name: Multi-Fidelity Phase 68 smoke
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src/bochan/models/multifidelity/diagnostics.py"
+      - "tests/api/test_multifidelity_phase68_mfkg_diagnostics.py"
+      - "examples/multifidelity_mfkg_diagnostic.py"
+      - ".github/workflows/multifidelity-phase68-smoke.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install
+        run: python -m pip install -e ".[test,api]"
+      - name: Run Phase 68 tests
+        run: python -m pytest tests/api/test_multifidelity_phase68_mfkg_diagnostics.py -q

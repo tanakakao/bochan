@@ -54,6 +54,18 @@ def _normalize_transport_fidelity_assignments(value: Any) -> tuple[dict[int, flo
     )
 
 
+def _normalize_transport_cost_config(value: Any) -> dict[str, Any]:
+    config = dict(value)
+    kind = str(config.get("kind", "affine")).strip().lower()
+    if kind == "callable" or "cost_callable" in config:
+        raise ValueError(
+            "FidelityCostConfig(kind='callable') is available only in the Python API; "
+            "FastAPI cost_config supports serializable known-cost modes such as "
+            "'affine' and 'fixed'."
+        )
+    return config
+
+
 def _inject_multifidelity_options(acq_config: Any, opt_config: Any, request: Any) -> tuple[Any, Any]:
     """Merge transport conveniences into canonical core multi-fidelity configs."""
 
@@ -65,9 +77,10 @@ def _inject_multifidelity_options(acq_config: Any, opt_config: Any, request: Any
             raise ValueError("target_fidelity conflicts with acquisition_config.acqf_kwargs.")
         acqf_kwargs["target_fidelity"] = float(target_fidelity)
     if cost_config is not None:
-        if "cost_config" in acqf_kwargs and acqf_kwargs["cost_config"] != cost_config:
+        transport_cost = _normalize_transport_cost_config(cost_config)
+        if "cost_config" in acqf_kwargs and acqf_kwargs["cost_config"] != transport_cost:
             raise ValueError("cost_config conflicts with acquisition_config.acqf_kwargs.")
-        acqf_kwargs["cost_config"] = dict(cost_config)
+        acqf_kwargs["cost_config"] = transport_cost
     if acqf_kwargs != dict(getattr(acq_config, "acqf_kwargs", {}) or {}):
         acq_config = replace(acq_config, acqf_kwargs=acqf_kwargs)
 

@@ -5,7 +5,11 @@ classification family. Shared fidelity-axis transforms, adapters, and validation
 should be placed here as they are introduced.
 """
 
-from .configured import create_configured_fidelity_surrogate
+from .configured import (
+    create_configured_correlated_fidelity_surrogate,
+    create_configured_fidelity_surrogate,
+)
+from .correlated import GaussianCorrelatedMultiFidelityGP
 from .cost import (
     FidelityCostCallable,
     FidelityCostConfig,
@@ -33,10 +37,12 @@ __all__ = [
     "FidelityCostKind",
     "FidelityInputMode",
     "FidelitySpec",
+    "GaussianCorrelatedMultiFidelityGP",
     "ResolvedFidelitySpec",
     "bind_shared_multifidelity_metadata",
     "build_fidelity_cost_utility",
     "build_learned_fidelity_cost_model",
+    "create_configured_correlated_fidelity_surrogate",
     "create_configured_fidelity_surrogate",
     "create_fidelity_surrogate",
     "enumerate_discrete_fidelities_into_opt_config",

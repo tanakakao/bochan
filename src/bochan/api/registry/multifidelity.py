@@ -1,4 +1,4 @@
-"""Public model-type registration for long-format Gaussian multi-fidelity GPs."""
+"""Public model-type registration for Gaussian multi-fidelity GPs."""
 
 from __future__ import annotations
 
@@ -11,6 +11,11 @@ _MODEL_TYPE = "multifidelity_gp"
 _ADAPTER_PATH = (
     "bochan.models.multifidelity.configured",
     "create_configured_fidelity_surrogate",
+)
+_CORRELATED_MODEL_TYPE = "correlated_multifidelity_gp"
+_CORRELATED_ADAPTER_PATH = (
+    "bochan.models.multifidelity.configured",
+    "create_configured_correlated_fidelity_surrogate",
 )
 
 
@@ -32,12 +37,7 @@ def _task_registry(
 
 
 def register_multifidelity_gp_model_types() -> None:
-    """Register ``multifidelity_gp`` for normal and mixed regression inputs.
-
-    The historical ``model_type='multifidelity'`` entries are intentionally left
-    unchanged because they represent the existing wide-format contract.
-    Registration is idempotent and refuses conflicting replacements.
-    """
+    """Register independent and correlated Gaussian multi-fidelity model types."""
 
     tree = DEFAULT_MODEL_REGISTRY.raw()
     for input_type in ("normal", "mixed"):
@@ -49,6 +49,15 @@ def register_multifidelity_gp_model_types() -> None:
                 f"{existing!r} != {_ADAPTER_PATH!r}."
             )
         registry[_MODEL_TYPE] = _ADAPTER_PATH
+
+    normal_registry = _task_registry(tree, "normal", "regression")
+    existing = normal_registry.get(_CORRELATED_MODEL_TYPE)
+    if existing is not None and existing != _CORRELATED_ADAPTER_PATH:
+        raise RuntimeError(
+            f"Refusing to replace existing model_type {_CORRELATED_MODEL_TYPE!r}: "
+            f"{existing!r} != {_CORRELATED_ADAPTER_PATH!r}."
+        )
+    normal_registry[_CORRELATED_MODEL_TYPE] = _CORRELATED_ADAPTER_PATH
 
 
 __all__ = ["register_multifidelity_gp_model_types"]

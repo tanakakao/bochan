@@ -1,10 +1,9 @@
 """Per-fidelity score diagnostics for multi-fidelity knowledge gradient.
 
-This module measures the best MFKG value obtainable at each allowed fidelity
-before the production optimizer chooses its next point. Both unweighted KG and
-cost-aware KG are recorded against the same fitted surrogate state, making it
-possible to distinguish a surrogate / information-gain preference from a
-cost-normalization preference.
+The diagnostics compare per-fidelity MFKG maxima against the production mixed
+fidelity choice while reusing the exact same acquisition-function object. This
+avoids rebuilding qMFKG (and its fantasy sampler) independently for each
+fidelity, which would make the resulting acquisition values non-comparable.
 """
 
 from __future__ import annotations
@@ -14,6 +13,8 @@ from typing import Any
 
 import torch
 from torch import Tensor
+
+from bochan.api import optimize_candidates
 
 from .benchmark import cumulative_cost
 from .diagnostics import _mfkg_configs
@@ -62,6 +63,13 @@ def _scalar_acquisition_value(value: Any, *, like: Tensor) -> float:
     return float(tensor.max().item())
 
 
+def _as_candidate(value: Any, *, like: Tensor) -> Tensor:
+    candidate = torch.as_tensor(value, dtype=like.dtype, device=like.device)
+    if candidate.ndim == 1:
+        candidate = candidate.unsqueeze(0)
+    return candidate
+
+
 def run_mfkg_fidelity_score_diagnostic(
     problem: SyntheticMultiFidelityProblem,
     *,
@@ -70,10 +78,14 @@ def run_mfkg_fidelity_score_diagnostic(
 ) -> MFKGFidelityScoreRun:
     """Run cost-aware MFKG and score every allowed fidelity before each step.
 
-    For every BO iteration, the function optimizes both unweighted MFKG and
-    cost-aware MFKG while fixing the fidelity to each value in
-    ``problem.fidelity_values``. The normal cost-aware MFKG optimization over all
-    allowed fidelities is then executed and that candidate is evaluated.
+    For each BO iteration, unweighted and cost-aware qMFKG are each built once.
+    Their per-fidelity maxima are then obtained by repeatedly optimizing the same
+    acquisition object with one fidelity fixed at a time. The normal cost-aware
+    mixed-fidelity optimization reuses that same cost-aware acquisition object.
+
+    The RNG state is replayed for the raw fixed-fidelity sweep, the cost-aware
+    fixed-fidelity sweep, and the production mixed-fidelity optimization. This
+    keeps optimizer initialization aligned while avoiding acquisition rebuilds.
     """
 
     if problem.num_objectives != 1:
@@ -110,8 +122,12 @@ def run_mfkg_fidelity_score_diagnostic(
     )
     optimizer.fit(X, Y)
 
-    aware_acq, aware_opt = _mfkg_configs(problem, config, cost_aware=True)
-    raw_acq, _ = _mfkg_configs(problem, config, cost_aware=False)
+    aware_acq_config, aware_opt_config = _mfkg_configs(
+        problem,
+        config,
+        cost_aware=True,
+    )
+    raw_acq_config, _ = _mfkg_configs(problem, config, cost_aware=False)
 
     records: list[dict[str, float | int | bool]] = []
     total_cost = float(costs.sum().item())
@@ -120,58 +136,53 @@ def run_mfkg_fidelity_score_diagnostic(
         if total_cost >= float(config.budget):
             break
 
-        step_records: list[dict[str, float | int | bool]] = []
+        # Build each qMFKG object exactly once for the current fitted surrogate.
+        # All fidelity-specific scores and the final mixed choice therefore share
+        # the same fantasies / current-value state within each acquisition type.
+        raw_acqf = optimizer.acquisition(raw_acq_config)
+        aware_acqf = optimizer.acquisition(aware_acq_config)
+        step_rng_state = torch.random.get_rng_state()
+
+        raw_results: dict[float, tuple[Tensor, float]] = {}
+        torch.random.set_rng_state(step_rng_state)
         for fidelity in problem.fidelity_values:
             opt_config = _fixed_fidelity_opt_config(problem, config, float(fidelity))
-
-            # Reuse the same RNG state for the raw and cost-aware optimization so
-            # their KG fantasies / raw samples are paired as closely as possible.
-            rng_state = torch.random.get_rng_state()
-            raw_candidate, raw_value = optimizer.ask(
-                acq_config=raw_acq,
-                opt_config=opt_config,
+            candidate, value = optimize_candidates(
+                acqf=raw_acqf,
+                bounds=problem.bounds,
+                config=opt_config,
             )
-            torch.random.set_rng_state(rng_state)
-            aware_candidate, aware_value = optimizer.ask(
-                acq_config=aware_acq,
-                opt_config=opt_config,
+            candidate = _as_candidate(candidate, like=X)
+            raw_results[float(fidelity)] = (
+                candidate,
+                _scalar_acquisition_value(value, like=X),
             )
 
-            raw_candidate = torch.as_tensor(
-                raw_candidate,
-                dtype=X.dtype,
-                device=X.device,
+        aware_results: dict[float, tuple[Tensor, float]] = {}
+        torch.random.set_rng_state(step_rng_state)
+        for fidelity in problem.fidelity_values:
+            opt_config = _fixed_fidelity_opt_config(problem, config, float(fidelity))
+            candidate, value = optimize_candidates(
+                acqf=aware_acqf,
+                bounds=problem.bounds,
+                config=opt_config,
             )
-            aware_candidate = torch.as_tensor(
-                aware_candidate,
-                dtype=X.dtype,
-                device=X.device,
-            )
-            if raw_candidate.ndim == 1:
-                raw_candidate = raw_candidate.unsqueeze(0)
-            if aware_candidate.ndim == 1:
-                aware_candidate = aware_candidate.unsqueeze(0)
-
-            step_records.append(
-                {
-                    "seed": int(seed),
-                    "iteration": int(iteration),
-                    "fidelity": float(fidelity),
-                    "raw_kg": _scalar_acquisition_value(raw_value, like=X),
-                    "cost_aware_kg": _scalar_acquisition_value(aware_value, like=X),
-                    "raw_candidate_cost": float(problem.cost(raw_candidate).sum().item()),
-                    "aware_candidate_cost": float(problem.cost(aware_candidate).sum().item()),
-                    "selected": False,
-                }
+            candidate = _as_candidate(candidate, like=X)
+            aware_results[float(fidelity)] = (
+                candidate,
+                _scalar_acquisition_value(value, like=X),
             )
 
-        candidate, selected_value = optimizer.ask(
-            acq_config=aware_acq,
-            opt_config=aware_opt,
+        # Replay the same optimizer RNG sequence used by the aware per-fidelity
+        # sweep. optimize_acqf_mixed evaluates the same fidelity assignments and
+        # should therefore select the best corresponding cost-aware optimum.
+        torch.random.set_rng_state(step_rng_state)
+        candidate, selected_value = optimize_candidates(
+            acqf=aware_acqf,
+            bounds=problem.bounds,
+            config=aware_opt_config,
         )
-        candidate = torch.as_tensor(candidate, dtype=X.dtype, device=X.device)
-        if candidate.ndim == 1:
-            candidate = candidate.unsqueeze(0)
+        candidate = _as_candidate(candidate, like=X)
 
         new_cost = problem.cost(candidate)
         candidate_cost = float(new_cost.sum().item())
@@ -179,16 +190,26 @@ def run_mfkg_fidelity_score_diagnostic(
             break
 
         selected_fidelity = float(candidate[0, problem.fidelity_feature].item())
-        for row in step_records:
-            row["selected"] = bool(
-                abs(float(row["fidelity"]) - selected_fidelity) <= 1e-8
+        selected_acquisition_value = _scalar_acquisition_value(selected_value, like=X)
+
+        for fidelity in problem.fidelity_values:
+            level = float(fidelity)
+            raw_candidate, raw_value = raw_results[level]
+            aware_candidate, aware_value = aware_results[level]
+            records.append(
+                {
+                    "seed": int(seed),
+                    "iteration": int(iteration),
+                    "fidelity": level,
+                    "raw_kg": raw_value,
+                    "cost_aware_kg": aware_value,
+                    "raw_candidate_cost": float(problem.cost(raw_candidate).sum().item()),
+                    "aware_candidate_cost": float(problem.cost(aware_candidate).sum().item()),
+                    "selected": bool(abs(level - selected_fidelity) <= 1e-8),
+                    "selected_fidelity": selected_fidelity,
+                    "selected_acquisition_value": selected_acquisition_value,
+                }
             )
-            row["selected_fidelity"] = selected_fidelity
-            row["selected_acquisition_value"] = _scalar_acquisition_value(
-                selected_value,
-                like=X,
-            )
-            records.append(row)
 
         new_Y = problem.evaluate(candidate)
         optimizer.tell(candidate, new_Y, refit=True)

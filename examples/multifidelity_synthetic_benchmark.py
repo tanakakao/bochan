@@ -7,6 +7,12 @@ Single objective::
     python examples/multifidelity_synthetic_benchmark.py --problem branin \
         --strategies high_fidelity mfkg mfmes --seeds 0 1 2 --budget 15
 
+Cost sensitivity::
+
+    python examples/multifidelity_synthetic_benchmark.py --problem hartmann \
+        --strategies high_fidelity mfkg mfmes --seeds 0 1 2 \
+        --fixed-cost 5.0 --budget 106.5
+
 Multi objective::
 
     python examples/multifidelity_synthetic_benchmark.py --problem momf_branin_currin \
@@ -45,21 +51,43 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--num-restarts", type=int, default=4)
     parser.add_argument("--raw-samples", type=int, default=64)
     parser.add_argument("--fit-maxiter", type=int, default=50)
+    parser.add_argument(
+        "--fixed-cost",
+        type=float,
+        default=None,
+        help=(
+            "Optional affine fidelity-independent cost intercept for Branin/Hartmann. "
+            "When omitted, the synthetic problem default is used."
+        ),
+    )
     parser.add_argument("--output", type=Path, default=Path("multifidelity_benchmark.csv"))
     return parser
 
 
 def main() -> None:
     args = _parser().parse_args()
+    if args.fixed_cost is not None and args.fixed_cost <= 0:
+        raise ValueError("--fixed-cost must be positive.")
+
     if args.problem == "branin":
-        problem = augmented_branin_problem()
+        problem = (
+            augmented_branin_problem()
+            if args.fixed_cost is None
+            else augmented_branin_problem(fixed_cost=args.fixed_cost)
+        )
         default_strategies = ["high_fidelity", "mfkg", "mfmes"]
         default_budget = 15.0
     elif args.problem == "hartmann":
-        problem = augmented_hartmann_problem()
+        problem = (
+            augmented_hartmann_problem()
+            if args.fixed_cost is None
+            else augmented_hartmann_problem(fixed_cost=args.fixed_cost)
+        )
         default_strategies = ["high_fidelity", "mfkg", "mfmes"]
         default_budget = 15.0
     else:
+        if args.fixed_cost is not None:
+            raise ValueError("--fixed-cost is supported only for Branin/Hartmann.")
         problem = momf_branin_currin_problem()
         default_strategies = ["high_fidelity", "mfhvkg", "momf"]
         default_budget = 500.0
@@ -79,6 +107,11 @@ def main() -> None:
         config=config,
     )
     rows = [row for run in runs for row in run.rows()]
+    if args.problem in {"branin", "hartmann"}:
+        fixed_cost = 0.25 if args.fixed_cost is None else float(args.fixed_cost)
+        for row in rows:
+            row["fixed_cost"] = fixed_cost
+
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with args.output.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=list(rows[0]))

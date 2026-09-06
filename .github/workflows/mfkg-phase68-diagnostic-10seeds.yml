@@ -1,0 +1,98 @@
+name: MFKG Phase 68 diagnostic 10 seeds
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/mfkg-phase68-diagnostic-10seeds.yml"
+  workflow_dispatch:
+
+jobs:
+  branin:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install
+        run: python -m pip install -e ".[test,api]"
+      - name: Run Branin MFKG diagnostics
+        run: |
+          mkdir -p diagnostic-results
+          python examples/multifidelity_mfkg_diagnostic.py \
+            --problem branin \
+            --seeds 0 1 2 3 4 5 6 7 8 9 \
+            --budget 15 \
+            --n-initial 6 \
+            --max-steps 12 \
+            --num-restarts 4 \
+            --raw-samples 64 \
+            --fit-maxiter 50 \
+            --num-fantasies 8 \
+            --output diagnostic-results/branin-mfkg-phase68.csv
+      - name: Summarize diagnostics
+        run: |
+          python - <<'PY'
+          import csv
+          from collections import Counter, defaultdict
+          from pathlib import Path
+          from statistics import mean, median, stdev
+
+          path = Path("diagnostic-results/branin-mfkg-phase68.csv")
+          by_variant_seed = defaultdict(list)
+          with path.open(newline="", encoding="utf-8") as f:
+              for row in csv.DictReader(f):
+                  by_variant_seed[(row["strategy"], int(row["seed"]))].append(row)
+
+          summary_rows = []
+          for strategy in sorted({key[0] for key in by_variant_seed}):
+              finals = []
+              final_costs = []
+              target_counts = []
+              fidelity_counts = Counter()
+              acq_values = []
+              seeds = sorted(seed for s, seed in by_variant_seed if s == strategy)
+              for seed in seeds:
+                  rows = by_variant_seed[(strategy, seed)]
+                  last = rows[-1]
+                  finals.append(float(last["metric"]))
+                  final_costs.append(float(last["cumulative_cost"]))
+                  post = [r for r in rows if r["is_initial"].lower() == "false"]
+                  target_counts.append(sum(r["is_target_fidelity"].lower() == "true" for r in post))
+                  for r in post:
+                      fidelity_counts[float(r["fidelity"])] += 1
+                      raw = r.get("acquisition_value", "")
+                      if raw not in ("", "None", "nan"):
+                          acq_values.append(float(raw))
+              summary_rows.append({
+                  "strategy": strategy,
+                  "n_seeds": len(seeds),
+                  "mean_final_metric": mean(finals),
+                  "median_final_metric": median(finals),
+                  "std_final_metric": stdev(finals) if len(finals) > 1 else 0.0,
+                  "mean_final_cost": mean(final_costs),
+                  "mean_post_initial_target_evaluations": mean(target_counts),
+                  "fidelity_0.5_count": fidelity_counts[0.5],
+                  "fidelity_0.75_count": fidelity_counts[0.75],
+                  "fidelity_1.0_count": fidelity_counts[1.0],
+                  "mean_acquisition_value": mean(acq_values) if acq_values else "",
+              })
+
+          out = Path("diagnostic-results/branin-mfkg-phase68-summary.csv")
+          with out.open("w", newline="", encoding="utf-8") as f:
+              writer = csv.DictWriter(f, fieldnames=list(summary_rows[0]))
+              writer.writeheader()
+              writer.writerows(summary_rows)
+
+          for row in summary_rows:
+              print(row)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: branin-mfkg-phase68-10seeds
+          path: diagnostic-results/
+          if-no-files-found: error

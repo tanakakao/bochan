@@ -65,6 +65,7 @@ class SyntheticBenchmarkRun:
     problem: str
     strategy: str
     seed: int
+    fidelity_feature: int
     X: Tensor
     Y: Tensor
     costs: Tensor
@@ -86,12 +87,12 @@ class SyntheticBenchmarkRun:
                     "seed": int(self.seed),
                     "step": int(index),
                     "is_initial": bool(index < self.initial_count),
-                    "is_target_fidelity": bool(self.target_mask[index]),
-                    "evaluation_cost": float(self.costs[index]),
-                    "cumulative_cost": float(self.cumulative_cost[index]),
+                    "is_target_fidelity": bool(self.target_mask[index].item()),
+                    "evaluation_cost": float(self.costs[index].item()),
+                    "cumulative_cost": float(self.cumulative_cost[index].item()),
                     "metric_name": self.metric_name,
-                    "metric": float(self.metric[index]),
-                    "fidelity": float(self.X[index, -1]),
+                    "metric": float(self.metric[index].item()),
+                    "fidelity": float(self.X[index, self.fidelity_feature].item()),
                 }
             )
         return rows
@@ -198,6 +199,7 @@ def _strategy_configs(
 ) -> tuple[Any, Any]:
     from bochan.api.configs import AcquisitionConfig, OptimizeConfig
 
+    strategy = _validate_strategy(problem, strategy)
     common_opt = {
         "q": 1,
         "num_restarts": config.num_restarts,
@@ -331,7 +333,7 @@ def run_synthetic_strategy(
     optimizer.fit(X, Y)
 
     acq_config, opt_config = _strategy_configs(problem, strategy, config)
-    total_cost = float(costs.sum())
+    total_cost = float(costs.sum().item())
     for _ in range(config.max_steps):
         if total_cost >= float(config.budget):
             break
@@ -343,20 +345,22 @@ def run_synthetic_strategy(
         if candidate.ndim == 1:
             candidate = candidate.unsqueeze(0)
         new_cost = problem.cost(candidate)
-        if total_cost + float(new_cost.sum()) > float(config.budget):
+        candidate_cost = float(new_cost.sum().item())
+        if total_cost + candidate_cost > float(config.budget):
             break
         new_Y = problem.evaluate(candidate)
         optimizer.tell(candidate, new_Y, refit=True)
         X = torch.cat([X, candidate], dim=0)
         Y = torch.cat([Y, new_Y], dim=0)
         costs = torch.cat([costs, new_cost], dim=0)
-        total_cost += float(new_cost.sum())
+        total_cost += candidate_cost
 
     metric, metric_name = _target_metric_trace(problem, X, Y)
     return SyntheticBenchmarkRun(
         problem=problem.name,
         strategy=strategy,
         seed=int(seed),
+        fidelity_feature=problem.fidelity_feature,
         X=X,
         Y=Y,
         costs=costs,

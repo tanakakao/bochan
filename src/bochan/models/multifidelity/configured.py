@@ -9,6 +9,7 @@ from torch import Tensor
 
 from .correlated import GaussianCorrelatedMultiFidelityGP
 from .factory import create_fidelity_surrogate
+from .source import GaussianMultiSourceGP, InformationSourceSpec
 from .spec import FidelitySpec, ResolvedFidelitySpec
 
 
@@ -131,7 +132,54 @@ def create_configured_correlated_fidelity_surrogate(
     )
 
 
+def create_configured_information_source_surrogate(
+    train_X: Tensor,
+    train_Y: Tensor,
+    train_Yvar: Tensor | None = None,
+    *,
+    cat_dims: Sequence[int] | None = None,
+    source_spec: InformationSourceSpec | None = None,
+    source_feature: int = -1,
+    source_values: Sequence[int] | None = None,
+    target_source: int | None = None,
+    source_names: Mapping[int, str] | None = None,
+    input_mode: str | None = None,
+    **model_kwargs: Any,
+) -> GaussianMultiSourceGP:
+    """Create an unordered discrete multi-information-source ICM GP."""
+
+    if cat_dims:
+        raise NotImplementedError(
+            "Phase 65 multisource_gp supports continuous design variables plus one "
+            "discrete information-source feature; additional categorical inputs are not supported."
+        )
+    mode = str(input_mode or "normal").lower()
+    if mode not in {"normal", "continuous"}:
+        raise NotImplementedError(
+            "multisource_gp supports input_mode='normal' only in Phase 65."
+        )
+    if source_spec is not None and any(
+        value is not None
+        for value in (source_values, target_source, source_names)
+    ):
+        raise ValueError(
+            "Specify source_spec or source_values/target_source/source_names, not both."
+        )
+    return GaussianMultiSourceGP(
+        train_X=train_X,
+        train_Y=train_Y,
+        train_Yvar=train_Yvar,
+        source_spec=source_spec,
+        source_feature=source_feature,
+        source_values=source_values,
+        target_source=target_source,
+        source_names=source_names,
+        **model_kwargs,
+    )
+
+
 __all__ = [
     "create_configured_correlated_fidelity_surrogate",
     "create_configured_fidelity_surrogate",
+    "create_configured_information_source_surrogate",
 ]

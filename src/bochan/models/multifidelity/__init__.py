@@ -8,6 +8,7 @@ should be placed here as they are introduced.
 from .configured import (
     create_configured_correlated_fidelity_surrogate,
     create_configured_fidelity_surrogate,
+    create_configured_information_source_surrogate,
 )
 from .correlated import GaussianCorrelatedMultiFidelityGP
 from .cost import (
@@ -29,6 +30,11 @@ from .optimization import (
     prepare_continuous_fidelity_optimization,
     target_fidelity_fixed_features,
 )
+from .source import (
+    GaussianMultiSourceGP,
+    InformationSourceSpec,
+    ResolvedInformationSourceSpec,
+)
 from .spec import FidelitySpec, ResolvedFidelitySpec
 
 __all__ = [
@@ -38,12 +44,16 @@ __all__ = [
     "FidelityInputMode",
     "FidelitySpec",
     "GaussianCorrelatedMultiFidelityGP",
+    "GaussianMultiSourceGP",
+    "InformationSourceSpec",
     "ResolvedFidelitySpec",
+    "ResolvedInformationSourceSpec",
     "bind_shared_multifidelity_metadata",
     "build_fidelity_cost_utility",
     "build_learned_fidelity_cost_model",
     "create_configured_correlated_fidelity_surrogate",
     "create_configured_fidelity_surrogate",
+    "create_configured_information_source_surrogate",
     "create_fidelity_surrogate",
     "enumerate_discrete_fidelities_into_opt_config",
     "evaluate_fidelity_cost_mean",

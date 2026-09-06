@@ -17,7 +17,13 @@ from botorch.models.deterministic import GenericDeterministicModel
 from botorch.models.transforms.outcome import Standardize
 from gpytorch.mlls import ExactMarginalLogLikelihood
 
-FidelityCostKind = Literal["affine", "fixed", "callable", "learned_gp"]
+FidelityCostKind = Literal[
+    "affine",
+    "fixed",
+    "callable",
+    "learned_gp",
+    "discrete_source",
+]
 FidelityCostCallable = Callable[[torch.Tensor], torch.Tensor]
 
 
@@ -33,11 +39,11 @@ class FidelityCostConfig:
 
     ``kind='learned_gp'`` fits a ``SingleTaskGP`` to observed costs supplied by
     ``train_X`` and ``train_cost``. By default the GP models ``log(cost)`` so
-    posterior predictions can be mapped back to strictly positive costs. A
-    pre-built ``cost_model`` can be supplied instead of training data for the
-    Python API. ``use_mean=False`` propagates learned-cost posterior uncertainty
-    through ``InverseCostWeightedUtility`` for acquisition functions that pass a
-    sampler to the utility.
+    posterior predictions can be mapped back to strictly positive costs.
+
+    ``kind='discrete_source'`` maps integer information-source ids to fixed known
+    costs using ``source_feature`` and ``source_costs``. This is appropriate for
+    unordered sources such as simulation A / simulation B / experiment.
 
     ``min_cost`` is applied through the cost objective so every public mode
     remains strictly positive for inverse-cost weighting.
@@ -54,14 +60,22 @@ class FidelityCostConfig:
     log_cost: bool = True
     use_mean: bool = True
     fit_model: bool = True
+    source_feature: int | None = None
+    source_costs: Mapping[int, float] | None = None
 
     def __post_init__(self) -> None:
         kind = str(self.kind).strip().lower()
-        supported = {"affine", "fixed", "callable", "learned_gp"}
+        supported = {
+            "affine",
+            "fixed",
+            "callable",
+            "learned_gp",
+            "discrete_source",
+        }
         if kind not in supported:
             raise ValueError(
                 "FidelityCostConfig.kind must be 'affine', 'fixed', 'callable', "
-                "or 'learned_gp'."
+                "'learned_gp', or 'discrete_source'."
             )
         fixed_cost = float(self.fixed_cost)
         min_cost = float(self.min_cost)
@@ -79,27 +93,39 @@ class FidelityCostConfig:
                 raise ValueError("fidelity_weights must contain finite non-negative values.")
             weights = normalized
 
+        source_costs = self.source_costs
+        if source_costs is not None:
+            source_costs = {int(source): float(cost) for source, cost in source_costs.items()}
+            if not source_costs:
+                raise ValueError("source_costs must not be empty when supplied.")
+            if any(not math.isfinite(cost) or cost <= 0 for cost in source_costs.values()):
+                raise ValueError("source_costs must contain finite positive costs.")
+
         if kind == "affine":
             if self.cost_callable is not None:
                 raise ValueError("cost_callable is only valid for kind='callable'.")
             self._reject_learned_fields()
+            self._reject_source_fields()
         elif kind == "fixed":
             if weights is not None:
                 raise ValueError("fidelity_weights is only valid for kind='affine'.")
             if self.cost_callable is not None:
                 raise ValueError("cost_callable is only valid for kind='callable'.")
             self._reject_learned_fields()
+            self._reject_source_fields()
         elif kind == "callable":
             if weights is not None:
                 raise ValueError("fidelity_weights is only valid for kind='affine'.")
             if self.cost_callable is None or not callable(self.cost_callable):
                 raise ValueError("kind='callable' requires a callable cost_callable.")
             self._reject_learned_fields()
-        else:
+            self._reject_source_fields()
+        elif kind == "learned_gp":
             if weights is not None:
                 raise ValueError("fidelity_weights is only valid for kind='affine'.")
             if self.cost_callable is not None:
                 raise ValueError("cost_callable is only valid for kind='callable'.")
+            self._reject_source_fields()
             has_model = self.cost_model is not None
             has_X = self.train_X is not None
             has_cost = self.train_cost is not None
@@ -109,6 +135,16 @@ class FidelityCostConfig:
                 raise ValueError("learned_gp accepts either cost_model or train_X/train_cost, not both.")
             if not has_model and not has_X:
                 raise ValueError("learned_gp requires cost_model or train_X/train_cost.")
+        else:
+            if weights is not None:
+                raise ValueError("fidelity_weights is only valid for kind='affine'.")
+            if self.cost_callable is not None:
+                raise ValueError("cost_callable is only valid for kind='callable'.")
+            self._reject_learned_fields()
+            if self.source_feature is None:
+                raise ValueError("kind='discrete_source' requires source_feature.")
+            if source_costs is None:
+                raise ValueError("kind='discrete_source' requires source_costs.")
 
         object.__setattr__(self, "kind", kind)
         object.__setattr__(self, "fixed_cost", fixed_cost)
@@ -117,11 +153,19 @@ class FidelityCostConfig:
         object.__setattr__(self, "log_cost", bool(self.log_cost))
         object.__setattr__(self, "use_mean", bool(self.use_mean))
         object.__setattr__(self, "fit_model", bool(self.fit_model))
+        object.__setattr__(self, "source_feature", None if self.source_feature is None else int(self.source_feature))
+        object.__setattr__(self, "source_costs", source_costs)
 
     def _reject_learned_fields(self) -> None:
         if self.train_X is not None or self.train_cost is not None or self.cost_model is not None:
             raise ValueError(
                 "train_X, train_cost, and cost_model are only valid for kind='learned_gp'."
+            )
+
+    def _reject_source_fields(self) -> None:
+        if self.source_feature is not None or self.source_costs is not None:
+            raise ValueError(
+                "source_feature and source_costs are only valid for kind='discrete_source'."
             )
 
 
@@ -176,16 +220,12 @@ def _resolved_weights(
 
 
 def _minimum_cost_objective(min_cost: float) -> GenericMCObjective:
-    """Return a cost objective that guarantees strictly positive costs."""
-
     return GenericMCObjective(
         lambda samples, X=None: samples.squeeze(-1).clamp_min(min_cost)
     )
 
 
 def _log_cost_objective(min_cost: float) -> GenericMCObjective:
-    """Map a log-cost posterior back to strictly positive cost."""
-
     return GenericMCObjective(
         lambda samples, X=None: samples.squeeze(-1).exp().clamp_min(min_cost)
     )
@@ -196,8 +236,6 @@ def _normalize_callable_cost(
     *,
     X: torch.Tensor,
 ) -> torch.Tensor:
-    """Normalize a known Python cost callable to ``batch x q x 1``."""
-
     cost = torch.as_tensor(value, dtype=X.dtype, device=X.device)
     target_shape = X.shape[:-1]
     if cost.ndim == 0:
@@ -212,6 +250,40 @@ def _normalize_callable_cost(
     if not bool(torch.isfinite(cost).all()):
         raise ValueError("cost_callable must return only finite costs.")
     return cost
+
+
+def _discrete_source_cost_model(
+    config: FidelityCostConfig,
+    *,
+    fidelity_features: tuple[int, ...],
+    d: int | None,
+) -> GenericDeterministicModel:
+    if config.source_feature is None or config.source_costs is None:
+        raise ValueError("discrete_source requires source_feature and source_costs.")
+    feature = _resolve_index(config.source_feature, d=d)
+    if feature not in set(int(index) for index in fidelity_features):
+        raise ValueError(
+            "discrete_source source_feature must match the model information-source/fidelity feature."
+        )
+    source_costs = dict(config.source_costs)
+
+    def known_source_cost(X: torch.Tensor) -> torch.Tensor:
+        values = X[..., feature]
+        rounded = values.round().to(dtype=torch.long)
+        if not bool(torch.allclose(values, rounded.to(values), atol=1e-8, rtol=0.0)):
+            raise ValueError("Information-source candidate values must be integer source ids.")
+        result = torch.empty_like(values)
+        matched = torch.zeros_like(values, dtype=torch.bool)
+        for source, cost in source_costs.items():
+            mask = rounded == int(source)
+            result = torch.where(mask, result.new_tensor(float(cost)), result)
+            matched |= mask
+        if not bool(matched.all()):
+            unknown = sorted(set(rounded[~matched].detach().cpu().reshape(-1).tolist()))
+            raise ValueError(f"No source cost configured for source id(s): {unknown}.")
+        return result.unsqueeze(-1)
+
+    return GenericDeterministicModel(f=known_source_cost, num_outputs=1)
 
 
 def _learned_training_data(
@@ -253,8 +325,6 @@ def build_learned_fidelity_cost_model(
     *,
     d: int | None = None,
 ) -> Any:
-    """Build or return the GP used to model observed evaluation cost."""
-
     if config.kind != "learned_gp":
         raise ValueError("build_learned_fidelity_cost_model requires kind='learned_gp'.")
     if config.cost_model is not None:
@@ -284,8 +354,6 @@ def evaluate_fidelity_cost_mean(
     *,
     min_cost: float,
 ) -> torch.Tensor:
-    """Evaluate posterior-mean cost with the utility's public cost objective."""
-
     posterior = cost_model.posterior(X)
     mean = posterior.mean
     cost = utility.cost_objective(mean, X=X)
@@ -332,13 +400,21 @@ def build_fidelity_cost_utility(
         use_mean = True
     elif config.kind == "callable":
         cost_callable = config.cost_callable
-        if cost_callable is None:  # guarded by the dataclass, defensive for typing
+        if cost_callable is None:
             raise ValueError("kind='callable' requires cost_callable.")
 
         def known_cost(X: torch.Tensor) -> torch.Tensor:
             return _normalize_callable_cost(cost_callable(X), X=X)
 
         cost_model = GenericDeterministicModel(f=known_cost, num_outputs=1)
+        cost_objective = _minimum_cost_objective(config.min_cost)
+        use_mean = True
+    elif config.kind == "discrete_source":
+        cost_model = _discrete_source_cost_model(
+            config,
+            fidelity_features=fidelity_features,
+            d=d,
+        )
         cost_objective = _minimum_cost_objective(config.min_cost)
         use_mean = True
     else:

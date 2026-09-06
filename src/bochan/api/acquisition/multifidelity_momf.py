@@ -47,10 +47,11 @@ def is_momf_name(name: Any) -> bool:
 
 
 def _bundle_is_multi_output(bundle: ModelBundle) -> bool:
-    """Infer multi-output capability from metadata or the concrete model."""
+    """Infer multi-output capability while preserving explicit metadata overrides."""
 
-    if bool(bundle.metadata.get("multi_output", False)):
-        return True
+    metadata = getattr(bundle, "metadata", {})
+    if "multi_output" in metadata:
+        return bool(metadata["multi_output"])
     try:
         return int(getattr(bundle.model, "num_outputs", 1)) > 1
     except (TypeError, ValueError):
